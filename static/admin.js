@@ -94,6 +94,7 @@ function getTabFromURL() {
 
 let castingData = null;
 let expandedChorusCasts = new Set();  // cast ids whose chorus is expanded
+let collapsedCasts = new Set();       // cast ids that are collapsed
 let castingOperas = [];               // full list of operas (id + name)
 let castingSelectedOperaId = null;    // which opera tab is active
 
@@ -197,7 +198,13 @@ function renderCastColumns() {
         const col = document.createElement("div");
         col.className = "cast-column";
 
-        let html = `<h3 class="cast-column-title">${escapeHtml(cast.name)}</h3>`;
+        const isCollapsed = collapsedCasts.has(cast.id);
+        let html = `
+          <div class="cast-column-title cast-column-toggle" data-cast-id="${cast.id}">
+            <span>${escapeHtml(cast.name)}</span>
+            <span class="cast-chevron">${isCollapsed ? "▶" : "▼"}</span>
+          </div>
+          <div class="cast-column-body${isCollapsed ? " hidden" : ""}">`;
 
         // Group roles by voice type
         const rolesByVoice = {};
@@ -276,10 +283,21 @@ function renderCastColumns() {
                 html += `</div>`;
             }
         }
-        html += `</div>`;
+        html += `</div>`; // cast-chorus-section
+        html += `</div>`; // cast-column-body
 
         col.innerHTML = html;
         container.appendChild(col);
+    });
+
+    // Wire up cast collapse toggles
+    container.querySelectorAll(".cast-column-toggle").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const cid = Number(btn.dataset.castId);
+            if (collapsedCasts.has(cid)) collapsedCasts.delete(cid);
+            else collapsedCasts.add(cid);
+            renderCastColumns();
+        });
     });
 
     // Wire up chorus toggle buttons

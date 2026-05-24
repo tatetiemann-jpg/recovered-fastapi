@@ -1219,6 +1219,19 @@ tbody tr:hover td { background: var(--accent-soft); }
   border-bottom: 1px solid var(--border);
 }
 
+.cast-column-toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.cast-column-toggle:hover { color: var(--accent-hover, var(--accent)); }
+
+.cast-chevron { font-size: 0.75rem; opacity: 0.7; }
+
 .cast-voice-section {
   margin-bottom: var(--space-3);
 }
