@@ -2296,10 +2296,15 @@ tbody tr:hover td { background: var(--accent-soft); }
 /* Production role builder rows */
 .prod-role-row {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
     align-items: center;
     margin-bottom: var(--space-2);
 }
-.prod-role-row .prod-role-name { flex: 1 1 auto; min-width: 0; width: auto; }
-.prod-role-row .prod-role-voice { flex: 0 0 auto; }
+.prod-role-row .prod-role-name { flex: 1 1 160px; min-width: 0; }
+.prod-role-row .prod-role-voice { flex: 1 1 auto; min-width: 0; }
 .prod-role-row .subtle-btn { flex: 0 0 auto; padding: 4px 8px; }
+
+@media (max-width: 480px) {
+    .prod-role-row .prod-role-name { flex: 1 1 100%; }
+}
