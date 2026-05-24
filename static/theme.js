@@ -66,7 +66,7 @@
 
         function updateIcon() {
             const current = document.documentElement.getAttribute('data-theme');
-            btn.textContent = current === 'dark' ? 'â' : 'â¾';
+            btn.textContent = current === 'dark' ? '☀' : '☾';
         }
         updateIcon();
 
