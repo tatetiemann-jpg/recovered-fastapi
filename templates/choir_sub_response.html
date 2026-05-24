@@ -18,6 +18,11 @@
   {% if not success %}
     <p class="hint">If you believe this is an error, please contact your choir director directly.</p>
   {% endif %}
+  {% if success and sub_token %}
+    <a href="/choir/sub-ics/{{ sub_token }}" class="btn" style="display:inline-block;margin-top:var(--space-4);">
+      Add Rehearsal to Calendar
+    </a>
+  {% endif %}
 </div>
 
 </body>

@@ -428,6 +428,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("find-sub-close").addEventListener("click", () =>
         document.getElementById("find-sub-modal").classList.add("hidden"));
 
+    // Calendar subscription URL
+    fetch(`${API}/choir/my-calendar-token`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+            const input = document.getElementById("calendar-url");
+            if (input && data.token) {
+                input.value = `${window.location.origin}/choir/calendar/${data.token}.ics`;
+            }
+            const copyBtn = document.getElementById("copy-calendar-url-btn");
+            if (copyBtn) {
+                copyBtn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(input.value).then(() => {
+                        copyBtn.textContent = "Copied!";
+                        setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
+                    });
+                });
+            }
+        })
+        .catch(() => {});
+
     // Initial load
     loadUpcoming();
 

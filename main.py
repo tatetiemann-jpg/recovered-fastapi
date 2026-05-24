@@ -45,10 +45,11 @@ ADMIN_ROLES = frozenset({"admin", "head_admin", "system_admin", "orchestra_admin
 async def lifespan(app: FastAPI):
     try:
         _init_pool()
-        # Test that the pool works by grabbing a connection
         with db_cursor() as cur:
             cur.execute("SELECT 1;")
         print(f"✅ Neon connection pool initialized (max {_connection_pool.maxconn} connections).")
+        with db_cursor(commit=True) as cur:
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_token TEXT UNIQUE;")
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -4817,7 +4818,7 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
                 send_email(admin_row[0], f"Sub confirmed - {reh[1]}", html_body, text_body)
 
             return templates.TemplateResponse(request, "choir_sub_response.html",
-                {"message": f"You are confirmed! Thank you, {sub_name}. See you at rehearsal.", "success": True})
+                {"message": f"You are confirmed! Thank you, {sub_name}. See you at rehearsal.", "success": True, "sub_token": token})
 
         # r == "declined": notify the choir member who created the request
         cur.execute("""
@@ -5651,6 +5652,154 @@ def choir_contact_all(sub_request_id: int, request: Request):
         """, (sub_request_id,))
 
     return {"status": "success", "sent": sent, "total_remaining": len(remaining)}
+
+
+def _make_ics(events: list, cal_name: str = "Choir Rehearsals") -> str:
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Countrpnt//Choir Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{cal_name}",
+        "X-WR-TIMEZONE:America/New_York",
+    ]
+    for e in events:
+        start = e["start"].strftime("%Y%m%dT%H%M%S")
+        end_dt = e.get("end")
+        end = end_dt.strftime("%Y%m%dT%H%M%S") if end_dt else (e["start"] + timedelta(hours=2)).strftime("%Y%m%dT%H%M%S")
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{e['uid']}",
+            f"DTSTART;TZID=America/New_York:{start}",
+            f"DTEND;TZID=America/New_York:{end}",
+            f"SUMMARY:{e.get('summary', 'Choir Rehearsal')}",
+            f"LOCATION:{e.get('location', '')}",
+            f"DESCRIPTION:{e.get('description', '')}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines)
+
+
+@app.get("/choir/my-calendar-token")
+def choir_my_calendar_token(request: Request):
+    import secrets as _secrets
+    user = require_choir_member(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT calendar_token FROM users WHERE id=%s", (user["id"],))
+        row = cur.fetchone()
+        token = row[0] if row and row[0] else None
+        if not token:
+            token = _secrets.token_urlsafe(32)
+            cur.execute("UPDATE users SET calendar_token=%s WHERE id=%s", (token, user["id"]))
+    return {"token": token}
+
+
+@app.get("/choir/calendar/{token}.ics")
+def choir_calendar_ics(token: str):
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT u.id, u.org_id, u.section_id, u.voice_type
+            FROM users u WHERE u.calendar_token=%s
+        """, (token,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+
+    user_id, org_id, section_id, voice_type = row
+
+    if not section_id and voice_type:
+        with db_cursor() as cur:
+            cur.execute("""
+                SELECT id FROM choir_sections
+                WHERE org_id=%s AND LOWER(name)=%s LIMIT 1
+            """, (org_id, voice_type.lower()))
+            sr = cur.fetchone()
+            if sr:
+                section_id = sr[0]
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT r.id, r.start_time, r.end_time, r.location, r.notes
+            FROM rehearsals r
+            WHERE r.org_id=%s AND r.start_time::date >= CURRENT_DATE
+            ORDER BY r.start_time
+        """, (org_id,))
+        rows = cur.fetchall()
+
+        cur.execute("""
+            SELECT rehearsal_id FROM absence_requests WHERE user_id=%s
+        """, (user_id,))
+        absent_ids = {r[0] for r in cur.fetchall()}
+
+    events = []
+    for rid, rstart, rend, location, notes in rows:
+        if rid in absent_ids:
+            continue
+        if section_id:
+            with db_cursor() as cur:
+                cur.execute("SELECT section_id FROM rehearsal_sections WHERE rehearsal_id=%s", (rid,))
+                called = [r[0] for r in cur.fetchall()]
+            if called and section_id not in called:
+                continue
+        events.append({
+            "uid": f"rehearsal-{rid}@countrpnt.com",
+            "start": rstart,
+            "end": rend,
+            "summary": "Choir Rehearsal",
+            "location": location or "",
+            "description": notes or "",
+        })
+
+    ics = _make_ics(events)
+    return Response(content=ics, media_type="text/calendar")
+
+
+@app.get("/choir/sub-ics/{token}")
+def choir_sub_ics(token: str):
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT sr.rehearsal_id, sr.section_id
+            FROM sub_contacts sc
+            JOIN sub_requests sr ON sr.id = sc.sub_request_id
+            WHERE sc.token=%s
+        """, (token,))
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    rehearsal_id, section_id = row
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT r.start_time, r.end_time, r.location, r.notes, cs.name
+            FROM rehearsals r
+            JOIN choir_sections cs ON cs.id=%s
+            WHERE r.id=%s
+        """, (section_id, rehearsal_id))
+        reh = cur.fetchone()
+
+    if not reh:
+        raise HTTPException(status_code=404, detail="Rehearsal not found")
+
+    rstart, rend, location, notes, section_name = reh
+    events = [{
+        "uid": f"rehearsal-{rehearsal_id}@countrpnt.com",
+        "start": rstart,
+        "end": rend,
+        "summary": f"Choir Rehearsal – {section_name}",
+        "location": location or "",
+        "description": notes or "",
+    }]
+    ics = _make_ics(events, cal_name=f"{section_name} Rehearsal")
+    return Response(
+        content=ics,
+        media_type="text/calendar",
+        headers={"Content-Disposition": "attachment; filename=rehearsal.ics"},
+    )
 
 
 @app.post("/choir/cron/escalate-subs")
