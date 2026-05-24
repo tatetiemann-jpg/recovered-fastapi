@@ -1703,7 +1703,8 @@ def invite_info(token: str):
         cur.execute("""
             SELECT i.email, i.role, i.fullname_hint, i.specialty_hint,
                    i.expires_at, i.accepted_at, i.teacher_type, i.teacher_instruments,
-                   o.name AS org_name, i.org_id
+                   o.name AS org_name, i.org_id,
+                   COALESCE(o.org_type, 'opera') AS org_type
             FROM invitations i
             LEFT JOIN organizations o ON o.id = i.org_id
             WHERE i.token = %s
@@ -1713,7 +1714,7 @@ def invite_info(token: str):
     if not row:
         return {"valid": False, "message": "Invalid invitation link."}
 
-    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id = row
+    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id, org_type = row
     if accepted:
         return {"valid": False, "message": "This invitation has already been used."}
     if expires < datetime.now(EST):
@@ -1729,6 +1730,7 @@ def invite_info(token: str):
         "teacher_instruments": t_instruments or "",
         "org_name": org_name or "",
         "org_id": org_id,
+        "org_type": org_type,
     }
 
 
@@ -4774,7 +4776,7 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
 
         if existing_response != "pending":
             return templates.TemplateResponse(request, "choir_sub_response.html",
-                {"message": "You have already responded â€” thank you!", "success": True})
+                {"message": "You have already responded - thank you!", "success": True})
 
         if req_status == "filled":
             cur.execute("UPDATE sub_contacts SET response='declined', responded_at=NOW() WHERE id=%s", (sc_id,))
@@ -4792,7 +4794,7 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
             """, (req_id, sc_id))
 
             cur.execute("""
-                SELECT r.lesson_date, r.start_time, cs.name, o.name
+                SELECT r.start_time, cs.name, o.name
                 FROM rehearsals r
                 JOIN choir_sections cs ON cs.id = %s
                 JOIN organizations o ON o.id = r.org_id
@@ -4810,12 +4812,38 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
             if reh and admin_row:
                 rdate = reh[0].strftime("%A, %B %-d") if hasattr(reh[0], "strftime") else str(reh[0])
                 html_body = (f"<p><strong>{sub_name}</strong> accepted the sub for "
-                             f"<strong>{reh[2]}</strong> on {rdate}.</p>")
-                text_body = f"{sub_name} accepted the sub for {reh[2]} on {rdate}."
-                send_email(admin_row[0], f"Sub confirmed â€” {reh[2]}", html_body, text_body)
+                             f"<strong>{reh[1]}</strong> on {rdate}.</p>")
+                text_body = f"{sub_name} accepted the sub for {reh[1]} on {rdate}."
+                send_email(admin_row[0], f"Sub confirmed - {reh[1]}", html_body, text_body)
 
             return templates.TemplateResponse(request, "choir_sub_response.html",
                 {"message": f"You are confirmed! Thank you, {sub_name}. See you at rehearsal.", "success": True})
+
+        # r == "declined": notify the choir member who created the request
+        cur.execute("""
+            SELECT r.start_time, cs.name, u.fullname, u.email
+            FROM sub_requests sr
+            JOIN rehearsals r ON r.id = sr.rehearsal_id
+            JOIN choir_sections cs ON cs.id = sr.section_id
+            JOIN users u ON u.id = sr.created_by
+            WHERE sr.id = %s
+        """, (req_id,))
+        dec_info = cur.fetchone()
+        if dec_info:
+            rdate_d = dec_info[0].strftime("%A, %B %-d") if hasattr(dec_info[0], "strftime") else str(dec_info[0])
+            sec_nm, mbr_name, mbr_email = dec_info[1], dec_info[2], dec_info[3]
+            dec_html = (
+                f"<p>Hi {mbr_name},</p>"
+                f"<p><strong>{sub_name}</strong> has declined your sub request for "
+                f"<strong>{sec_nm}</strong> on {rdate_d}. "
+                f"You may want to reach out to another sub.</p>"
+            )
+            dec_text = (
+                f"Hi {mbr_name},\n\n"
+                f"{sub_name} has declined your sub request for {sec_nm} on {rdate_d}. "
+                f"You may want to reach out to another sub."
+            )
+            send_email(mbr_email, f"Sub declined - {sec_nm} on {rdate_d}", dec_html, dec_text)
 
     return templates.TemplateResponse(request, "choir_sub_response.html",
         {"message": "Your response has been recorded. Thank you!", "success": True})
@@ -5000,6 +5028,74 @@ def choir_delete_rehearsal(rehearsal_id: int, request: Request):
     return {"status": "success"}
 
 
+@app.post("/choir/rehearsals/bulk")
+def choir_create_rehearsals_bulk(payload: dict, request: Request):
+    from datetime import date as date_type, timedelta
+    user = require_choir_admin(request)
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    days = payload.get("days", [])
+    start = payload.get("start_time")
+    end = payload.get("end_time") or None
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+    sections = payload.get("sections", [])
+
+    if not start_date or not end_date or not days or not start:
+        return {"status": "fail", "message": "Start date, end date, days, and start time are required"}
+
+    DAY_MAP = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+               "friday": 4, "saturday": 5, "sunday": 6}
+    day_nums = [DAY_MAP[d.lower()] for d in days if d.lower() in DAY_MAP]
+    if not day_nums:
+        return {"status": "fail", "message": "No valid days selected"}
+
+    try:
+        sd = date_type.fromisoformat(start_date)
+        ed = date_type.fromisoformat(end_date)
+    except Exception:
+        return {"status": "fail", "message": "Invalid date format"}
+
+    if ed < sd:
+        return {"status": "fail", "message": "End date must be after start date"}
+    if (ed - sd).days > 365:
+        return {"status": "fail", "message": "Date range cannot exceed one year"}
+
+    rehearsal_dates = []
+    current = sd
+    while current <= ed:
+        if current.weekday() in day_nums:
+            rehearsal_dates.append(current)
+        current += timedelta(days=1)
+
+    if not rehearsal_dates:
+        return {"status": "fail", "message": "No rehearsals fall in that date range"}
+    if len(rehearsal_dates) > 100:
+        return {"status": "fail", "message": f"Too many rehearsals ({len(rehearsal_dates)}). Narrow your date range."}
+
+    created = 0
+    with db_cursor(commit=True) as cur:
+        for rdate in rehearsal_dates:
+            try:
+                start_dt = datetime.fromisoformat(f"{rdate}T{start}")
+                end_dt = datetime.fromisoformat(f"{rdate}T{end}") if end else None
+                cur.execute("""
+                    INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type)
+                    VALUES (%s, %s, %s, %s, %s, 'vocal', 'full') RETURNING id
+                """, (user["org_id"], start_dt, end_dt, location, notes))
+                rid = cur.fetchone()[0]
+                for sid in sections:
+                    cur.execute("""
+                        INSERT INTO rehearsal_sections (rehearsal_id, section_id)
+                        VALUES (%s, %s) ON CONFLICT DO NOTHING
+                    """, (rid, sid))
+                created += 1
+            except Exception:
+                pass
+
+    return {"status": "success", "created": created}
+
+
 # -- Sub roster ---------------------------------------------------------------
 
 @app.get("/choir/subs")
@@ -5139,6 +5235,52 @@ def choir_mark_absent(payload: dict, request: Request):
 @app.delete("/choir/absence-request/{rehearsal_id}")
 def choir_cancel_absence(rehearsal_id: int, request: Request):
     user = require_choir_member(request)
+    org_id = user["org_id"]
+
+    section_id = user.get("section_id")
+    if not section_id:
+        voice_type = (user.get("voice_type") or "").lower()
+        if voice_type:
+            with db_cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM choir_sections
+                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
+                """, (org_id, voice_type))
+                row = cur.fetchone()
+                if row:
+                    section_id = row[0]
+
+    if section_id:
+        with db_cursor() as cur:
+            cur.execute("""
+                SELECT sr.id, s.fullname, s.email, r.start_time, cs.name
+                FROM sub_requests sr
+                JOIN subs s ON s.id = sr.filled_by_sub_id
+                JOIN rehearsals r ON r.id = sr.rehearsal_id
+                JOIN choir_sections cs ON cs.id = sr.section_id
+                WHERE sr.rehearsal_id = %s AND sr.section_id = %s AND sr.status = 'filled'
+            """, (rehearsal_id, section_id))
+            sub_row = cur.fetchone()
+
+        if sub_row:
+            sr_id, sub_name, sub_email, start_time, section_name = sub_row
+            rdate = start_time.strftime("%A, %B %-d") if hasattr(start_time, "strftime") else str(start_time)
+            with db_cursor(commit=True) as cur:
+                cur.execute("UPDATE sub_requests SET status='cancelled' WHERE id=%s", (sr_id,))
+            html_body = (
+                f"<p>Hi {sub_name},</p>"
+                f"<p>Good news - you are no longer needed as a substitute for "
+                f"<strong>{section_name}</strong> on {rdate}. The singer is now available.</p>"
+                f"<p>Thank you for your willingness to help!</p>"
+            )
+            text_body = (
+                f"Hi {sub_name},\n\n"
+                f"Good news - you are no longer needed as a substitute for "
+                f"{section_name} on {rdate}. The singer is now available.\n\n"
+                f"Thank you for your willingness to help!"
+            )
+            send_email(sub_email, f"Sub no longer needed - {section_name} on {rdate}", html_body, text_body)
+
     with db_cursor(commit=True) as cur:
         cur.execute("DELETE FROM absence_requests WHERE rehearsal_id=%s AND singer_id=%s",
                     (rehearsal_id, user["id"]))
@@ -5147,18 +5289,44 @@ def choir_cancel_absence(rehearsal_id: int, request: Request):
 @app.get("/choir/absences/{rehearsal_id}")
 def choir_get_absences(rehearsal_id: int, request: Request):
     user = require_choir_admin(request)
+    org_id = user["org_id"]
     with db_cursor() as cur:
         cur.execute("""
-            SELECT ar.singer_id, u.fullname, u.section_id, cs.name, ar.reason
+            SELECT ar.singer_id, u.fullname, u.section_id, u.voice_type, ar.reason
             FROM absence_requests ar
             JOIN users u ON u.id = ar.singer_id
-            LEFT JOIN choir_sections cs ON cs.id = u.section_id
-            WHERE ar.rehearsal_id=%s
-            ORDER BY cs.sort_order NULLS LAST, u.fullname
+            WHERE ar.rehearsal_id = %s
+            ORDER BY u.fullname
         """, (rehearsal_id,))
-        return [{"singer_id": r[0], "singer": r[1], "section_id": r[2],
-                 "section": r[3] or "?", "reason": r[4] or ""}
-                for r in cur.fetchall()]
+        rows = cur.fetchall()
+
+        result = []
+        for singer_id, fullname, section_id, voice_type, reason in rows:
+            resolved_id = section_id
+            section_name = None
+            if resolved_id:
+                cur.execute("SELECT name FROM choir_sections WHERE id = %s", (resolved_id,))
+                sec_row = cur.fetchone()
+                section_name = sec_row[0] if sec_row else "?"
+            elif voice_type:
+                cur.execute("""
+                    SELECT id, name FROM choir_sections
+                    WHERE org_id = %s AND LOWER(name) = LOWER(%s) LIMIT 1
+                """, (org_id, voice_type))
+                sec_row = cur.fetchone()
+                if sec_row:
+                    resolved_id = sec_row[0]
+                    section_name = sec_row[1]
+                else:
+                    section_name = voice_type.capitalize()
+            result.append({
+                "singer_id": singer_id,
+                "singer": fullname,
+                "section_id": resolved_id,
+                "section": section_name or "?",
+                "reason": reason or "",
+            })
+        return result
 
 @app.get("/choir/my-absences")
 def choir_my_absences(request: Request):
@@ -5168,19 +5336,73 @@ def choir_my_absences(request: Request):
         return [r[0] for r in cur.fetchall()]
 
 
+@app.get("/choir/my-sub-status")
+def choir_my_sub_status(request: Request):
+    """For each rehearsal the member is absent from, return the sub_request status for their section."""
+    user = require_choir_member(request)
+    org_id = user["org_id"]
+
+    section_id = user.get("section_id")
+    if not section_id:
+        voice_type = (user.get("voice_type") or "").lower()
+        if voice_type:
+            with db_cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM choir_sections
+                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
+                """, (org_id, voice_type))
+                row = cur.fetchone()
+                if row:
+                    section_id = row[0]
+
+    if not section_id:
+        return []
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT sr.rehearsal_id, sr.status, s.fullname,
+                (sr.status != 'filled'
+                 AND EXISTS (
+                     SELECT 1 FROM sub_contacts sc
+                     WHERE sc.sub_request_id = sr.id AND sc.response = 'declined'
+                 )
+                 AND NOT EXISTS (
+                     SELECT 1 FROM sub_contacts sc
+                     WHERE sc.sub_request_id = sr.id AND sc.response = 'pending'
+                 )
+                ) AS all_declined
+            FROM absence_requests ar
+            JOIN sub_requests sr ON sr.rehearsal_id = ar.rehearsal_id
+                                AND sr.section_id = %s
+            LEFT JOIN subs s ON s.id = sr.filled_by_sub_id
+            WHERE ar.singer_id = %s
+        """, (section_id, user["id"]))
+        return [{"rehearsal_id": r[0], "status": r[1], "filled_by_name": r[2], "all_declined": bool(r[3])}
+                for r in cur.fetchall()]
+
+
 # -- Sub requests + email workflow -------------------------------------------
 
 def _render_sub_email(sub_name: str, section_name: str, org_name: str,
                       rdate: str, rstart: str, location: str, notes: str,
-                      token: str) -> tuple:
+                      token: str, admin_name: str = None, admin_email: str = None) -> tuple:
     accept_url = f"{APP_URL}/choir/sub-response/{token}?r=accepted"
     decline_url = f"{APP_URL}/choir/sub-response/{token}?r=declined"
     loc_line = f"<br><em>{location}</em>" if location else ""
     note_line = f"<br><em>{notes}</em>" if notes else ""
+    if admin_name and admin_email:
+        footer_html = f"Please contact {admin_name} at <a href=\"mailto:{admin_email}\">{admin_email}</a> with any questions."
+        footer_text = f"Please contact {admin_name} at {admin_email} with any questions."
+    elif admin_name:
+        footer_html = f"Please contact {admin_name} with any questions."
+        footer_text = footer_html
+    else:
+        footer_html = f"Sent on behalf of {org_name}."
+        footer_text = footer_html
     html = f"""
 <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;color:#1a1a1a;">
   <h2 style="color:#8b6914;margin-bottom:4px;">{org_name}</h2>
-  <p style="color:#666;margin-top:0;font-style:italic;">Sub needed â€” {section_name}</p>
+  <p style="color:#666;margin-top:0;font-style:italic;">Sub needed &mdash; {section_name}</p>
   <p>Hi {sub_name},</p>
   <p>We need a substitute for the <strong>{section_name}</strong> part at an upcoming rehearsal:</p>
   <div style="padding:12px 16px;background:#faf7f0;border-left:3px solid #c9a227;
@@ -5202,14 +5424,15 @@ def _render_sub_email(sub_name: str, section_name: str, org_name: str,
   </tr></table>
   <p style="font-size:0.82rem;color:#888;margin-top:28px;border-top:1px solid #e8e3d8;
             padding-top:12px;">
-    Sent on behalf of {org_name}. Reply to this email with any questions.
+    {footer_html}
   </p>
 </div>"""
-    text = (f"{org_name} â€” Sub needed ({section_name})\n\n"
+    text = (f"{org_name} - Sub needed ({section_name})\n\n"
             f"Hi {sub_name},\n\n"
             f"We need a sub for {section_name} on {rdate} at {rstart}"
             f"{(' at ' + location) if location else ''}.\n\n"
-            f"Accept: {accept_url}\nDecline: {decline_url}")
+            f"Accept: {accept_url}\nDecline: {decline_url}\n\n"
+            f"{footer_text}")
     return html, text
 
 
@@ -5218,7 +5441,7 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
     with db_cursor() as cur:
         cur.execute("""
             SELECT r.start_time, r.location, r.notes,
-                   cs.name, o.name
+                   cs.name, o.name, o.id
             FROM rehearsals r
             JOIN choir_sections cs ON cs.id = %s
             JOIN organizations o ON o.id = r.org_id
@@ -5231,7 +5454,18 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
     start_dt = reh[0]
     rdate = start_dt.strftime("%A, %B %-d") if hasattr(start_dt, "strftime") else str(start_dt)
     rstart = start_dt.strftime("%H:%M") if hasattr(start_dt, "strftime") else ""
-    section_name, org_name = reh[3], reh[4]
+    section_name, org_name, org_id = reh[3], reh[4], reh[5]
+
+    admin_name = admin_email = None
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT fullname, email FROM users
+            WHERE org_id = %s AND role IN ('admin', 'head_admin')
+            ORDER BY CASE role WHEN 'head_admin' THEN 0 ELSE 1 END LIMIT 1
+        """, (org_id,))
+        adm = cur.fetchone()
+        if adm:
+            admin_name, admin_email = adm[0], adm[1]
 
     sent = 0
     for sub in sub_list:
@@ -5245,9 +5479,10 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
             if cur.rowcount == 0:
                 continue
         html, text = _render_sub_email(sub["fullname"], section_name, org_name,
-                                       rdate, rstart, reh[1] or "", reh[2] or "", token)
+                                       rdate, rstart, reh[1] or "", reh[2] or "", token,
+                                       admin_name, admin_email)
         if send_email(sub["email"],
-                      f"Sub needed â€” {section_name} | {org_name}", html, text):
+                      f"Sub needed - {section_name} | {org_name}", html, text):
             sent += 1
     return sent
 
@@ -5256,11 +5491,30 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
 def choir_create_sub_request(payload: dict, request: Request):
     user = require_choir_member(request)
     rehearsal_id = payload.get("rehearsal_id")
-    section_id = payload.get("section_id") or user.get("section_id")
+    org_id = user["org_id"]
+
+    # Resolve the user's own section_id (from profile or voice_type fallback)
+    user_section_id = user.get("section_id")
+    if not user_section_id:
+        voice_type = (user.get("voice_type") or "").lower()
+        if voice_type:
+            with db_cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM choir_sections
+                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
+                """, (org_id, voice_type))
+                row = cur.fetchone()
+                if row:
+                    user_section_id = row[0]
+
+    # Admins may specify any section; members are locked to their own
+    if user["role"] == "admin":
+        section_id = payload.get("section_id") or user_section_id
+    else:
+        section_id = user_section_id
+
     if not rehearsal_id or not section_id:
         return {"status": "fail", "message": "rehearsal_id and section_id required"}
-    if user["role"] != "admin" and section_id != user.get("section_id"):
-        raise HTTPException(status_code=403, detail="Members can only request subs for their own section")
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
@@ -5399,15 +5653,76 @@ def choir_contact_all(sub_request_id: int, request: Request):
     return {"status": "success", "sent": sent, "total_remaining": len(remaining)}
 
 
+@app.post("/choir/cron/escalate-subs")
+def choir_escalate_subs(request: Request):
+    """24-hour escalation: email all uncontacted subs for stale open requests.
+    Protect with CRON_SECRET env var; call from an external scheduler."""
+    import os as _os
+    cron_secret = _os.environ.get("CRON_SECRET", "")
+    if not cron_secret or request.headers.get("x-cron-secret") != cron_secret:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, rehearsal_id, section_id FROM sub_requests
+            WHERE status NOT IN ('filled', 'cancelled', 'all_sent')
+              AND created_at < NOW() - INTERVAL '24 hours'
+        """)
+        stale = cur.fetchall()
+
+    escalated = 0
+    for req_id, rehearsal_id, section_id in stale:
+        with db_cursor() as cur:
+            cur.execute("""
+                SELECT s.id, s.fullname, s.email FROM subs s
+                WHERE s.section_id = %s AND s.active = true
+                  AND s.id NOT IN (
+                    SELECT sub_id FROM sub_contacts WHERE sub_request_id = %s
+                  )
+            """, (section_id, req_id))
+            remaining = [{"id": r[0], "fullname": r[1], "email": r[2]} for r in cur.fetchall()]
+
+        if remaining:
+            sent = _send_sub_emails(remaining, req_id, rehearsal_id, section_id, "regular")
+            if sent > 0:
+                escalated += 1
+
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                UPDATE sub_requests SET status = 'all_sent', all_sent_at = NOW()
+                WHERE id = %s AND status NOT IN ('filled', 'cancelled', 'all_sent')
+            """, (req_id,))
+
+    return {"status": "ok", "escalated": escalated, "checked": len(stale)}
+
+
 @app.post("/choir/contact-sub")
 def choir_contact_one_sub(payload: dict, request: Request):
     """Email a single sub for a rehearsal section. Creates the sub_request if needed."""
-    user = require_choir_admin(request)
+    user = require_choir_member(request)
     rehearsal_id = payload.get("rehearsal_id")
     section_id = payload.get("section_id")
     sub_id = payload.get("sub_id")
+    org_id = user["org_id"]
     if not all([rehearsal_id, section_id, sub_id]):
         return {"status": "fail", "message": "Missing required fields"}
+
+    # Non-admin members may only contact subs for their own section
+    if user["role"] != "admin":
+        user_section_id = user.get("section_id")
+        if not user_section_id:
+            voice_type = (user.get("voice_type") or "").lower()
+            if voice_type:
+                with db_cursor() as cur:
+                    cur.execute("""
+                        SELECT id FROM choir_sections
+                        WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
+                    """, (org_id, voice_type))
+                    row = cur.fetchone()
+                    if row:
+                        user_section_id = row[0]
+        if user_section_id and int(section_id) != user_section_id:
+            raise HTTPException(status_code=403, detail="Members can only contact subs for their own section")
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
@@ -5436,5 +5751,65 @@ def choir_contact_one_sub(payload: dict, request: Request):
         return {"status": "fail", "message": "Already contacted or email failed"}
     return {"status": "success"}
 
+
+@app.post("/choir/contact-preferred-subs")
+def choir_contact_preferred_subs(payload: dict, request: Request):
+    """Email all preferred subs for the member's section. Creates sub_request if needed."""
+    user = require_choir_member(request)
+    rehearsal_id = payload.get("rehearsal_id")
+    org_id = user["org_id"]
+    if not rehearsal_id:
+        return {"status": "fail", "message": "rehearsal_id required"}
+
+    section_id = user.get("section_id")
+    if not section_id:
+        voice_type = (user.get("voice_type") or "").lower()
+        if voice_type:
+            with db_cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM choir_sections
+                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
+                """, (org_id, voice_type))
+                row = cur.fetchone()
+                if row:
+                    section_id = row[0]
+    if not section_id:
+        return {"status": "fail", "message": "Could not resolve your section"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT id FROM sub_requests
+            WHERE rehearsal_id = %s AND section_id = %s
+              AND status NOT IN ('filled', 'cancelled')
+        """, (rehearsal_id, section_id))
+        row = cur.fetchone()
+        if row:
+            sub_request_id = row[0]
+        else:
+            cur.execute("""
+                INSERT INTO sub_requests (rehearsal_id, section_id, created_by)
+                VALUES (%s, %s, %s) RETURNING id
+            """, (rehearsal_id, section_id, user["id"]))
+            sub_request_id = cur.fetchone()[0]
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, fullname, email FROM subs
+            WHERE section_id = %s AND is_preferred = true AND active = true
+        """, (section_id,))
+        preferred = [{"id": r[0], "fullname": r[1], "email": r[2]} for r in cur.fetchall()]
+
+    if not preferred:
+        return {"status": "fail", "message": "No preferred subs found for your section"}
+
+    sent = _send_sub_emails(preferred, sub_request_id, rehearsal_id, section_id, "preferred")
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE sub_requests SET status = 'preferred_sent', preferred_sent_at = NOW()
+            WHERE id = %s AND status = 'open'
+        """, (sub_request_id,))
+
+    return {"status": "success", "sent": sent, "total": len(preferred)}
 
 
