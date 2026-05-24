@@ -17,7 +17,7 @@
 
 const output = document.getElementById("output");
 const ADMIN_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const VALID_TABS = ["rehearsals", "scheduled", "casting", "schedules", "invitations", "productions", "requests", "orchestra"];
+const VALID_TABS = ["rehearsals", "casting", "invitations", "orchestra"];
 
 // Voice compatibility (which voice types can sing which roles)
 const VOICE_COMPATIBILITY = {
@@ -77,9 +77,7 @@ function setActiveTab(tabName) {
     }
 
     // Lazy-load data only when the relevant tab becomes active
-    if (tabName === "invitations") loadInvitations();
-    if (tabName === "productions") loadProductions();
-    if (tabName === "requests") loadOrgTransferRequests();
+    if (tabName === "invitations") { loadInvitations(); loadOrgTransferRequests(); }
     if (tabName === "orchestra") loadOrchestra();
 }
 
@@ -972,6 +970,7 @@ async function createRehearsal() {
         // Reset role checks (keep casts + leaders as-is for convenience)
         document.querySelectorAll(".rehearsal-role-check").forEach(cb => cb.checked = false);
         loadAdminRehearsals();
+        setTimeout(() => document.getElementById("rehearsal-create-modal")?.classList.add("hidden"), 1200);
     } else {
         msgEl.textContent = data.message || "Failed to create rehearsal.";
     }
@@ -2152,6 +2151,8 @@ async function createProduction() {
             document.getElementById("prod-num-casts").value = "1";
             document.getElementById("prod-roles-list").innerHTML = "";
             loadProductions();
+            loadCastingOperas();
+            setTimeout(() => document.getElementById("prod-create-modal")?.classList.add("hidden"), 1200);
         } else {
             msg.textContent = data.message || "Failed to create production.";
         }
@@ -2334,6 +2335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // --- Casting (new) ---
     loadCastingOperas();
+    loadProductions();
     document.getElementById("open-assign-roles-btn")
         ?.addEventListener("click", openAssignRolesModal);
     document.getElementById("close-assign-roles-btn")
@@ -2387,8 +2389,29 @@ document.addEventListener("DOMContentLoaded", async () => {
         renderScheduledRehearsals();
     });
 
-    // --- Schedules ---
-    loadScheduleSummary();
+    // --- New Rehearsal modal ---
+    document.getElementById("new-rehearsal-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("rehearsal-create-modal")?.classList.remove("hidden"));
+    document.getElementById("close-rehearsal-create-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("rehearsal-create-modal")?.classList.add("hidden"));
+    document.getElementById("rehearsal-create-modal")?.addEventListener("click", e => {
+        if (e.target.id === "rehearsal-create-modal")
+            e.target.classList.add("hidden");
+    });
+
+    // --- New Production modal ---
+    document.getElementById("new-production-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("prod-create-modal")?.classList.remove("hidden"));
+    document.getElementById("close-prod-create-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("prod-create-modal")?.classList.add("hidden"));
+    document.getElementById("prod-create-modal")?.addEventListener("click", e => {
+        if (e.target.id === "prod-create-modal")
+            e.target.classList.add("hidden");
+    });
 
     // --- Invitations (wired up; data loads when tab is activated) ---
     document.getElementById("send-invite-btn")?.addEventListener("click", sendInvite);
@@ -2426,15 +2449,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // system_admin only needs Invitations — hide everything else
     if (USER_ROLE === "system_admin") {
-        ["rehearsals", "scheduled", "casting", "schedules", "productions", "requests", "orchestra"].forEach(tab => {
+        ["rehearsals", "casting", "orchestra"].forEach(tab => {
             document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("tab-btn--hidden");
         });
         setActiveTab("invitations");
     }
 
-    // orchestra_admin sees Orchestra, Rehearsals, Scheduled, and Schedules
+    // orchestra_admin sees Rehearsals and Orchestra only
     if (USER_ROLE === "orchestra_admin") {
-        ["casting", "productions", "requests", "invitations"].forEach(tab => {
+        ["casting", "invitations"].forEach(tab => {
             document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("tab-btn--hidden");
         });
         // Hide vocal-only fields from the rehearsal form
@@ -2443,24 +2466,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // Invitations tab: system_admin and head_admin only
-    const invitationsTab = document.querySelector('.tab-btn[data-tab="invitations"]');
-    if (invitationsTab) {
-        const canSeeInvitations = ["system_admin", "head_admin"].includes(USER_ROLE);
-        invitationsTab.classList.toggle("tab-btn--hidden", !canSeeInvitations);
-    }
+    const canSeeInvitations = ["system_admin", "head_admin"].includes(USER_ROLE);
+    document.querySelector('.tab-btn[data-tab="invitations"]')
+        ?.classList.toggle("tab-btn--hidden", !canSeeInvitations);
 
-    // --- Show Productions tab for head_admin only ---
-    const productionsTab = document.querySelector('.tab-btn[data-tab="productions"]');
-    if (productionsTab) {
-        productionsTab.classList.toggle("tab-btn--hidden", USER_ROLE !== "head_admin");
-    }
-
-    // --- Show Orchestra tab for head_admin, orchestra_admin ---
-    const orchestraTab = document.querySelector('.tab-btn[data-tab="orchestra"]');
-    if (orchestraTab) {
-        const canSeeOrchestra = ["head_admin", "orchestra_admin"].includes(USER_ROLE);
-        orchestraTab.classList.toggle("tab-btn--hidden", !canSeeOrchestra);
-    }
+    // Orchestra tab: head_admin and orchestra_admin only
+    const canSeeOrchestra = ["head_admin", "orchestra_admin"].includes(USER_ROLE);
+    document.querySelector('.tab-btn[data-tab="orchestra"]')
+        ?.classList.toggle("tab-btn--hidden", !canSeeOrchestra);
 
     // --- Production staff ---
     document.getElementById("add-staff-btn")?.addEventListener("click", () => {
