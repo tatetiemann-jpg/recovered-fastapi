@@ -187,6 +187,14 @@
             </div>
         </div>
 
+        <div class="box" style="margin-top:var(--space-4);">
+            <h2>Teachers</h2>
+            <p class="hint">Fix a teacher's type or instruments if they were set up incorrectly.</p>
+            <div id="teachers-admin-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
     </section>
 
     <!-- ORCHESTRA -->
@@ -335,6 +343,27 @@
         </div>
 
         <p id="rehearsal-msg"></p>
+    </div>
+</div>
+
+<!-- EDIT TEACHER MODAL -->
+<div id="edit-teacher-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="edit-teacher-title">Edit Teacher</h3>
+        <label>Teacher Type</label>
+        <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+            <label class="inline-check"><input type="radio" name="edit-teacher-type" value="vocal" checked> Vocal</label>
+            <label class="inline-check"><input type="radio" name="edit-teacher-type" value="instrumental"> Instrumental</label>
+        </div>
+        <div id="edit-instruments-row" class="hidden">
+            <label for="edit-instruments">Instruments (comma-separated)</label>
+            <input type="text" id="edit-instruments" placeholder="e.g. french horn, trumpet">
+        </div>
+        <div class="modal-actions">
+            <button id="save-teacher-edit-btn">Save</button>
+            <button id="close-edit-teacher-btn" type="button">Cancel</button>
+        </div>
+        <p id="edit-teacher-msg"></p>
     </div>
 </div>
 

@@ -77,7 +77,7 @@ function setActiveTab(tabName) {
     }
 
     // Lazy-load data only when the relevant tab becomes active
-    if (tabName === "invitations") { loadInvitations(); loadOrgTransferRequests(); }
+    if (tabName === "invitations") { loadInvitations(); loadOrgTransferRequests(); loadTeachersList(); }
     if (tabName === "orchestra") loadOrchestra();
 }
 
@@ -1473,6 +1473,106 @@ async function submitCallSingers() {
 
 
 // -----------------------------------------------------------
+// TEACHER MANAGEMENT
+// -----------------------------------------------------------
+
+let editTeacherId = null;
+
+async function loadTeachersList() {
+    const box = document.getElementById("teachers-admin-list");
+    if (!box) return;
+    try {
+        const res = await fetch(`${API}/admin/teachers`, { credentials: "include" });
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+            box.innerHTML = `<em class="empty-note">No teachers yet.</em>`;
+            return;
+        }
+        box.innerHTML = data.map(t => {
+            const typeLabel = t.teacher_type === "instrumental" ? "Instrumental" : "Vocal";
+            const instrNote = t.teacher_type === "instrumental" && t.teacher_instruments
+                ? ` &middot; ${escapeHtml(t.teacher_instruments)}`
+                : "";
+            const warn = (t.teacher_type === "instrumental" && !t.teacher_instruments)
+                ? ` <span style="color:var(--error,#c0392b);">⚠ no instruments set</span>`
+                : "";
+            return `
+                <div class="invite-row">
+                    <div>
+                        <strong>${escapeHtml(t.name)}</strong>
+                        <span class="invite-meta">${typeLabel}${instrNote}${warn}</span>
+                    </div>
+                    <button class="subtle-btn edit-teacher-btn"
+                            data-id="${t.id}"
+                            data-name="${escapeHtml(t.name)}"
+                            data-type="${escapeHtml(t.teacher_type || "vocal")}"
+                            data-instruments="${escapeHtml(t.teacher_instruments || "")}">
+                        Edit
+                    </button>
+                </div>
+            `;
+        }).join("");
+        box.querySelectorAll(".edit-teacher-btn").forEach(btn => {
+            btn.addEventListener("click", () => openEditTeacherModal(
+                Number(btn.dataset.id), btn.dataset.name,
+                btn.dataset.type, btn.dataset.instruments
+            ));
+        });
+    } catch (e) {
+        box.innerHTML = `<em class="empty-note">Failed to load teachers.</em>`;
+    }
+}
+
+function openEditTeacherModal(id, name, type, instruments) {
+    editTeacherId = id;
+    document.getElementById("edit-teacher-title").textContent = `Edit: ${name}`;
+    document.querySelectorAll("input[name='edit-teacher-type']").forEach(r => {
+        r.checked = r.value === type;
+    });
+    document.getElementById("edit-instruments").value = instruments;
+    document.getElementById("edit-instruments-row").classList.toggle("hidden", type !== "instrumental");
+    document.getElementById("edit-teacher-msg").textContent = "";
+    document.getElementById("edit-teacher-modal").classList.remove("hidden");
+}
+
+async function saveTeacherEdit() {
+    if (!editTeacherId) return;
+    const type = document.querySelector("input[name='edit-teacher-type']:checked")?.value || "vocal";
+    const instruments = document.getElementById("edit-instruments").value.trim().toLowerCase();
+    const msgEl = document.getElementById("edit-teacher-msg");
+
+    if (type === "instrumental" && !instruments) {
+        msgEl.textContent = "Please enter at least one instrument.";
+        return;
+    }
+
+    const btn = document.getElementById("save-teacher-edit-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+
+    const res = await fetch(`${API}/admin/teachers/${editTeacherId}`, {
+        method: "POST",
+        credentials: "include",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ teacher_type: type, teacher_instruments: instruments }),
+    });
+
+    btn.disabled = false;
+    btn.textContent = "Save";
+
+    const data = await res.json();
+    if (data.status === "success") {
+        msgEl.className = "msg success-msg";
+        msgEl.textContent = "Saved.";
+        loadTeachersList();
+        setTimeout(() => document.getElementById("edit-teacher-modal")?.classList.add("hidden"), 900);
+    } else {
+        msgEl.className = "msg";
+        msgEl.textContent = data.message || "Failed to save.";
+    }
+}
+
+// -----------------------------------------------------------
 // INVITATIONS
 // -----------------------------------------------------------
 
@@ -2612,6 +2712,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById(id)?.addEventListener("change", updateAdminBulkPreview));
     document.querySelectorAll("#reh-admin-days input").forEach(cb =>
         cb.addEventListener("change", updateAdminBulkPreview));
+
+    // --- Edit Teacher modal ---
+    document.getElementById("save-teacher-edit-btn")?.addEventListener("click", saveTeacherEdit);
+    document.getElementById("close-edit-teacher-btn")?.addEventListener("click", () =>
+        document.getElementById("edit-teacher-modal")?.classList.add("hidden"));
+    document.getElementById("edit-teacher-modal")?.addEventListener("click", e => {
+        if (e.target.id === "edit-teacher-modal") e.target.classList.add("hidden");
+    });
+    document.querySelectorAll("input[name='edit-teacher-type']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            document.getElementById("edit-instruments-row")
+                ?.classList.toggle("hidden", radio.value !== "instrumental");
+        });
+    });
 
     // --- View / Add Rehearsal Notes modals ---
     document.getElementById("close-view-notes-btn")

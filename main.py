@@ -1514,7 +1514,7 @@ def admin_invite(payload: dict, request: Request):
     fullname_hint = (payload.get("fullname_hint") or "").strip() or None
     specialty_hint = (payload.get("specialty_hint") or "").strip() or None
     teacher_type = (payload.get("teacher_type") or "vocal").strip()
-    teacher_instruments = (payload.get("teacher_instruments") or "").strip()
+    teacher_instruments = (payload.get("teacher_instruments") or "").strip().lower()
 
     if teacher_type not in ("vocal", "instrumental"):
         teacher_type = "vocal"
@@ -1918,13 +1918,42 @@ def admin_teachers(request: Request):
     org_id = user["org_id"]
     with db_cursor() as cur:
         cur.execute("""
-            SELECT id, fullname, email, specialty
+            SELECT id, fullname, email, specialty, teacher_type, teacher_instruments
             FROM users
             WHERE org_id = %s AND role = 'teacher'
             ORDER BY fullname
         """, (org_id,))
         rows = cur.fetchall()
-    return [{"id": r[0], "name": r[1], "email": r[2], "specialty": r[3]} for r in rows]
+    return [
+        {
+            "id": r[0], "name": r[1], "email": r[2], "specialty": r[3],
+            "teacher_type": r[4] or "vocal",
+            "teacher_instruments": r[5] or "",
+        }
+        for r in rows
+    ]
+
+
+@app.post("/admin/teachers/{teacher_id}")
+def admin_update_teacher(teacher_id: int, payload: dict, request: Request):
+    admin = require_user(request, role="admin")
+    teacher_type = (payload.get("teacher_type") or "vocal").strip()
+    if teacher_type not in ("vocal", "instrumental"):
+        teacher_type = "vocal"
+    teacher_instruments = (payload.get("teacher_instruments") or "").strip().lower()
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "SELECT 1 FROM users WHERE id=%s AND org_id=%s AND role='teacher'",
+            (teacher_id, admin["org_id"])
+        )
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Teacher not found"}
+        cur.execute(
+            "UPDATE users SET teacher_type=%s, teacher_instruments=%s WHERE id=%s",
+            (teacher_type, teacher_instruments, teacher_id)
+        )
+    return {"status": "success"}
 
 
 @app.post("/admin/assign-group")
