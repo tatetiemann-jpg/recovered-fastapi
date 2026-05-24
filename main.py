@@ -5730,7 +5730,7 @@ def choir_calendar_ics(token: str):
         rows = cur.fetchall()
 
         cur.execute("""
-            SELECT rehearsal_id FROM absence_requests WHERE user_id=%s
+            SELECT rehearsal_id FROM absence_requests WHERE singer_id=%s
         """, (user_id,))
         absent_ids = {r[0] for r in cur.fetchall()}
 
