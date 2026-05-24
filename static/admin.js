@@ -1191,6 +1191,12 @@ function renderScheduledRehearsals() {
         box.querySelectorAll(".cancel-rehearsal-btn").forEach(btn => {
             btn.addEventListener("click", () => cancelRehearsal(Number(btn.dataset.id)));
         });
+        box.querySelectorAll(".add-reh-notes-btn").forEach(btn => {
+            btn.addEventListener("click", () => openAddRehearsalNotesModal(Number(btn.dataset.id)));
+        });
+        box.querySelectorAll(".view-reh-notes-btn").forEach(btn => {
+            btn.addEventListener("click", () => openViewRehearsalNotesModal(Number(btn.dataset.id)));
+        });
     });
 }
 
@@ -1242,7 +1248,6 @@ function renderRehearsalRow(r) {
                 </div>
                 <div class="rehearsal-row-actions">
                     ${callSingersBtn}
-                    <button class="subtle-btn cancel-rehearsal-btn" data-id="${r.id}">Cancel</button>
                 </div>
             </div>
             <br>
@@ -1253,11 +1258,81 @@ function renderRehearsalRow(r) {
             ${locationLine}
             ${rolesLine}
             ${leadersLine}
-            ${r.notes ? `<br><em>${escapeHtml(r.notes)}</em>` : ""}
+            ${r.notes ? `<br><em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+            <div class="rehearsal-row-footer">
+                <div class="rehearsal-row-footer-left">
+                    <button class="subtle-btn add-reh-notes-btn" data-id="${r.id}">Create Rehearsal Notes</button>
+                    <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
+                </div>
+                <button class="subtle-btn danger-btn cancel-rehearsal-btn" data-id="${r.id}">Cancel</button>
+            </div>
         </div>
     `;
 }
 
+
+// -----------------------------------------------------------
+// REHEARSAL NOTES
+// -----------------------------------------------------------
+
+let activeNotesRehearsalId = null;
+
+function openViewRehearsalNotesModal(rehearsalId) {
+    const r = scheduledAllRehearsals.find(x => x.id === rehearsalId);
+    if (!r) return;
+    document.getElementById("view-notes-title").textContent = `Rehearsal Notes — ${r.opera}`;
+    const body = document.getElementById("view-notes-body");
+    body.textContent = r.notes || "";
+    body.innerHTML = r.notes
+        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${escapeHtml(l)}</p>`).join("")
+        : `<em class="empty-note">No notes for this rehearsal yet.</em>`;
+    document.getElementById("reh-view-notes-modal").classList.remove("hidden");
+}
+
+function openAddRehearsalNotesModal(rehearsalId) {
+    const r = scheduledAllRehearsals.find(x => x.id === rehearsalId);
+    if (!r) return;
+    activeNotesRehearsalId = rehearsalId;
+    document.getElementById("add-notes-title").textContent = `Create Rehearsal Notes — ${r.opera}`;
+    document.getElementById("add-notes-textarea").value = r.notes || "";
+    document.getElementById("add-notes-msg").textContent = "";
+    document.getElementById("reh-add-notes-modal").classList.remove("hidden");
+}
+
+async function sendRehearsalNotes() {
+    if (!activeNotesRehearsalId) return;
+    const notes = document.getElementById("add-notes-textarea").value.trim();
+    const msgEl = document.getElementById("add-notes-msg");
+    if (!notes) { msgEl.textContent = "Please enter some notes before sending."; return; }
+
+    const btn = document.getElementById("send-reh-notes-btn");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+
+    const res = await fetch(`${API}/admin/rehearsals/${activeNotesRehearsalId}/notes`, {
+        method: "POST",
+        credentials: "include",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({notes}),
+    });
+
+    btn.disabled = false;
+    btn.textContent = "Send Notes";
+
+    const data = await res.json();
+    if (data.status === "success") {
+        msgEl.className = "msg success-msg";
+        msgEl.textContent = `Notes sent to ${data.emailed} recipient${data.emailed !== 1 ? "s" : ""}.`;
+        // Update in-memory rehearsal so View Notes reflects the new content immediately
+        const r = scheduledAllRehearsals.find(x => x.id === activeNotesRehearsalId);
+        if (r) r.notes = notes;
+        renderScheduledRehearsals();
+        setTimeout(() => document.getElementById("reh-add-notes-modal")?.classList.add("hidden"), 1500);
+    } else {
+        msgEl.className = "msg";
+        msgEl.textContent = data.message || "Failed to send notes.";
+    }
+}
 
 // -----------------------------------------------------------
 // CANCEL REHEARSAL
@@ -2537,6 +2612,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById(id)?.addEventListener("change", updateAdminBulkPreview));
     document.querySelectorAll("#reh-admin-days input").forEach(cb =>
         cb.addEventListener("change", updateAdminBulkPreview));
+
+    // --- View / Add Rehearsal Notes modals ---
+    document.getElementById("close-view-notes-btn")
+        ?.addEventListener("click", () => document.getElementById("reh-view-notes-modal")?.classList.add("hidden"));
+    document.getElementById("reh-view-notes-modal")?.addEventListener("click", e => {
+        if (e.target.id === "reh-view-notes-modal") e.target.classList.add("hidden");
+    });
+    document.getElementById("send-reh-notes-btn")?.addEventListener("click", sendRehearsalNotes);
+    document.getElementById("close-add-notes-btn")
+        ?.addEventListener("click", () => document.getElementById("reh-add-notes-modal")?.classList.add("hidden"));
+    document.getElementById("reh-add-notes-modal")?.addEventListener("click", e => {
+        if (e.target.id === "reh-add-notes-modal") e.target.classList.add("hidden");
+    });
 
     // --- New Production modal ---
     document.getElementById("new-production-btn")

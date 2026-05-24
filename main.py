@@ -2468,6 +2468,122 @@ def admin_create_rehearsals_bulk(payload: dict, request: Request):
     return {"status": "success", "created": created}
 
 
+def render_rehearsal_notes_email(opera_name: str, date_str: str, time_str: str, notes: str):
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
+<h2 style="color:#333;margin-bottom:4px;">Rehearsal Notes: {opera_name}</h2>
+<p style="color:#888;margin-top:0;">{date_str} &middot; {time_str}</p>
+<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">
+<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{notes}</div>
+</body></html>"""
+    text = f"Rehearsal Notes: {opera_name}\n{date_str} \xb7 {time_str}\n\n{notes}"
+    return html, text
+
+
+@app.post("/admin/rehearsals/{rehearsal_id}/notes")
+def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request):
+    admin = require_user(request, role="admin")
+    notes = (payload.get("notes") or "").strip()
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT r.opera_id, r.attendance_type, r.rehearsal_type, r.start_time, r.end_time,
+                   o.opera_name, o.org_id
+            FROM rehearsals r JOIN operas o ON o.id = r.opera_id
+            WHERE r.id = %s
+        """, (rehearsal_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Rehearsal not found"}
+        opera_id, attendance_type, rehearsal_type, start_dt, end_dt, opera_name, org_id = row
+
+        if org_id != admin["org_id"]:
+            return {"status": "fail", "message": "Not authorized"}
+
+        cur.execute("UPDATE rehearsals SET notes = %s WHERE id = %s", (notes or None, rehearsal_id))
+
+        # Gather called casts and roles
+        cur.execute("SELECT cast_id FROM rehearsal_casts WHERE rehearsal_id = %s", (rehearsal_id,))
+        cast_ids = [r[0] for r in cur.fetchall()]
+
+        cur.execute("SELECT role_name FROM rehearsal_roles WHERE rehearsal_id = %s", (rehearsal_id,))
+        role_names = [r[0] for r in cur.fetchall()]
+
+        # Org admins
+        cur.execute("""
+            SELECT fullname, email FROM users
+            WHERE org_id = %s AND role IN ('admin', 'head_admin', 'system_admin')
+              AND email IS NOT NULL
+        """, (org_id,))
+        recipients = {email: name for name, email in cur.fetchall() if email}
+
+        # Called students / orchestra members
+        if rehearsal_type == "orchestra":
+            cur.execute("""
+                SELECT fullname, email FROM users
+                WHERE org_id = %s AND role = 'orchestra_member' AND email IS NOT NULL
+            """, (org_id,))
+            for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+        elif attendance_type == "full":
+            cur.execute("""
+                SELECT DISTINCT u.fullname, u.email FROM users u
+                JOIN student_assignments sa ON sa.student_id = u.id
+                WHERE sa.opera_id = %s AND u.role = 'student' AND u.email IS NOT NULL
+            """, (opera_id,))
+            for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+        elif attendance_type in ("principals", "chorus") and cast_ids:
+            cur.execute("""
+                SELECT DISTINCT u.fullname, u.email FROM users u
+                JOIN student_assignments sa ON sa.student_id = u.id
+                WHERE sa.opera_id = %s AND sa.cast_id = ANY(%s)
+                  AND u.role = 'student' AND u.email IS NOT NULL
+            """, (opera_id, cast_ids))
+            for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+        elif attendance_type == "coaching" and role_names:
+            cur.execute("""
+                SELECT DISTINCT u.fullname, u.email FROM users u
+                JOIN student_roles sr ON sr.student_id = u.id
+                WHERE sr.opera_id = %s AND sr.role_name = ANY(%s)
+                  AND u.role = 'student' AND u.email IS NOT NULL
+            """, (opera_id, role_names))
+            for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+        else:
+            cur.execute("""
+                SELECT DISTINCT u.fullname, u.email FROM users u
+                JOIN student_assignments sa ON sa.student_id = u.id
+                WHERE sa.opera_id = %s AND u.role = 'student' AND u.email IS NOT NULL
+            """, (opera_id,))
+            for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+
+    org_tz = get_org_tz(admin)
+    local_start = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
+    local_end = end_dt.astimezone(org_tz) if end_dt and end_dt.tzinfo else end_dt
+    date_str = local_start.strftime("%A, %B %-d, %Y")
+    start_str = local_start.strftime("%-I:%M %p")
+    end_str = local_end.strftime("%-I:%M %p") if local_end else ""
+    time_str = f"{start_str}–{end_str}" if end_str else start_str
+
+    html_body, text_body = render_rehearsal_notes_email(opera_name, date_str, time_str, notes)
+    subject = f"Rehearsal Notes – {opera_name}"
+
+    sent = 0
+    for email in recipients:
+        if send_email(to=email, subject=subject, html_body=html_body, text_body=text_body):
+            sent += 1
+
+    return {"status": "success", "emailed": sent}
+
+
 @app.get("/admin/rehearsals")
 def admin_rehearsals(request: Request):
     user = require_user(request, role="admin")

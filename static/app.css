@@ -688,6 +688,56 @@ tbody tr:hover td { background: var(--accent-soft); }
   flex-shrink: 0;
 }
 
+.rehearsal-row-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.rehearsal-row-footer-left {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.rehearsal-card-footer {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.rehearsal-notes-preview {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.notes-display {
+  min-height: 40px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+.danger-btn {
+  color: var(--error, #c0392b);
+  border-color: var(--error, #c0392b);
+  opacity: 0.85;
+}
+.danger-btn:hover {
+  background: var(--error, #c0392b);
+  color: #fff;
+  opacity: 1;
+}
+
 .call-singers-btn {
   flex-shrink: 0;
   font-size: 0.8rem;

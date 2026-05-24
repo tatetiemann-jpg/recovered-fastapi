@@ -338,6 +338,32 @@
     </div>
 </div>
 
+<!-- VIEW REHEARSAL NOTES MODAL -->
+<div id="reh-view-notes-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="view-notes-title">Rehearsal Notes</h3>
+        <div id="view-notes-body" class="notes-display"></div>
+        <div class="modal-actions">
+            <button id="close-view-notes-btn" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ADD / EDIT REHEARSAL NOTES MODAL -->
+<div id="reh-add-notes-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="add-notes-title">Create Rehearsal Notes</h3>
+        <p class="hint">Notes will be emailed to all admins and everyone called to this rehearsal.</p>
+        <label for="add-notes-textarea">Notes</label>
+        <textarea id="add-notes-textarea" rows="6" placeholder="Enter rehearsal notes…"></textarea>
+        <div class="modal-actions">
+            <button id="send-reh-notes-btn">Send Notes</button>
+            <button id="close-add-notes-btn" type="button">Cancel</button>
+        </div>
+        <p id="add-notes-msg"></p>
+    </div>
+</div>
+
 <!-- NEW PRODUCTION MODAL -->
 <div id="prod-create-modal" class="modal-overlay hidden">
     <div class="modal-card modal-large">

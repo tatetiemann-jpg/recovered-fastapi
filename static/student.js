@@ -182,6 +182,19 @@ async function handleCancelLesson(lessonId) {
 
 // -------------------- TODAY: Rehearsals --------------------
 
+let studentTodayRehearsals = [];
+
+function openStudentViewNotes(rehearsalId) {
+    const r = studentTodayRehearsals.find(x => x.id === rehearsalId);
+    if (!r) return;
+    document.getElementById("view-notes-title").textContent = `Rehearsal Notes — ${r.opera}`;
+    const body = document.getElementById("view-notes-body");
+    body.innerHTML = r.notes
+        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${escapeHtml(l)}</p>`).join("")
+        : `<em class="empty-note">No notes for this rehearsal yet.</em>`;
+    document.getElementById("reh-view-notes-modal").classList.remove("hidden");
+}
+
 function renderRehearsals(data) {
     const box = document.getElementById("rehearsals");
     const header = document.getElementById("rehearsals-header");
@@ -193,6 +206,8 @@ function renderRehearsals(data) {
         return;
     }
 
+    studentTodayRehearsals = data.rehearsals;
+
     box.innerHTML = "";
     data.rehearsals.forEach(r => {
         const div = document.createElement("div");
@@ -201,9 +216,16 @@ function renderRehearsals(data) {
             <strong>${escapeHtml(r.opera)}</strong>
             <div>Cast: ${escapeHtml(r.cast)}</div>
             <div>${formatRehearsalTime(r.start)}–${formatRehearsalTime(r.end)}</div>
-            ${r.notes ? `<em>${escapeHtml(r.notes)}</em>` : ""}
+            ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+            <div class="rehearsal-card-footer">
+                <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
+            </div>
         `;
         box.appendChild(div);
+    });
+
+    box.querySelectorAll(".view-reh-notes-btn").forEach(btn => {
+        btn.addEventListener("click", () => openStudentViewNotes(Number(btn.dataset.id)));
     });
 }
 
@@ -467,6 +489,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("slot-picker-cancel")?.addEventListener("click", closeSlotPicker);
     document.getElementById("slot-picker-modal")?.addEventListener("click", (e) => {
         if (e.target.id === "slot-picker-modal") closeSlotPicker();
+    });
+
+    // View rehearsal notes modal
+    document.getElementById("close-view-notes-btn")?.addEventListener("click", () =>
+        document.getElementById("reh-view-notes-modal")?.classList.add("hidden"));
+    document.getElementById("reh-view-notes-modal")?.addEventListener("click", e => {
+        if (e.target.id === "reh-view-notes-modal") e.target.classList.add("hidden");
     });
 
     // Calendar subscription URL
