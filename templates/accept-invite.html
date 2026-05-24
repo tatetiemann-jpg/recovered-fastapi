@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Accept Invitation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="auth-page">
+
+<div class="auth-card">
+    <h1>Accept Invitation</h1>
+    <p id="invite-intro" class="hint">Loading invitation…</p>
+
+    <div id="invite-form-wrapper" class="hidden">
+        <p id="invite-summary" class="hint"></p>
+
+        <label for="invite-fullname">Your full name</label>
+        <div class="field-row">
+            <input id="invite-fullname" placeholder="First Last">
+        </div>
+
+        <label for="invite-username">Username</label>
+        <div class="field-row">
+            <input id="invite-username" placeholder="Pick a username">
+        </div>
+
+        <label for="invite-password">Password</label>
+        <div class="field-row">
+            <input id="invite-password" type="password" placeholder="At least 8 characters">
+            <button type="button" class="eye closed" onclick="togglePassword('invite-password', this)"></button>
+        </div>
+
+        <label for="invite-password-confirm">Confirm password</label>
+        <div class="field-row">
+            <input id="invite-password-confirm" type="password" placeholder="Type it again">
+            <button type="button" class="eye closed" onclick="togglePassword('invite-password-confirm', this)"></button>
+        </div>
+
+        <div id="invite-voice-row" class="hidden">
+            <label for="invite-voice-type">Voice Part</label>
+            <select id="invite-voice-type">
+                <option value="" disabled selected>Select your voice part…</option>
+                <option value="soprano">Soprano</option>
+                <option value="alto">Alto</option>
+                <option value="tenor">Tenor</option>
+                <option value="bass">Bass</option>
+            </select>
+        </div>
+
+        <label>Theme</label>
+        <p class="hint">Pick the look you'd like. You can change this later in your account settings.</p>
+        <div id="invite-theme-picker"></div>
+
+        <div class="modal-actions">
+            <button type="button" id="submit-invite-btn">Create Account</button>
+        </div>
+
+        <p id="invite-msg"></p>
+    </div>
+
+    <div id="invite-success" class="hidden">
+        <p class="success-msg">Your account has been created.</p>
+        <p><a href="/">Go to login</a></p>
+    </div>
+
+    <div id="invite-fail" class="hidden">
+        <p id="invite-fail-msg" class="error-msg"></p>
+        <p><a href="/">Return to login</a></p>
+    </div>
+</div>
+
+<script src="/static/themes.js"></script>
+<script src="/static/public.js"></script>
+<script src="/static/invite.js"></script>
+</body>
+</html>

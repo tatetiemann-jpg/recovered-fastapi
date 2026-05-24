@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>My Choir</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+  <div class="top-actions">
+    <button id="logout-btn">Logout</button>
+    <button id="open-edit-account-btn">Edit Account</button>
+  </div>
+
+  <h1 id="welcome">Welcome</h1>
+
+  <nav class="tab-nav">
+    <button class="tab-btn" data-tab="upcoming">Upcoming</button>
+    <button class="tab-btn" data-tab="subs">My Subs</button>
+  </nav>
+
+  <!-- UPCOMING TAB -->
+  <section class="tab-panel" data-tab-panel="upcoming">
+    <div class="box">
+      <h2>Upcoming Rehearsals</h2>
+      <p id="upcoming-section-label" class="hint"></p>
+      <div id="upcoming-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- MY SUBS TAB -->
+  <section class="tab-panel" data-tab-panel="subs">
+    <div class="box">
+      <h2>My Section's Sub List</h2>
+      <p class="hint">These are the substitutes for your section. You can contact them directly when you need to find coverage.</p>
+      <div id="my-subs-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+</div><!-- /.app-container -->
+
+<!-- FIND A SUB MODAL (shown after marking absent) -->
+<div id="find-sub-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="find-sub-title">Find a Sub</h3>
+    <p id="find-sub-rehearsal" class="hint"></p>
+
+    <div id="find-sub-status-box" style="display:none;padding:var(--space-3);background:var(--bg-sunken);border-radius:var(--radius-sm);margin-bottom:var(--space-3);">
+      <strong id="find-sub-status-label"></strong>
+      <div id="find-sub-contacts-list" style="margin-top:var(--space-2);"></div>
+    </div>
+
+    <div class="modal-actions" id="find-sub-actions">
+      <button id="find-sub-close">Close</button>
+      <button id="contact-preferred-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">
+        Email Preferred Subs
+      </button>
+      <button id="contact-all-btn" class="hidden">Email All Remaining Subs</button>
+    </div>
+    <p id="find-sub-msg" class="msg"></p>
+  </div>
+</div>
+
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js"></script>
+<script src="/static/themes.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/choir_member.js"></script>
+</body>
+</html>

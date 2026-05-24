@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sub Response</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="login-page">
+
+<div class="card" style="text-align:center;">
+  <h1 style="font-size:1.6rem;">
+    {% if success %}Thank you{% else %}Oops{% endif %}
+  </h1>
+  <p style="font-size:1.05rem;margin:var(--space-4) 0;">{{ message }}</p>
+  {% if not success %}
+    <p class="hint">If you believe this is an error, please contact your choir director directly.</p>
+  {% endif %}
+</div>
+
+</body>
+</html>

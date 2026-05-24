@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Admin Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+    <div class="top-actions">
+        <button id="logout-btn">Logout</button>
+        <button id="open-edit-account-btn">Edit Account</button>
+    </div>
+
+    <h1 id="welcome">Welcome</h1>
+
+    <nav class="tab-nav">
+        <button class="tab-btn" data-tab="rehearsals">Rehearsals</button>
+        <button class="tab-btn" data-tab="scheduled">Scheduled Rehearsals</button>
+        <button class="tab-btn" data-tab="casting">Casting</button>
+        <button class="tab-btn" data-tab="schedules">Schedules</button>
+        <button class="tab-btn" data-tab="invitations">Invitations</button>
+        <button class="tab-btn tab-btn--hidden" data-tab="productions">Productions</button>
+        <button class="tab-btn" data-tab="requests">Requests</button>
+        <button class="tab-btn tab-btn--hidden" data-tab="orchestra">Orchestra</button>
+    </nav>
+
+    <!-- REHEARSALS -->
+    <section class="tab-panel" data-tab-panel="rehearsals">
+
+        <div class="box">
+        <h2>Create Rehearsal</h2>
+
+        <label for="rehearsal-opera">Opera</label>
+        <select id="rehearsal-opera"></select>
+
+        <div id="rehearsal-kind-row" class="hidden">
+            <label for="rehearsal-kind">Rehearsal Kind</label>
+            <select id="rehearsal-kind">
+                <option value="vocal">Vocal</option>
+                <option value="orchestra">Orchestra</option>
+            </select>
+        </div>
+
+        <div id="rehearsal-vocal-fields">
+            <label for="rehearsal-attendance">Type</label>
+            <select id="rehearsal-attendance">
+                <option value="full">Full rehearsal</option>
+                <option value="coaching">Coaching (specific roles)</option>
+            </select>
+
+            <label>Casts called</label>
+            <div id="rehearsal-casts-checkboxes" class="checkbox-row">
+                <em class="empty-note">Select an opera first…</em>
+            </div>
+            <p class="hint">Leave all checked for opera-wide rehearsals.</p>
+
+            <div id="rehearsal-roles-section" class="hidden">
+                <label>Roles called (coaching only)</label>
+                <div id="rehearsal-roles-checkboxes" class="checkbox-row">
+                    <em class="empty-note">Select an opera first…</em>
+                </div>
+            </div>
+        </div>
+
+        <label for="rehearsal-date">Date</label>
+        <input type="date" id="rehearsal-date">
+
+        <div class="time-pair">
+            <div>
+                <label for="rehearsal-start-time">Start</label>
+                <select id="rehearsal-start-time"></select>
+            </div>
+            <div>
+                <label for="rehearsal-end-time">End</label>
+                <select id="rehearsal-end-time"></select>
+            </div>
+        </div>
+
+        <label>Led by (optional)</label>
+        <div id="rehearsal-leaders-checkboxes" class="checkbox-row">
+            <em class="empty-note">Select an opera first…</em>
+        </div>
+
+        <label for="rehearsal-location">Location</label>
+        <input type="text" id="rehearsal-location" placeholder="e.g. Main Stage, Studio B">
+
+        <label for="rehearsal-notes">Notes</label>
+        <textarea id="rehearsal-notes" rows="2" placeholder="Optional notes"></textarea>
+
+        <div class="modal-actions">
+            <button id="create-rehearsal-btn">Create Rehearsal</button>
+        </div>
+
+        <p id="rehearsal-msg"></p>
+    </div>
+
+    </section>
+
+    <!-- SCHEDULED REHEARSALS -->
+    <section class="tab-panel" data-tab-panel="scheduled">
+
+        <div class="box">
+            <div class="section-header">
+                <h2>Scheduled Rehearsals</h2>
+            </div>
+
+            <!-- Per-opera sub-tabs, built by JS -->
+            <nav id="scheduled-opera-tabs" class="sub-tab-nav">
+                <em class="empty-note">Loading…</em>
+            </nav>
+
+            <!-- Upcoming list (always visible) -->
+            <h3 class="scheduled-section-heading">Upcoming</h3>
+            <div id="scheduled-upcoming" class="rehearsal-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+
+            <!-- Past list (collapsible) -->
+            <div class="scheduled-past-wrapper">
+                <button id="scheduled-past-toggle" class="subtle-btn scheduled-past-toggle">
+                    ▶ Show past rehearsals (0)
+                </button>
+                <div id="scheduled-past" class="rehearsal-list hidden"></div>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- CASTING (new design) -->
+<section class="tab-panel" data-tab-panel="casting">
+
+    <div class="box">
+        <div class="section-header">
+            <h2>Casting</h2>
+            <div class="casting-top-controls">
+                <button id="open-assign-roles-btn" class="subtle-btn">Assign Roles</button>
+                <button id="manage-opera-students-btn" class="subtle-btn">Manage Roster</button>
+            </div>
+        </div>
+
+        <!-- Per-opera sub-tabs, built by JS -->
+        <nav id="casting-opera-tabs" class="sub-tab-nav">
+            <em class="empty-note">Loading…</em>
+        </nav>
+
+        <!-- Production Staff -->
+        <div class="staff-section">
+            <div class="staff-header">
+                <h3>Production Staff</h3>
+                <button id="open-add-staff-btn" class="subtle-btn">+ Add Staff</button>
+            </div>
+            <div id="staff-list" class="staff-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+        <hr>
+
+        <div id="casting-cast-columns" class="casting-cast-columns">
+            <em class="empty-note">Select an opera…</em>
+        </div>
+    </div>
+
+</section>
+
+    <!-- SCHEDULES -->
+    <section class="tab-panel" data-tab-panel="schedules">
+
+        <div class="box">
+            <div class="section-header">
+                <h2>Teacher Schedules</h2>
+            </div>
+            <div id="schedule-summary">
+                <em class="empty-note">Loading schedules…</em>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- PRODUCTIONS (head_admin / system_admin only) -->
+    <section class="tab-panel" data-tab-panel="productions">
+
+        <div class="box">
+            <h2>New Production</h2>
+            <p class="hint">Creates the opera record and auto-generates cast columns. Define named roles one per line, optionally followed by a colon and voice type (e.g. <code>Violetta: soprano</code>).</p>
+
+            <label for="prod-title">Title</label>
+            <input type="text" id="prod-title" placeholder="e.g. La Traviata">
+
+            <div class="time-pair">
+                <div>
+                    <label for="prod-start-date">Start date</label>
+                    <input type="date" id="prod-start-date">
+                </div>
+                <div>
+                    <label for="prod-end-date">End date</label>
+                    <input type="date" id="prod-end-date">
+                </div>
+            </div>
+
+            <label for="prod-num-casts">Number of casts</label>
+            <input type="number" id="prod-num-casts" value="1" min="1" max="10">
+
+            <label>Named roles (optional)</label>
+            <div id="prod-roles-list"></div>
+            <button type="button" id="add-prod-role-btn" class="subtle-btn">+ Add Role</button>
+
+            <div class="modal-actions">
+                <button id="create-production-btn">Create Production</button>
+            </div>
+            <p id="prod-msg"></p>
+        </div>
+
+        <div class="box">
+            <h2>Productions</h2>
+            <div id="productions-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- REQUESTS (org transfer requests — visible to head_admin) -->
+    <section class="tab-panel" data-tab-panel="requests">
+
+        <div class="box">
+            <h2>Org Transfer Requests</h2>
+            <p class="hint">Students requesting to transfer into your organization. Approving moves them immediately.</p>
+            <div id="requests-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- ORCHESTRA -->
+    <section class="tab-panel" data-tab-panel="orchestra">
+
+        <div class="box">
+            <div class="section-header">
+                <h2>Seating Assignments</h2>
+                <div class="orchestra-top-controls">
+                    <button type="button" id="copy-seating-btn" class="subtle-btn">Copy from Production</button>
+                    <button type="button" id="add-section-btn" class="subtle-btn">+ Add Section</button>
+                </div>
+            </div>
+
+            <nav id="orchestra-opera-tabs" class="sub-tab-nav">
+                <em class="empty-note">Loading…</em>
+            </nav>
+
+            <div id="orchestra-seating-panel">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+        <div class="box" id="production-staff-box">
+            <h2>Production Staff</h2>
+            <p class="hint">Conductors, accompanists, and other staff for the selected production.</p>
+
+            <div id="production-staff-list">
+                <em class="empty-note">Select a production above.</em>
+            </div>
+
+            <div class="staff-add-row">
+                <select id="staff-teacher-select" class="staff-add-select" title="Select teacher" aria-label="Select teacher">
+                    <option value="">— select teacher —</option>
+                </select>
+                <input type="text" id="staff-role-label" class="staff-add-role" placeholder="Role (e.g. Conductor)">
+                <button type="button" id="add-staff-btn" class="subtle-btn">Add</button>
+            </div>
+            <p id="staff-add-msg" class="hint"></p>
+        </div>
+
+    </section>
+
+    <!-- INVITATIONS -->
+    <section class="tab-panel" data-tab-panel="invitations">
+
+        <div class="box">
+            <h2>Send Invitation</h2>
+            <p class="hint">Invite a teacher or admin to join. They'll receive an email with a link to set up their account.</p>
+
+            <label for="invite-email">Email</label>
+            <div class="field-row">
+                <input id="invite-email" type="email" placeholder="them@example.com">
+            </div>
+
+            <label for="invite-fullname-hint">Full name (optional)</label>
+            <div class="field-row">
+                <input id="invite-fullname-hint" placeholder="First Last">
+            </div>
+
+            <label for="invite-role">Role</label>
+            <select id="invite-role">
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+                <option value="orchestra_admin">Orchestra Admin</option>
+                <option value="head_admin">Head Admin</option>
+                <option value="student">Singer (Choir)</option>
+            </select>
+
+            <div id="invite-org-section" class="hidden">
+                <label>Organization</label>
+                <p class="hint" id="invite-org-hint">Enter a name and ID for their organization. If the ID already exists the invite will join that org; otherwise a new org is created automatically.</p>
+                <div id="invite-org-type-row" class="hidden">
+                    <label for="invite-org-type">Organization Type</label>
+                    <select id="invite-org-type">
+                        <option value="opera">Opera / Music School</option>
+                        <option value="choir">Choir</option>
+                    </select>
+                </div>
+                <label for="invite-org-name">Organization Name</label>
+                <input type="text" id="invite-org-name" placeholder="e.g. Grace Lutheran Choir">
+                <label for="invite-org-slug">Organization ID</label>
+                <input type="text" id="invite-org-slug" placeholder="e.g. grace-lutheran (auto-filled)">
+            </div>
+
+            <div id="invite-teacher-type-section" class="hidden">
+                <label>Teacher Type</label>
+                <div class="checkbox-row">
+                    <label class="inline-check">
+                        <input type="radio" name="invite-teacher-type" value="vocal" checked> Vocal
+                    </label>
+                    <label class="inline-check">
+                        <input type="radio" name="invite-teacher-type" value="instrumental"> Instrumental
+                    </label>
+                </div>
+                <div id="invite-instruments-section" class="hidden">
+                    <label for="invite-instruments">Instruments (comma-separated)</label>
+                    <input type="text" id="invite-instruments" placeholder="e.g. violin, cello, piano">
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button id="send-invite-btn">Send Invitation</button>
+            </div>
+
+            <p id="invite-msg"></p>
+        </div>
+
+        <div class="box">
+            <h2>Invitations</h2>
+            <div id="invitations-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+    </section>
+
+</div>
+
+<!-- MANAGE OPERA STUDENTS MODAL -->
+<div id="manage-students-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="manage-students-title">Manage Opera Roster</h3>
+        <p class="hint">Tick students to add them to this opera. Untick to remove them (loses any cast/role).</p>
+
+        <div id="manage-students-list">
+            <em class="empty-note">Loading students…</em>
+        </div>
+
+        <div class="modal-actions">
+            <button id="close-manage-students-btn">Done</button>
+        </div>
+    </div>
+</div>
+
+<!-- TEACHER SCHEDULE MODAL -->
+<div id="schedule-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3>Set Teacher Availability</h3>
+        <p class="hint">Pick a teacher, then set their weekly schedule. This replaces their current availability immediately.</p>
+
+        <label for="schedule-teacher">Teacher</label>
+        <select id="schedule-teacher"></select>
+
+        <div id="schedule-days" class="request-days-grid"></div>
+
+        <div class="modal-actions">
+            <button id="save-schedule-btn">Save</button>
+            <button id="cancel-schedule-btn">Cancel</button>
+        </div>
+
+        <p id="schedule-msg"></p>
+    </div>
+</div>
+
+<!-- ASSIGN ROLES MODAL (role × cast grid) -->
+<div id="assign-roles-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="assign-roles-title">Assign Roles</h3>
+        <p class="hint">Pick a student for each role/cast combination. Students can be cast in different roles across casts.</p>
+
+        <div id="assign-roles-grid">
+            <em class="empty-note">Loading…</em>
+        </div>
+
+        <div class="modal-actions">
+            <button id="close-assign-roles-btn">Done</button>
+        </div>
+    </div>
+</div>
+<!-- ADD STAFF MODAL -->
+<div id="add-staff-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Add Production Staff</h3>
+        <p class="hint">Pick a teacher and a role on this opera.</p>
+
+        <label for="staff-teacher">Teacher</label>
+        <select id="staff-teacher"></select>
+
+        <label for="staff-role">Role</label>
+        <select id="staff-role">
+            <option value="director">Director</option>
+            <option value="assistant_director">Assistant Director</option>
+            <option value="conductor">Conductor</option>
+            <option value="assistant_conductor">Assistant Conductor</option>
+        </select>
+
+        <div class="modal-actions">
+            <button id="save-staff-btn">Add</button>
+            <button id="cancel-staff-btn">Cancel</button>
+        </div>
+
+        <p id="staff-msg"></p>
+    </div>
+</div>
+
+<!-- EDIT PRODUCTION MODAL -->
+<div id="edit-production-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Edit Production</h3>
+        <input type="hidden" id="edit-prod-id">
+
+        <label for="edit-prod-title">Title</label>
+        <input type="text" id="edit-prod-title">
+
+        <div class="time-pair">
+            <div>
+                <label for="edit-prod-start-date">Start date</label>
+                <input type="date" id="edit-prod-start-date">
+            </div>
+            <div>
+                <label for="edit-prod-end-date">End date</label>
+                <input type="date" id="edit-prod-end-date">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button type="button" id="save-edit-prod-btn">Save</button>
+            <button type="button" id="cancel-edit-prod-btn">Cancel</button>
+        </div>
+        <p id="edit-prod-msg"></p>
+    </div>
+</div>
+
+<!-- CALL SINGERS MODAL -->
+<div id="call-singers-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Call Singers</h3>
+        <p id="call-singers-opera-name" class="hint"></p>
+        <label for="call-singers-scope">Who to call</label>
+        <select id="call-singers-scope">
+            <option value="tutti">Tutti — all singers in this opera</option>
+            <option value="cast">By Cast</option>
+            <option value="role">By Role</option>
+        </select>
+        <div id="call-singers-cast-row" class="hidden">
+            <label for="call-singers-cast">Cast</label>
+            <select id="call-singers-cast"></select>
+        </div>
+        <div id="call-singers-role-row" class="hidden">
+            <label for="call-singers-role">Role</label>
+            <select id="call-singers-role"></select>
+        </div>
+        <label class="checkbox-label">
+            <input type="checkbox" id="call-singers-optional">
+            Optional — singers may attend if available
+        </label>
+        <p id="call-singers-msg" class="hint"></p>
+        <div class="modal-actions">
+            <button type="button" id="submit-call-singers-btn">Send Call</button>
+            <button type="button" id="cancel-call-singers-btn">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ADD ORCHESTRA SECTION MODAL -->
+<div id="add-section-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Add Orchestra Section</h3>
+        <label for="section-name">Section Name</label>
+        <input type="text" id="section-name" placeholder="e.g. Violin 1">
+        <label for="section-instrument">Instrument</label>
+        <select id="section-instrument">
+            <option value="" disabled selected>Select instrument…</option>
+        </select>
+        <div id="section-instrument-other-row" class="hidden">
+            <label for="section-instrument-other">Instrument name</label>
+            <input type="text" id="section-instrument-other" placeholder="Enter instrument name">
+        </div>
+        <div class="modal-actions">
+            <button type="button" id="save-section-btn">Add</button>
+            <button type="button" id="cancel-section-btn">Cancel</button>
+        </div>
+        <p id="section-msg"></p>
+    </div>
+</div>
+
+<!-- COPY SEATING MODAL -->
+<div id="copy-seating-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Copy Seating from Production</h3>
+        <p class="hint">Replaces all current seat assignments with those from the selected production.</p>
+        <label for="copy-from-opera">Copy from</label>
+        <select id="copy-from-opera">
+            <option value="" disabled selected>Select a production…</option>
+        </select>
+        <div class="modal-actions">
+            <button type="button" id="confirm-copy-seating-btn">Copy</button>
+            <button type="button" id="cancel-copy-seating-btn">Cancel</button>
+        </div>
+        <p id="copy-seating-msg"></p>
+    </div>
+</div>
+
+<!-- ASSIGN ORCHESTRA SEAT MODAL -->
+<div id="assign-seat-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="assign-seat-title">Assign Seat</h3>
+        <input type="hidden" id="assign-seat-opera-id">
+        <input type="hidden" id="assign-seat-section-id">
+        <input type="hidden" id="assign-seat-chair">
+        <label for="assign-seat-member">Orchestra Member</label>
+        <select id="assign-seat-member">
+            <option value="">— Unassigned —</option>
+        </select>
+        <div class="modal-actions">
+            <button type="button" id="save-seat-btn">Save</button>
+            <button type="button" id="cancel-seat-btn">Cancel</button>
+        </div>
+        <p id="seat-msg"></p>
+    </div>
+</div>
+
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js"></script>
+<script src="/static/themes.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Sign Up</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="signup-page">
+
+<div class="card">
+    <h1>Sign Up</h1>
+
+    <p class="hint">
+        Singers and orchestra members can create accounts here. Teachers and admins are invite-only —
+        ask your festival admin to send you an invitation.
+    </p>
+
+    <label for="role">I am a…</label>
+    <select id="role" onchange="updateFields()">
+        <option value="student">Singer / Vocalist</option>
+        <option value="orchestra_member">Orchestra Member / Instrumentalist</option>
+    </select>
+
+    <label for="fullname">Full name</label>
+    <div class="field-row">
+        <input id="fullname" placeholder="First Last">
+    </div>
+
+    <label for="email">Email</label>
+    <div class="field-row">
+        <input id="email" type="email" placeholder="you@example.com">
+    </div>
+
+    <label for="username">Username</label>
+    <div class="field-row">
+        <input id="username" placeholder="Pick a username">
+    </div>
+
+    <label for="password">Password</label>
+    <div class="field-row">
+        <input id="password" type="password" placeholder="At least 8 characters">
+        <button class="eye-btn" onclick="togglePassword('password', this)"></button>
+    </div>
+
+    <label for="password-confirm">Confirm password</label>
+    <div class="field-row">
+        <input id="password-confirm" type="password" placeholder="Type it again">
+        <button class="eye-btn" onclick="togglePassword('password-confirm', this)"></button>
+    </div>
+
+    <div id="student-fields">
+        <label for="voice_type">Voice type</label>
+        <select id="voice_type">
+            <option value="" disabled selected>Select voice type</option>
+            <option value="soprano">Soprano</option>
+            <option value="mezzo-soprano">Mezzo-soprano</option>
+            <option value="tenor">Tenor</option>
+            <option value="baritone">Baritone</option>
+            <option value="bass-baritone">Bass-baritone</option>
+            <option value="bass">Bass</option>
+        </select>
+
+        <label for="org">Organization</label>
+        <select id="org">
+            <option value="" disabled selected>Select your organization…</option>
+        </select>
+    </div>
+
+    <div id="orchestra-fields" style="display: none;">
+        <label for="instrument">Instrument</label>
+        <select id="instrument">
+            <option value="" disabled selected>Select instrument…</option>
+        </select>
+        <div id="instrument-other-row" class="hidden">
+            <label for="instrument-other">Instrument name</label>
+            <input id="instrument-other" placeholder="Enter your instrument">
+        </div>
+
+        <label for="org-orch">Organization</label>
+        <select id="org-orch">
+            <option value="" disabled selected>Select your organization…</option>
+        </select>
+    </div>
+
+    <div id="teacher-fields" style="display: none;">
+        <input id="specialty" type="hidden" value="">
+    </div>
+    <div id="code-fields" style="display: none;">
+        <input id="code" type="hidden" value="">
+        <p id="code-hint"></p>
+    </div>
+
+    <label>Theme</label>
+    <p class="hint">Pick the look you'd like. You can change this later in your account settings.</p>
+    <div id="signup-theme-picker"></div>
+
+    <button onclick="signup()">Create Account</button>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="link">
+        <a href="/login">Back to login</a>
+    </div>
+</div>
+
+<script src="/static/themes.js"></script>
+<script src="/static/public.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        // Render theme picker
+        const box = document.getElementById("signup-theme-picker");
+        if (box && typeof renderThemePicker === "function") {
+            renderThemePicker(box, "queen-of-the-night", (newId) => {
+                if (typeof window.setCharacterTheme === "function") {
+                    window.setCharacterTheme(newId);
+                }
+            });
+        }
+        // Populate org dropdowns (singer + orchestra member have separate selects)
+        if (typeof populateOrgDropdown === "function") {
+            populateOrgDropdown("org");
+        }
+        // Call updateFields so the correct section is visible on load
+        if (typeof updateFields === "function") {
+            updateFields();
+        }
+    });
+</script>
+</body>
+</html>
