@@ -469,6 +469,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (e.target.id === "slot-picker-modal") closeSlotPicker();
     });
 
+    // Calendar subscription URL
+    fetch(`${API}/student/my-calendar-token`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+            const input = document.getElementById("calendar-url");
+            if (input && data.token) input.value = `${window.location.origin}/student/calendar/${data.token}.ics`;
+            document.getElementById("copy-calendar-url-btn")?.addEventListener("click", () => {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    const btn = document.getElementById("copy-calendar-url-btn");
+                    btn.textContent = "Copied!";
+                    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+                });
+            });
+        }).catch(() => {});
+
     // Initial loads
     loadToday();
     loadSharedNotes();

@@ -5654,6 +5654,22 @@ def choir_contact_all(sub_request_id: int, request: Request):
     return {"status": "success", "sent": sent, "total_remaining": len(remaining)}
 
 
+def _lesson_rows_to_events(rows) -> list:
+    """Convert (id, lesson_date, lesson_time, label) rows to ICS event dicts."""
+    events = []
+    for lesson_id, lesson_date, lesson_time, label in rows:
+        start = datetime.combine(lesson_date, lesson_time)
+        events.append({
+            "uid": f"lesson-{lesson_id}@countrpnt.com",
+            "start": start,
+            "end": start + timedelta(minutes=30),
+            "summary": f"Coaching – {label}",
+            "location": "",
+            "description": "",
+        })
+    return events
+
+
 def _make_ics(events: list, cal_name: str = "Choir Rehearsals") -> str:
     lines = [
         "BEGIN:VCALENDAR",
@@ -5680,6 +5696,152 @@ def _make_ics(events: list, cal_name: str = "Choir Rehearsals") -> str:
         ]
     lines.append("END:VCALENDAR")
     return "\r\n".join(lines)
+
+
+def _get_or_create_calendar_token(user_id: int) -> str:
+    import secrets as _sec
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT calendar_token FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+        token = row[0] if row and row[0] else None
+        if not token:
+            token = _sec.token_urlsafe(32)
+            cur.execute("UPDATE users SET calendar_token=%s WHERE id=%s", (token, user_id))
+    return token
+
+
+@app.get("/teacher/my-calendar-token")
+def teacher_my_calendar_token(request: Request):
+    user = require_user(request, role="teacher")
+    return {"token": _get_or_create_calendar_token(user["id"])}
+
+
+@app.get("/teacher/calendar/{token}.ics")
+def teacher_calendar_ics(token: str):
+    with db_cursor() as cur:
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='teacher'", (token,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    teacher_id, org_id = row
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT l.id, l.lesson_date, l.lesson_time, u.fullname
+            FROM lessons l
+            JOIN users u ON u.id = l.student_id
+            WHERE l.teacher_id=%s AND l.status='booked' AND l.lesson_date >= CURRENT_DATE
+            ORDER BY l.lesson_date, l.lesson_time
+        """, (teacher_id,))
+        rows = cur.fetchall()
+
+    events = _lesson_rows_to_events(rows)
+    return Response(content=_make_ics(events, "My Coaching Schedule"), media_type="text/calendar")
+
+
+@app.get("/student/my-calendar-token")
+def student_my_calendar_token(request: Request):
+    user = require_user(request, role="student")
+    return {"token": _get_or_create_calendar_token(user["id"])}
+
+
+@app.get("/student/calendar/{token}.ics")
+def student_calendar_ics(token: str):
+    with db_cursor() as cur:
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='student'", (token,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    student_id, org_id = row
+
+    with db_cursor() as cur:
+        # Booked lessons
+        cur.execute("""
+            SELECT l.id, l.lesson_date, l.lesson_time, u.fullname
+            FROM lessons l
+            JOIN users u ON u.id = l.teacher_id
+            WHERE l.student_id=%s AND l.status='booked' AND l.lesson_date >= CURRENT_DATE
+            ORDER BY l.lesson_date, l.lesson_time
+        """, (student_id,))
+        lesson_rows = cur.fetchall()
+
+        # Upcoming rehearsals via student_assignments
+        cur.execute("""
+            SELECT DISTINCT r.id, r.start_time, r.end_time, o.opera_name, r.location, r.notes
+            FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id
+            JOIN student_assignments sa ON sa.student_id=%s
+                AND sa.opera_id = r.opera_id
+                AND (r.cast_id IS NULL OR r.cast_id = sa.cast_id)
+            WHERE r.end_time >= NOW()
+            ORDER BY r.start_time
+        """, (student_id,))
+        rehearsal_rows = cur.fetchall()
+
+    events = _lesson_rows_to_events(lesson_rows)
+    for rid, rstart, rend, opera_name, location, notes in rehearsal_rows:
+        events.append({
+            "uid": f"rehearsal-{rid}@countrpnt.com",
+            "start": rstart,
+            "end": rend or (rstart + timedelta(hours=2)),
+            "summary": f"Rehearsal – {opera_name}",
+            "location": location or "",
+            "description": notes or "",
+        })
+    events.sort(key=lambda e: e["start"])
+    return Response(content=_make_ics(events, "My Schedule"), media_type="text/calendar")
+
+
+@app.get("/orchestra-member/my-calendar-token")
+def orchestra_member_my_calendar_token(request: Request):
+    user = require_user(request, role="orchestra_member")
+    return {"token": _get_or_create_calendar_token(user["id"])}
+
+
+@app.get("/orchestra-member/calendar/{token}.ics")
+def orchestra_member_calendar_ics(token: str):
+    with db_cursor() as cur:
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='orchestra_member'", (token,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Calendar not found")
+    member_id, org_id = row
+
+    with db_cursor() as cur:
+        # Booked lessons
+        cur.execute("""
+            SELECT l.id, l.lesson_date, l.lesson_time, u.fullname
+            FROM lessons l
+            JOIN users u ON u.id = l.teacher_id
+            WHERE l.student_id=%s AND l.status='booked' AND l.lesson_date >= CURRENT_DATE
+            ORDER BY l.lesson_date, l.lesson_time
+        """, (member_id,))
+        lesson_rows = cur.fetchall()
+
+        # Upcoming orchestra rehearsals (all members attend)
+        cur.execute("""
+            SELECT r.id, r.start_time, r.end_time, o.opera_name, r.location, r.notes
+            FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id
+            WHERE r.rehearsal_type = 'orchestra'
+              AND o.org_id = %s
+              AND r.end_time >= NOW()
+            ORDER BY r.start_time
+        """, (org_id,))
+        rehearsal_rows = cur.fetchall()
+
+    events = _lesson_rows_to_events(lesson_rows)
+    for rid, rstart, rend, opera_name, location, notes in rehearsal_rows:
+        events.append({
+            "uid": f"rehearsal-{rid}@countrpnt.com",
+            "start": rstart,
+            "end": rend or (rstart + timedelta(hours=2)),
+            "summary": f"Orchestra Rehearsal – {opera_name}",
+            "location": location or "",
+            "description": notes or "",
+        })
+    events.sort(key=lambda e: e["start"])
+    return Response(content=_make_ics(events, "My Schedule"), media_type="text/calendar")
 
 
 @app.get("/choir/my-calendar-token")

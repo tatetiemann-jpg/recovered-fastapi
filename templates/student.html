@@ -39,6 +39,21 @@
             </div>
         </div>
 
+        <!-- Calendar subscription -->
+        <div class="box" style="margin-top:var(--space-4);">
+          <h2>Subscribe to Your Calendar</h2>
+          <p class="hint">Lessons and rehearsals in one feed — updates automatically.</p>
+          <div style="display:flex;gap:var(--space-2);align-items:center;margin:var(--space-3) 0;">
+            <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" style="flex:1;font-size:0.85rem;">
+            <button id="copy-calendar-url-btn" type="button">Copy</button>
+          </div>
+          <div class="hint" style="margin-top:var(--space-3);line-height:1.7;">
+            <strong>Google Calendar:</strong> Other calendars + → From URL → paste above<br>
+            <strong>Apple Calendar:</strong> File → New Calendar Subscription → paste above<br>
+            <strong>Outlook:</strong> Add calendar → Subscribe from web → paste above
+          </div>
+        </div>
+
         <!-- Today's Rehearsals -->
         <div class="box">
             <h2 id="rehearsals-header">Today's Rehearsals</h2>

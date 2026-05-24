@@ -770,6 +770,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     setActiveTab(getTabFromURL());
     window.addEventListener("hashchange", () => setActiveTab(getTabFromURL()));
 
+    // Calendar subscription URL
+    fetch(`${API}/teacher/my-calendar-token`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+            const input = document.getElementById("calendar-url");
+            if (input && data.token) input.value = `${window.location.origin}/teacher/calendar/${data.token}.ics`;
+            document.getElementById("copy-calendar-url-btn")?.addEventListener("click", () => {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    const btn = document.getElementById("copy-calendar-url-btn");
+                    btn.textContent = "Copied!";
+                    setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+                });
+            });
+        }).catch(() => {});
+
     // Today
     loadTodaysLessons();
 
