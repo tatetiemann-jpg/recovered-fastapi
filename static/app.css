@@ -1419,6 +1419,21 @@ tbody tr:hover td { background: var(--accent-soft); }
   font-size: 0.78rem;
   font-style: italic;
 }
+/* Mode toggle row (single / date range radios) */
+.inline-radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.inline-radio-row .inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 400;
+  cursor: pointer;
+}
+
 /* Checkbox pill layout for rehearsal creation */
 .checkbox-row {
   display: flex;

@@ -269,9 +269,44 @@
             </div>
         </div>
 
-        <label for="rehearsal-date">Date</label>
-        <input type="date" id="rehearsal-date">
+        <!-- Scope toggle -->
+        <div class="inline-radio-row" style="margin:var(--space-3) 0 var(--space-2);">
+            <label class="inline-check"><input type="radio" name="reh-scope" value="single" checked> Single date</label>
+            <label class="inline-check"><input type="radio" name="reh-scope" value="range"> Date range</label>
+        </div>
 
+        <!-- Single-date fields -->
+        <div id="reh-admin-single-fields">
+            <label for="rehearsal-date">Date</label>
+            <input type="date" id="rehearsal-date">
+        </div>
+
+        <!-- Date-range fields -->
+        <div id="reh-admin-bulk-fields" class="hidden">
+            <div class="time-pair">
+                <div>
+                    <label for="reh-admin-from">From <span class="required">*</span></label>
+                    <input type="date" id="reh-admin-from">
+                </div>
+                <div>
+                    <label for="reh-admin-to">To <span class="required">*</span></label>
+                    <input type="date" id="reh-admin-to">
+                </div>
+            </div>
+            <label>Days of week <span class="required">*</span></label>
+            <div class="checkbox-row" id="reh-admin-days">
+                <label class="checkbox-pill"><input type="checkbox" value="monday"> Mon</label>
+                <label class="checkbox-pill"><input type="checkbox" value="tuesday"> Tue</label>
+                <label class="checkbox-pill"><input type="checkbox" value="wednesday"> Wed</label>
+                <label class="checkbox-pill"><input type="checkbox" value="thursday"> Thu</label>
+                <label class="checkbox-pill"><input type="checkbox" value="friday"> Fri</label>
+                <label class="checkbox-pill"><input type="checkbox" value="saturday"> Sat</label>
+                <label class="checkbox-pill"><input type="checkbox" value="sunday"> Sun</label>
+            </div>
+            <p id="reh-admin-bulk-preview" class="hint" style="font-weight:600;"></p>
+        </div>
+
+        <!-- Shared time/location/notes -->
         <div class="time-pair">
             <div>
                 <label for="rehearsal-start-time">Start</label>

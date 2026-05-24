@@ -2334,6 +2334,140 @@ def create_rehearsal(payload: dict, request: Request):
 
     return {"status": "success", "rehearsal_id": rehearsal_id, "lessons_cancelled": lessons_cancelled}
 
+
+@app.post("/admin/rehearsals/bulk")
+def admin_create_rehearsals_bulk(payload: dict, request: Request):
+    """
+    Payload:
+      opera_id: int
+      attendance_type: 'full' | 'principals' | 'chorus' | 'coaching'
+      rehearsal_type: 'vocal' | 'orchestra'
+      cast_ids: [int, ...]
+      role_names: [str, ...]
+      leader_ids: [int, ...]
+      start_date: 'YYYY-MM-DD'
+      end_date: 'YYYY-MM-DD'
+      days: ['monday', 'tuesday', ...]
+      start_time: 'HH:MM'
+      end_time: 'HH:MM'
+      location: str
+      notes: str
+    """
+    from datetime import date as date_type, timedelta
+    admin = require_user(request, role="admin")
+
+    opera_id = payload.get("opera_id")
+    attendance_type = payload.get("attendance_type", "full")
+    rehearsal_type = payload.get("rehearsal_type", "vocal")
+    if rehearsal_type not in ("vocal", "orchestra"):
+        rehearsal_type = "vocal"
+    cast_ids = payload.get("cast_ids") or []
+    role_names = payload.get("role_names") or []
+    leader_ids = payload.get("leader_ids") or []
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    days = payload.get("days") or []
+    start_time_str = payload.get("start_time")
+    end_time_str = payload.get("end_time") or None
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+
+    if not opera_id or not start_date or not end_date or not days or not start_time_str:
+        return {"status": "fail", "message": "Missing required fields"}
+
+    if attendance_type not in ("full", "principals", "chorus", "coaching"):
+        return {"status": "fail", "message": "Invalid attendance type"}
+
+    if attendance_type == "coaching" and not role_names:
+        return {"status": "fail", "message": "Coaching rehearsals need at least one role"}
+
+    if attendance_type == "chorus":
+        cast_ids = []
+
+    DAY_MAP = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+               "friday": 4, "saturday": 5, "sunday": 6}
+    day_nums = [DAY_MAP[d.lower()] for d in days if d.lower() in DAY_MAP]
+    if not day_nums:
+        return {"status": "fail", "message": "No valid days selected"}
+
+    try:
+        sd = date_type.fromisoformat(start_date)
+        ed = date_type.fromisoformat(end_date)
+    except Exception:
+        return {"status": "fail", "message": "Invalid date format"}
+
+    if ed < sd:
+        return {"status": "fail", "message": "End date must be after start date"}
+    if (ed - sd).days > 365:
+        return {"status": "fail", "message": "Date range cannot exceed one year"}
+
+    rehearsal_dates = []
+    current = sd
+    while current <= ed:
+        if current.weekday() in day_nums:
+            rehearsal_dates.append(current)
+        current += timedelta(days=1)
+
+    if not rehearsal_dates:
+        return {"status": "fail", "message": "No rehearsals fall in that date range"}
+    if len(rehearsal_dates) > 100:
+        return {"status": "fail", "message": f"Too many rehearsals ({len(rehearsal_dates)}). Narrow your date range."}
+
+    with db_cursor() as cur:
+        cur.execute("SELECT 1 FROM operas WHERE id=%s", (opera_id,))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Opera not found"}
+
+        for cid in cast_ids:
+            cur.execute("SELECT 1 FROM casts WHERE id=%s AND opera_id=%s", (cid, opera_id))
+            if not cur.fetchone():
+                return {"status": "fail", "message": f"Cast {cid} not in this opera"}
+
+        for lid in leader_ids:
+            cur.execute("SELECT 1 FROM users WHERE id=%s AND role='teacher'", (lid,))
+            if not cur.fetchone():
+                return {"status": "fail", "message": f"Leader {lid} is not a teacher"}
+
+    created = 0
+    with db_cursor(commit=True) as cur:
+        for rdate in rehearsal_dates:
+            try:
+                start_dt = datetime.fromisoformat(f"{rdate}T{start_time_str}")
+                end_dt = datetime.fromisoformat(f"{rdate}T{end_time_str}") if end_time_str else None
+                cur.execute("""
+                    INSERT INTO rehearsals
+                        (opera_id, cast_id, start_time, end_time, notes, attendance_type, location, rehearsal_type)
+                    VALUES (%s, NULL, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (opera_id, start_dt, end_dt, notes, attendance_type, location, rehearsal_type))
+                rid = cur.fetchone()[0]
+
+                for cid in cast_ids:
+                    cur.execute(
+                        "INSERT INTO rehearsal_casts (rehearsal_id, cast_id) VALUES (%s, %s)",
+                        (rid, cid)
+                    )
+
+                if attendance_type == "coaching":
+                    for rn in role_names:
+                        cur.execute(
+                            "INSERT INTO rehearsal_roles (rehearsal_id, role_name) VALUES (%s, %s)",
+                            (rid, rn.strip())
+                        )
+
+                for lid in leader_ids:
+                    cur.execute(
+                        "INSERT INTO rehearsal_leaders (rehearsal_id, teacher_id) VALUES (%s, %s)",
+                        (rid, lid)
+                    )
+
+                created += 1
+            except Exception as e:
+                print(f"[admin_bulk] skipped {rdate}: {e}")
+
+    return {"status": "success", "created": created}
+
+
 @app.get("/admin/rehearsals")
 def admin_rehearsals(request: Request):
     user = require_user(request, role="admin")

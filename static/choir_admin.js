@@ -86,7 +86,7 @@ function populateSectionSelects() {
 }
 
 function renderSectionCheckboxes() {
-    ["section-checkboxes", "bulk-section-checkboxes"].forEach(id => {
+    ["section-checkboxes"].forEach(id => {
         const box = document.getElementById(id);
         if (!box) return;
         if (choirSections.length === 0) {
@@ -547,24 +547,24 @@ function updateBulkPreview() {
 }
 
 async function bulkSchedule() {
-    const msg = document.getElementById("bulk-msg");
+    const msg = document.getElementById("reh-msg");
     msg.textContent = "";
 
     const start_date = document.getElementById("bulk-start-date").value;
     const end_date = document.getElementById("bulk-end-date").value;
     const days = [...document.querySelectorAll("#bulk-days input:checked")].map(cb => cb.value);
-    const start_time = document.getElementById("bulk-start").value;
-    const end_time = document.getElementById("bulk-end").value;
-    const location = document.getElementById("bulk-location").value.trim();
-    const notes = document.getElementById("bulk-notes").value.trim();
-    const sections = [...document.querySelectorAll("#bulk-section-checkboxes input:checked")]
+    const start_time = document.getElementById("reh-start").value;
+    const end_time = document.getElementById("reh-end").value;
+    const location = document.getElementById("reh-location").value.trim();
+    const notes = document.getElementById("reh-notes").value.trim();
+    const sections = [...document.querySelectorAll("#section-checkboxes input:checked")]
         .map(cb => Number(cb.value));
 
     if (!start_date || !end_date) { msg.textContent = "Start and end dates are required."; return; }
     if (!days.length) { msg.textContent = "Select at least one day of the week."; return; }
     if (!start_time) { msg.textContent = "Start time is required."; return; }
 
-    const btn = document.getElementById("bulk-schedule-btn");
+    const btn = document.getElementById("create-reh-btn");
     btn.disabled = true;
     btn.textContent = "Scheduling...";
 
@@ -580,11 +580,11 @@ async function bulkSchedule() {
             msg.textContent = `Done! ${data.created} rehearsal${data.created !== 1 ? "s" : ""} scheduled.`;
             document.getElementById("bulk-start-date").value = "";
             document.getElementById("bulk-end-date").value = "";
-            document.getElementById("bulk-start").value = "";
-            document.getElementById("bulk-end").value = "";
-            document.getElementById("bulk-location").value = "";
-            document.getElementById("bulk-notes").value = "";
-            document.querySelectorAll("#bulk-days input, #bulk-section-checkboxes input")
+            document.getElementById("reh-start").value = "";
+            document.getElementById("reh-end").value = "";
+            document.getElementById("reh-location").value = "";
+            document.getElementById("reh-notes").value = "";
+            document.querySelectorAll("#bulk-days input, #section-checkboxes input")
                 .forEach(cb => cb.checked = false);
             document.getElementById("bulk-preview").textContent = "";
         } else {
@@ -596,7 +596,7 @@ async function bulkSchedule() {
         msg.textContent = "Server error.";
     } finally {
         btn.disabled = false;
-        btn.textContent = "Schedule All Rehearsals";
+        btn.textContent = "Schedule Rehearsal";
     }
 }
 
@@ -714,11 +714,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Load shared section data first
     await loadSectionsData();
 
-    // Schedule tab — single
-    document.getElementById("create-reh-btn").addEventListener("click", createRehearsal);
+    // Schedule tab — mode toggle
+    document.querySelectorAll("input[name='reh-mode']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            const isRange = radio.value === "range";
+            document.getElementById("reh-single-fields").classList.toggle("hidden", isRange);
+            document.getElementById("reh-bulk-fields").classList.toggle("hidden", !isRange);
+        });
+    });
 
-    // Schedule tab — bulk
-    document.getElementById("bulk-schedule-btn").addEventListener("click", bulkSchedule);
+    // Schedule tab — submit (delegates based on mode)
+    document.getElementById("create-reh-btn").addEventListener("click", () => {
+        const mode = document.querySelector("input[name='reh-mode']:checked")?.value;
+        if (mode === "range") bulkSchedule(); else createRehearsal();
+    });
+
+    // Bulk preview updates
     ["bulk-start-date", "bulk-end-date"].forEach(id =>
         document.getElementById(id).addEventListener("change", updateBulkPreview));
     document.querySelectorAll("#bulk-days input").forEach(cb =>

@@ -994,6 +994,109 @@ async function createRehearsal() {
     }
 }
 
+function updateAdminBulkPreview() {
+    const from = document.getElementById("reh-admin-from")?.value;
+    const to = document.getElementById("reh-admin-to")?.value;
+    const days = [...document.querySelectorAll("#reh-admin-days input:checked")].map(cb => cb.value);
+    const preview = document.getElementById("reh-admin-bulk-preview");
+    if (!preview) return;
+    if (!from || !to || !days.length) { preview.textContent = ""; return; }
+    const sd = new Date(from + "T00:00:00");
+    const ed = new Date(to + "T00:00:00");
+    if (ed < sd) { preview.textContent = "End date must be after start date."; return; }
+    const DAY_JS = {monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:0};
+    const dayNums = days.map(d => DAY_JS[d]);
+    let count = 0, cur = new Date(sd);
+    while (cur <= ed) {
+        if (dayNums.includes(cur.getDay())) count++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    preview.textContent = count > 0
+        ? `This will create ${count} rehearsal${count !== 1 ? "s" : ""}.`
+        : "No rehearsals match this selection.";
+}
+
+async function createBulkAdminRehearsal() {
+    const msgEl = document.getElementById("rehearsal-msg");
+    msgEl.textContent = "";
+
+    const startTime = document.getElementById("rehearsal-start-time").value;
+    const endTime = document.getElementById("rehearsal-end-time").value;
+    const attendanceType = document.getElementById("rehearsal-attendance").value;
+    const from = document.getElementById("reh-admin-from")?.value;
+    const to = document.getElementById("reh-admin-to")?.value;
+    const days = [...document.querySelectorAll("#reh-admin-days input:checked")].map(cb => cb.value);
+
+    if (!from || !to) { msgEl.textContent = "Please select from and to dates."; return; }
+    if (!days.length) { msgEl.textContent = "Select at least one day of the week."; return; }
+    if (!startTime || !endTime) { msgEl.textContent = "Please select start and end time."; return; }
+
+    const castChecks = document.querySelectorAll(".rehearsal-cast-check:checked");
+    const castIds = Array.from(castChecks).map(cb => Number(cb.value));
+    const allCastsChecked = castIds.length === (rehearsalOperaData?.casts.length || 0);
+    const cast_ids = allCastsChecked ? [] : castIds;
+
+    let role_names = [];
+    if (attendanceType === "coaching") {
+        const roleChecks = document.querySelectorAll(".rehearsal-role-check:checked");
+        role_names = Array.from(roleChecks).map(cb => cb.value);
+        if (role_names.length === 0) { msgEl.textContent = "Coaching rehearsals need at least one role."; return; }
+    }
+
+    const leaderChecks = document.querySelectorAll(".rehearsal-leader-check:checked");
+    const leader_ids = Array.from(leaderChecks).map(cb => Number(cb.value));
+
+    const rehearsal_type = USER_ROLE === "orchestra_admin"
+        ? "orchestra"
+        : (["head_admin", "system_admin"].includes(USER_ROLE)
+            ? (document.getElementById("rehearsal-kind")?.value || "vocal")
+            : "vocal");
+
+    const btn = document.getElementById("create-rehearsal-btn");
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = "Scheduling...";
+
+    const res = await fetch(`${API}/admin/rehearsals/bulk`, {
+        credentials: "include",
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            opera_id: Number(rehearsalOpera.value),
+            attendance_type: attendanceType,
+            rehearsal_type,
+            cast_ids,
+            role_names,
+            leader_ids,
+            start_date: from,
+            end_date: to,
+            days,
+            start_time: startTime,
+            end_time: endTime,
+            notes: document.getElementById("rehearsal-notes").value,
+            location: (document.getElementById("rehearsal-location")?.value || "").trim(),
+        })
+    });
+
+    btn.disabled = false;
+    btn.textContent = origText;
+
+    const data = await res.json();
+    if (data.status === "success") {
+        msgEl.textContent = `${data.created} rehearsal${data.created !== 1 ? "s" : ""} scheduled.`;
+        document.getElementById("rehearsal-notes").value = "";
+        document.getElementById("reh-admin-from").value = "";
+        document.getElementById("reh-admin-to").value = "";
+        document.querySelectorAll("#reh-admin-days input").forEach(cb => cb.checked = false);
+        const prev = document.getElementById("reh-admin-bulk-preview");
+        if (prev) prev.textContent = "";
+        loadAdminRehearsals();
+        setTimeout(() => document.getElementById("rehearsal-create-modal")?.classList.add("hidden"), 1200);
+    } else {
+        msgEl.textContent = data.message || "Failed to schedule rehearsals.";
+    }
+}
+
 // -----------------------------------------------------------
 // SCHEDULED REHEARSALS (opera tabs + upcoming + past)
 // -----------------------------------------------------------
@@ -2389,7 +2492,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadRehearsalOperaData(e.target.value);
     });
     document.getElementById("create-rehearsal-btn")
-        ?.addEventListener("click", createRehearsal);
+        ?.addEventListener("click", () => {
+            const scope = document.querySelector("input[name='reh-scope']:checked")?.value;
+            if (scope === "range") createBulkAdminRehearsal(); else createRehearsal();
+        });
     document.getElementById("rehearsal-attendance")
         ?.addEventListener("change", onAttendanceTypeChange);
     onAttendanceTypeChange();
@@ -2418,6 +2524,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (e.target.id === "rehearsal-create-modal")
             e.target.classList.add("hidden");
     });
+
+    // Scope toggle (single / range)
+    document.querySelectorAll("input[name='reh-scope']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            const isRange = radio.value === "range";
+            document.getElementById("reh-admin-single-fields")?.classList.toggle("hidden", isRange);
+            document.getElementById("reh-admin-bulk-fields")?.classList.toggle("hidden", !isRange);
+        });
+    });
+    ["reh-admin-from", "reh-admin-to"].forEach(id =>
+        document.getElementById(id)?.addEventListener("change", updateAdminBulkPreview));
+    document.querySelectorAll("#reh-admin-days input").forEach(cb =>
+        cb.addEventListener("change", updateAdminBulkPreview));
 
     // --- New Production modal ---
     document.getElementById("new-production-btn")
