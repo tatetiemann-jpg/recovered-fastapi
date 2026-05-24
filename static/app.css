@@ -880,6 +880,11 @@ tbody tr:hover td { background: var(--accent-soft); }
 .staff-row-name { font-weight: 600; flex: 1; }
 .staff-row-role { color: var(--text-muted); font-size: 0.9rem; flex: 1; }
 
+.upcoming-month-header { font-size: 1rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: var(--space-2) 0 var(--space-1); margin-top: var(--space-5); border-bottom: 2px solid var(--border); cursor: pointer; -webkit-user-select: none; user-select: none; display: flex; align-items: center; gap: var(--space-2); }
+.upcoming-month-header:first-child { margin-top: 0; }
+.upcoming-month-header:hover { color: var(--text); }
+.month-chevron { font-size: 0.7rem; flex-shrink: 0; }
+.upcoming-month-body.collapsed { display: none; }
 .section-group { margin-bottom: var(--space-5); }
 .section-group-title { font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: var(--space-2); }
 .singer-status { font-size: 0.85rem; padding: 2px 8px; border-radius: 999px; }

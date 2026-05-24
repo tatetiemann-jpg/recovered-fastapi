@@ -86,18 +86,20 @@ function populateSectionSelects() {
 }
 
 function renderSectionCheckboxes() {
-    const box = document.getElementById("section-checkboxes");
-    if (!box) return;
-    if (choirSections.length === 0) {
-        box.innerHTML = `<em class="empty-note">No sections yet — add them in the Sections tab first.</em>`;
-        return;
-    }
-    box.innerHTML = "";
-    choirSections.forEach(s => {
-        const label = document.createElement("label");
-        label.className = "checkbox-pill";
-        label.innerHTML = `<input type="checkbox" value="${s.id}"> ${escapeHtml(s.name)}`;
-        box.appendChild(label);
+    ["section-checkboxes", "bulk-section-checkboxes"].forEach(id => {
+        const box = document.getElementById(id);
+        if (!box) return;
+        if (choirSections.length === 0) {
+            box.innerHTML = `<em class="empty-note">No sections configured.</em>`;
+            return;
+        }
+        box.innerHTML = "";
+        choirSections.forEach(s => {
+            const label = document.createElement("label");
+            label.className = "checkbox-pill";
+            label.innerHTML = `<input type="checkbox" value="${s.id}"> ${escapeHtml(s.name)}`;
+            box.appendChild(label);
+        });
     });
 }
 
@@ -154,33 +156,66 @@ async function loadUpcoming() {
             return;
         }
         list.innerHTML = "";
-        rehearsals.forEach(r => {
-            const calledNames = choirSections
-                .filter(s => r.called_sections.includes(s.id))
-                .map(s => s.name).join(", ") || "Full choir";
 
-            const card = document.createElement("div");
-            card.className = "rehearsal-card";
-            card.innerHTML = `
-                <div class="rehearsal-row-header">
-                    <div>
-                        <strong>${fmtDate(r.date)}</strong>
-                        <div class="rehearsal-roles">${fmtTime(r.start_time)}${r.end_time ? " – " + fmtTime(r.end_time) : ""}</div>
-                        ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
-                        <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
-                        ${r.notes ? `<em class="rehearsal-leaders">${escapeHtml(r.notes)}</em>` : ""}
+        const now = new Date();
+        const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+        const byMonth = {};
+        rehearsals.forEach(r => {
+            const d = new Date(r.date + "T00:00:00");
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+            if (!byMonth[key]) byMonth[key] = { label, rehearsals: [] };
+            byMonth[key].rehearsals.push(r);
+        });
+
+        Object.entries(byMonth).forEach(([key, { label, rehearsals: group }]) => {
+            const open = key === currentKey;
+
+            const monthHdr = document.createElement("div");
+            monthHdr.className = "upcoming-month-header";
+            monthHdr.innerHTML = `<span class="month-chevron">${open ? "▼" : "▶"}</span> ${label}`;
+
+            const body = document.createElement("div");
+            body.className = "upcoming-month-body";
+            if (!open) body.classList.add("collapsed");
+
+            monthHdr.addEventListener("click", () => {
+                const nowCollapsed = body.classList.toggle("collapsed");
+                monthHdr.querySelector(".month-chevron").textContent = nowCollapsed ? "▶" : "▼";
+            });
+
+            list.appendChild(monthHdr);
+
+            group.forEach(r => {
+                const calledNames = choirSections
+                    .filter(s => r.called_sections.includes(s.id))
+                    .map(s => s.name).join(", ") || "Full choir";
+
+                const card = document.createElement("div");
+                card.className = "rehearsal-card";
+                card.innerHTML = `
+                    <div class="rehearsal-row-header">
+                        <div>
+                            <strong>${fmtDate(r.date)}</strong>
+                            <div class="rehearsal-roles">${fmtTime(r.start_time)}${r.end_time ? " – " + fmtTime(r.end_time) : ""}</div>
+                            ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
+                            <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
+                            ${r.notes ? `<em class="rehearsal-leaders">${escapeHtml(r.notes)}</em>` : ""}
+                        </div>
+                        <div class="rehearsal-row-actions">
+                            <button class="subtle-btn view-absences-btn" data-id="${r.id}" data-date="${r.date}">
+                                Absences &amp; Subs
+                            </button>
+                            <button class="subtle-btn delete-reh-btn" data-id="${r.id}" style="color:var(--danger);">
+                                Delete
+                            </button>
+                        </div>
                     </div>
-                    <div class="rehearsal-row-actions">
-                        <button class="subtle-btn view-absences-btn" data-id="${r.id}" data-date="${r.date}">
-                            Absences &amp; Subs
-                        </button>
-                        <button class="subtle-btn delete-reh-btn" data-id="${r.id}" style="color:var(--danger);">
-                            Delete
-                        </button>
-                    </div>
-                </div>
-            `;
-            list.appendChild(card);
+                `;
+                body.appendChild(card);
+            });
+            list.appendChild(body);
         });
 
         list.querySelectorAll(".view-absences-btn").forEach(btn =>
@@ -206,7 +241,6 @@ async function openAbsenceModal(rehearsalId, dateISO) {
     document.getElementById("absence-modal-title").textContent = `Absences — ${fmtDate(dateISO)}`;
     document.getElementById("absence-modal").classList.remove("hidden");
     document.getElementById("absence-modal-list").innerHTML = `<em class="empty-note">Loading…</em>`;
-    document.getElementById("sub-requests-list").innerHTML = `<em class="empty-note">Loading…</em>`;
 
     try {
         const [absRes, subRes] = await Promise.all([
@@ -215,20 +249,22 @@ async function openAbsenceModal(rehearsalId, dateISO) {
         ]);
         const absences = await absRes.json();
         const subReqs = await subRes.json();
-
-        renderAbsenceList(absences);
-        renderSubRequestList(subReqs, rehearsalId);
+        renderAbsenceList(absences, Array.isArray(subReqs) ? subReqs : []);
     } catch (e) { console.error(e); }
 }
 
-function renderAbsenceList(absences) {
+function renderAbsenceList(absences, subReqs) {
     const box = document.getElementById("absence-modal-list");
     if (!absences.length) {
         box.innerHTML = `<em class="empty-note">No absences reported.</em>`;
         return;
     }
+
+    // Build lookup: section_id -> sub_request
+    const subBySec = {};
+    (subReqs || []).forEach(r => { subBySec[r.section_id] = r; });
+
     box.innerHTML = "";
-    // Group by section
     const bySec = {};
     absences.forEach(a => {
         if (!bySec[a.section]) bySec[a.section] = [];
@@ -240,54 +276,29 @@ function renderAbsenceList(absences) {
         heading.textContent = sec;
         box.appendChild(heading);
         singers.forEach(a => {
+            const req = subBySec[a.section_id];
+            const filled = req && req.status === "filled" && req.filled_by_name;
             const row = document.createElement("div");
-            row.style.cssText = "padding:4px 0;display:flex;justify-content:space-between;align-items:center;";
+            row.style.cssText = "padding:4px 0;display:flex;justify-content:space-between;align-items:center;gap:8px;";
             row.innerHTML = `
-                <span>${escapeHtml(a.singer)}${a.reason ? ` <em style="color:var(--text-muted);font-size:.88rem;">— ${escapeHtml(a.reason)}</em>` : ""}</span>
-                <button class="subtle-btn find-sub-from-admin-btn"
+                <span>
+                    ${escapeHtml(a.singer)}
+                    ${a.reason ? `<em style="color:var(--text-muted);font-size:.88rem;"> — ${escapeHtml(a.reason)}</em>` : ""}
+                    ${filled ? `<span style="color:var(--success);font-size:.88rem;margin-left:6px;">Sub confirmed: ${escapeHtml(req.filled_by_name)}</span>` : ""}
+                </span>
+                ${!filled ? `<button class="subtle-btn find-sub-from-admin-btn"
                     data-section-id="${a.section_id}" data-section="${escapeHtml(a.section)}">
                     Find sub
-                </button>
+                </button>` : ""}
             `;
-            row.querySelector(".find-sub-from-admin-btn").addEventListener("click", (e) => {
-                const btn = e.currentTarget;
-                openFindSubModal(activeRehearsalId, Number(btn.dataset.sectionId), btn.dataset.section);
-            });
+            if (!filled) {
+                row.querySelector(".find-sub-from-admin-btn").addEventListener("click", e => {
+                    const btn = e.currentTarget;
+                    openFindSubModal(activeRehearsalId, Number(btn.dataset.sectionId), btn.dataset.section);
+                });
+            }
             box.appendChild(row);
         });
-    });
-}
-
-function renderSubRequestList(subReqs, rehearsalId) {
-    const box = document.getElementById("sub-requests-list");
-    if (!subReqs.length) {
-        box.innerHTML = `<em class="empty-note">No sub requests yet.</em>`;
-        return;
-    }
-    box.innerHTML = "";
-    subReqs.forEach(req => {
-        const statusLabel = {
-            open: "Open",
-            preferred_sent: "Preferred contacted",
-            all_sent: "All contacted",
-            filled: "Filled",
-            cancelled: "Cancelled",
-        }[req.status] || req.status;
-
-        const row = document.createElement("div");
-        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--border);";
-        row.innerHTML = `
-            <span>
-                <strong>${escapeHtml(req.section_name)}</strong>
-                <span class="rehearsal-attendance">${statusLabel}</span>
-                ${req.filled_by_name ? `<span style="color:var(--success);font-size:.88rem;"> ✓ ${escapeHtml(req.filled_by_name)}</span>` : ""}
-            </span>
-            <button class="subtle-btn" data-req-id="${req.id}">
-                ${req.status === "filled" ? "View" : "Manage"}
-            </button>
-        `;
-        row.querySelector("button").addEventListener("click", () => openSubStatusModal(req.id));
-        box.appendChild(row);
     });
 }
 
@@ -323,7 +334,7 @@ async function openFindSubModal(rehearsalId, sectionId, sectionName) {
             hdr.className = "section-group-title";
             hdr.textContent = "Preferred";
             list.appendChild(hdr);
-            preferred.forEach(s => list.appendChild(buildSubRow(s)));
+            preferred.forEach(s => list.appendChild(buildFindSubRow(s)));
         }
         if (regular.length) {
             const hdr = document.createElement("div");
@@ -331,14 +342,14 @@ async function openFindSubModal(rehearsalId, sectionId, sectionName) {
             hdr.style.marginTop = "var(--space-4)";
             hdr.textContent = "Regular";
             list.appendChild(hdr);
-            regular.forEach(s => list.appendChild(buildSubRow(s)));
+            regular.forEach(s => list.appendChild(buildFindSubRow(s)));
         }
     } catch (e) {
         document.getElementById("find-sub-list").innerHTML = `<em class="empty-note">Failed to load.</em>`;
     }
 }
 
-function buildSubRow(sub) {
+function buildFindSubRow(sub) {
     const row = document.createElement("div");
     row.className = "staff-row";
     row.innerHTML = `
@@ -507,6 +518,89 @@ async function addSub() {
 
 
 
+// ── Bulk schedule ─────────────────────────────────────────────────────────────
+
+const DAY_JS = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+
+function updateBulkPreview() {
+    const startDate = document.getElementById("bulk-start-date").value;
+    const endDate = document.getElementById("bulk-end-date").value;
+    const days = [...document.querySelectorAll("#bulk-days input:checked")].map(cb => cb.value);
+    const preview = document.getElementById("bulk-preview");
+
+    if (!startDate || !endDate || !days.length) { preview.textContent = ""; return; }
+
+    const sd = new Date(startDate + "T00:00:00");
+    const ed = new Date(endDate + "T00:00:00");
+    if (ed < sd) { preview.textContent = "End date must be after start date."; return; }
+
+    const dayNums = days.map(d => DAY_JS[d]);
+    let count = 0;
+    const cur = new Date(sd);
+    while (cur <= ed) {
+        if (dayNums.includes(cur.getDay())) count++;
+        cur.setDate(cur.getDate() + 1);
+    }
+    preview.textContent = count > 0
+        ? `This will create ${count} rehearsal${count !== 1 ? "s" : ""}.`
+        : "No rehearsals match this selection.";
+}
+
+async function bulkSchedule() {
+    const msg = document.getElementById("bulk-msg");
+    msg.textContent = "";
+
+    const start_date = document.getElementById("bulk-start-date").value;
+    const end_date = document.getElementById("bulk-end-date").value;
+    const days = [...document.querySelectorAll("#bulk-days input:checked")].map(cb => cb.value);
+    const start_time = document.getElementById("bulk-start").value;
+    const end_time = document.getElementById("bulk-end").value;
+    const location = document.getElementById("bulk-location").value.trim();
+    const notes = document.getElementById("bulk-notes").value.trim();
+    const sections = [...document.querySelectorAll("#bulk-section-checkboxes input:checked")]
+        .map(cb => Number(cb.value));
+
+    if (!start_date || !end_date) { msg.textContent = "Start and end dates are required."; return; }
+    if (!days.length) { msg.textContent = "Select at least one day of the week."; return; }
+    if (!start_time) { msg.textContent = "Start time is required."; return; }
+
+    const btn = document.getElementById("bulk-schedule-btn");
+    btn.disabled = true;
+    btn.textContent = "Scheduling...";
+
+    try {
+        const res = await fetch(`${API}/choir/rehearsals/bulk`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ start_date, end_date, days, start_time, end_time: end_time || null, location, notes, sections }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            msg.className = "msg success-msg";
+            msg.textContent = `Done! ${data.created} rehearsal${data.created !== 1 ? "s" : ""} scheduled.`;
+            document.getElementById("bulk-start-date").value = "";
+            document.getElementById("bulk-end-date").value = "";
+            document.getElementById("bulk-start").value = "";
+            document.getElementById("bulk-end").value = "";
+            document.getElementById("bulk-location").value = "";
+            document.getElementById("bulk-notes").value = "";
+            document.querySelectorAll("#bulk-days input, #bulk-section-checkboxes input")
+                .forEach(cb => cb.checked = false);
+            document.getElementById("bulk-preview").textContent = "";
+        } else {
+            msg.className = "msg";
+            msg.textContent = data.message || "Failed to schedule.";
+        }
+    } catch (e) {
+        msg.className = "msg";
+        msg.textContent = "Server error.";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Schedule All Rehearsals";
+    }
+}
+
+
 // ── Sections tab ──────────────────────────────────────────────────────────────
 
 const VOICE_LABELS = { soprano: "Soprano", alto: "Alto", tenor: "Tenor", bass: "Bass", other: "Other" };
@@ -620,8 +714,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Load shared section data first
     await loadSectionsData();
 
-    // Schedule tab
+    // Schedule tab — single
     document.getElementById("create-reh-btn").addEventListener("click", createRehearsal);
+
+    // Schedule tab — bulk
+    document.getElementById("bulk-schedule-btn").addEventListener("click", bulkSchedule);
+    ["bulk-start-date", "bulk-end-date"].forEach(id =>
+        document.getElementById(id).addEventListener("change", updateBulkPreview));
+    document.querySelectorAll("#bulk-days input").forEach(cb =>
+        cb.addEventListener("change", updateBulkPreview));
 
     // Upcoming tab
     document.getElementById("refresh-upcoming-btn").addEventListener("click", loadUpcoming);

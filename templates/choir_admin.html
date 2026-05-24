@@ -62,6 +62,62 @@
       </button>
       <p id="reh-msg" class="msg"></p>
     </div>
+
+    <div class="box">
+      <h2>Mass Schedule</h2>
+      <p class="hint">Schedule the same rehearsal time on repeating days across a date range.</p>
+
+      <div class="time-pair">
+        <div>
+          <label for="bulk-start-date">From <span class="required">*</span></label>
+          <input id="bulk-start-date" type="date">
+        </div>
+        <div>
+          <label for="bulk-end-date">To <span class="required">*</span></label>
+          <input id="bulk-end-date" type="date">
+        </div>
+      </div>
+
+      <label>Days of week <span class="required">*</span></label>
+      <div class="checkbox-row" id="bulk-days">
+        <label class="checkbox-pill"><input type="checkbox" value="monday"> Mon</label>
+        <label class="checkbox-pill"><input type="checkbox" value="tuesday"> Tue</label>
+        <label class="checkbox-pill"><input type="checkbox" value="wednesday"> Wed</label>
+        <label class="checkbox-pill"><input type="checkbox" value="thursday"> Thu</label>
+        <label class="checkbox-pill"><input type="checkbox" value="friday"> Fri</label>
+        <label class="checkbox-pill"><input type="checkbox" value="saturday"> Sat</label>
+        <label class="checkbox-pill"><input type="checkbox" value="sunday"> Sun</label>
+      </div>
+
+      <div class="time-pair">
+        <div>
+          <label for="bulk-start">Start time <span class="required">*</span></label>
+          <input id="bulk-start" type="time">
+        </div>
+        <div>
+          <label for="bulk-end">End time</label>
+          <input id="bulk-end" type="time">
+        </div>
+      </div>
+
+      <label for="bulk-location">Location</label>
+      <input id="bulk-location" type="text" placeholder="e.g. Sanctuary">
+
+      <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full choir)</span></label>
+      <div id="bulk-section-checkboxes" class="checkbox-row">
+        <em class="empty-note">Loading sections…</em>
+      </div>
+
+      <label for="bulk-notes">Notes</label>
+      <textarea id="bulk-notes" rows="2" placeholder="Optional notes for all rehearsals…"></textarea>
+
+      <p id="bulk-preview" class="hint" style="margin-top:var(--space-3);font-weight:600;"></p>
+
+      <button id="bulk-schedule-btn" style="margin-top:var(--space-3);background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">
+        Schedule All Rehearsals
+      </button>
+      <p id="bulk-msg" class="msg"></p>
+    </div>
   </section>
 
   <!-- UPCOMING TAB -->
@@ -178,6 +234,6 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir_admin.js?v=2"></script>
+<script src="/static/choir_admin.js?v=7"></script>
 </body>
 </html>

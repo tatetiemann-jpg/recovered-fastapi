@@ -61,8 +61,8 @@
         document.getElementById("invite-fullname").value = inviteInfo.fullname_hint;
     }
 
-    // Show voice part dropdown for choir singers
-    if (inviteInfo.role === "student") {
+    // Show voice part dropdown for choir singers only
+    if (inviteInfo.role === "student" && inviteInfo.org_type === "choir") {
         document.getElementById("invite-voice-row")?.classList.remove("hidden");
     }
 
