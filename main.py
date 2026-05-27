@@ -7006,20 +7006,24 @@ def list_all_choir_members(request: Request):
     user = require_choir_admin(request)
     with db_cursor() as cur:
         cur.execute("""
-            SELECT u.id, u.fullname, u.role, u.instrument, cs.name AS section_name
+            SELECT u.id, u.fullname, u.role, u.voice_type, u.instrument, cs.name AS section_name
             FROM users u
             LEFT JOIN choir_sections cs ON cs.id = u.section_id
-            WHERE u.org_id = %s AND u.role IN ('choir_member', 'ensemble_member')
+            WHERE u.org_id = %s AND u.role IN ('student', 'choir_member', 'ensemble_member')
             ORDER BY cs.sort_order NULLS LAST, u.fullname
         """, (user["org_id"],))
         rows = cur.fetchall()
     result = []
-    for uid, fullname, role, instrument, section_name in rows:
+    for uid, fullname, role, voice_type, instrument, section_name in rows:
+        # Normalize legacy 'student' role to 'choir_member' for the frontend
+        normalized_role = "choir_member" if role in ("student", "choir_member") else role
+        # Choir members may store voice type as section name when no section_id set
+        display_section = section_name or (voice_type.capitalize() if voice_type else "")
         result.append({
             "id": uid,
             "fullname": fullname,
-            "role": role,
-            "section_name": section_name or "",
+            "role": normalized_role,
+            "section_name": display_section,
             "instrument": instrument or "",
         })
     return result
