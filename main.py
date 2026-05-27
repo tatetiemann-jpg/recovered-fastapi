@@ -6899,19 +6899,16 @@ def ensemble_rehearsals(request: Request):
             SELECT DISTINCT r.id, r.start_time, r.end_time, r.location, r.notes,
                    r.choir_type, r.materials_url
             FROM rehearsals r
-            LEFT JOIN rehearsal_sections rs ON rs.rehearsal_id = r.id
-            LEFT JOIN choir_sections cs ON cs.id = rs.section_id
             LEFT JOIN rehearsal_members rm ON rm.rehearsal_id = r.id AND rm.user_id = %s
             WHERE r.org_id = %s
               AND r.choir_type = 'ensemble'
               AND r.start_time >= %s
               AND (
-                  (SELECT COUNT(*) FROM rehearsal_sections rs2 WHERE rs2.rehearsal_id = r.id) = 0
-                  OR cs.org_id = %s
+                  (SELECT COUNT(*) FROM rehearsal_members rm2 WHERE rm2.rehearsal_id = r.id) = 0
                   OR rm.user_id IS NOT NULL
               )
             ORDER BY r.start_time
-        """, (user_id, org_id, today, org_id))
+        """, (user_id, org_id, today))
         rows = cur.fetchall()
     result = []
     for row in rows:

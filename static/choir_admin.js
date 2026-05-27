@@ -981,9 +981,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Load shared section data first
     await loadSectionsData();
 
-    // Schedule tab — rehearsal type toggle re-renders individual member list
+    // Schedule tab — rehearsal type toggle
     document.querySelectorAll("input[name='reh-choir-type']").forEach(radio => {
-        radio.addEventListener("change", renderIndividualMemberCheckboxes);
+        radio.addEventListener("change", () => {
+            const isEnsemble = radio.value === "ensemble";
+            document.getElementById("sections-called-row").classList.toggle("hidden", isEnsemble);
+            renderIndividualMemberCheckboxes();
+        });
     });
 
     // Schedule tab — mode toggle
