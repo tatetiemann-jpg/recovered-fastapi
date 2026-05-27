@@ -91,9 +91,14 @@
       <label for="reh-location">Location</label>
       <input id="reh-location" type="text" placeholder="e.g. Sanctuary">
 
-      <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full choir)</span></label>
+      <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
       <div id="section-checkboxes" class="checkbox-row">
         <em class="empty-note">Loading sections…</em>
+      </div>
+
+      <label>Individual members <span class="hint" style="font-style:italic;">(optional — call specific people in addition to sections)</span></label>
+      <div id="individual-member-checkboxes" class="checkbox-row">
+        <em class="empty-note">Loading…</em>
       </div>
 
       <label for="reh-notes">Notes</label>
@@ -237,27 +242,17 @@
   </div>
 </div>
 
-<!-- CHOIR REHEARSAL NOTES — VIEW -->
-<div id="choir-view-notes-modal" class="modal-overlay hidden">
+<!-- CHOIR REHEARSAL NOTES -->
+<div id="choir-notes-modal" class="modal-overlay hidden">
   <div class="modal-card modal-large">
-    <h3 id="choir-view-notes-title">Rehearsal Notes</h3>
-    <div id="choir-view-notes-body" class="notes-display"></div>
-    <div class="modal-actions">
-      <button id="close-choir-view-notes-btn">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- CHOIR REHEARSAL NOTES — CREATE/EDIT -->
-<div id="choir-add-notes-modal" class="modal-overlay hidden">
-  <div class="modal-card modal-large">
-    <h3 id="choir-add-notes-title">Create Rehearsal Notes</h3>
-    <textarea id="choir-add-notes-textarea" rows="8" placeholder="Enter notes to share with the choir…"></textarea>
+    <h3 id="choir-notes-modal-title">Rehearsal Notes</h3>
+    <div id="choir-notes-existing" class="notes-display" style="margin-bottom:var(--space-3);padding-bottom:var(--space-3);border-bottom:1px solid var(--border);"></div>
+    <textarea id="choir-notes-textarea" rows="6" placeholder="Enter notes to share with the choir…"></textarea>
     <div class="modal-actions">
       <button id="send-choir-notes-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Notes</button>
-      <button id="close-choir-add-notes-btn">Cancel</button>
+      <button id="close-choir-notes-btn">Cancel</button>
     </div>
-    <p id="choir-add-notes-msg"></p>
+    <p id="choir-notes-msg"></p>
   </div>
 </div>
 
@@ -297,22 +292,11 @@
   </div>
 </div>
 
-<!-- ADD INDIVIDUAL MEMBER MODAL -->
-<div id="add-individual-modal" class="modal-overlay hidden">
-  <div class="modal-card modal-large">
-    <h3>Add Individual Member</h3>
-    <p class="hint">Select ensemble members to call individually for this rehearsal.</p>
-    <div id="add-individual-list"><em class="empty-note">Loading…</em></div>
-    <div class="modal-actions">
-      <button id="close-add-individual-btn">Done</button>
-    </div>
-  </div>
-</div>
 
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir_admin.js?v=10"></script>
+<script src="/static/choir_admin.js?v=11"></script>
 </body>
 </html>
