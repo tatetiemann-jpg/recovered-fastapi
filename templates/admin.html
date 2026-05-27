@@ -623,6 +623,40 @@
     </div>
 </div>
 
+<!-- EDIT REHEARSAL MODAL -->
+<div id="reh-edit-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="reh-edit-title">Edit Rehearsal</h3>
+        <input id="edit-reh-id" type="hidden">
+        <div class="time-pair">
+            <div>
+                <label for="edit-reh-start">Start time <span class="required">*</span></label>
+                <input id="edit-reh-start" type="time">
+            </div>
+            <div>
+                <label for="edit-reh-end">End time</label>
+                <input id="edit-reh-end" type="time">
+            </div>
+        </div>
+        <label for="edit-reh-location">Location</label>
+        <input id="edit-reh-location" type="text" placeholder="e.g. Main Stage">
+        <label for="edit-reh-attendance">Attendance</label>
+        <select id="edit-reh-attendance">
+            <option value="full">Full cast</option>
+            <option value="principals">Principals only</option>
+            <option value="chorus">Chorus only</option>
+            <option value="coaching">Coaching</option>
+        </select>
+        <label for="edit-reh-notes">Notes</label>
+        <textarea id="edit-reh-notes" rows="4"></textarea>
+        <div class="modal-actions">
+            <button id="save-reh-edit-btn">Save Changes</button>
+            <button id="close-reh-edit-btn" type="button">Cancel</button>
+        </div>
+        <p id="reh-edit-msg"></p>
+    </div>
+</div>
+
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js"></script>
 <script src="/static/themes.js"></script>

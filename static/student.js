@@ -79,11 +79,9 @@ async function loadToday() {
         const data = await res.json();
 
         renderMyLessonToday(data);
-        renderRehearsals(data);
         renderBookingSection(data);
     } catch (e) {
         console.error("Failed to load today's info:", e);
-        document.getElementById("rehearsals").textContent = "Failed to load rehearsals.";
         document.getElementById("teachers-list").textContent = "Failed to load teachers.";
         document.getElementById("my-lesson-today").textContent = "Failed to load lesson info.";
     }
@@ -182,10 +180,11 @@ async function handleCancelLesson(lessonId) {
 
 // -------------------- TODAY: Rehearsals --------------------
 
-let studentTodayRehearsals = [];
+let allStudentRehearsals = [];
+let myAbsences = new Set();
 
 function openStudentViewNotes(rehearsalId) {
-    const r = studentTodayRehearsals.find(x => x.id === rehearsalId);
+    const r = allStudentRehearsals.find(x => x.id === rehearsalId);
     if (!r) return;
     document.getElementById("view-notes-title").textContent = `Rehearsal Notes — ${r.opera}`;
     const body = document.getElementById("view-notes-body");
@@ -195,38 +194,124 @@ function openStudentViewNotes(rehearsalId) {
     document.getElementById("reh-view-notes-modal").classList.remove("hidden");
 }
 
-function renderRehearsals(data) {
-    const box = document.getElementById("rehearsals");
-    const header = document.getElementById("rehearsals-header");
+function renderRehearsalTimeline(container, rehearsals, absences, buildCard) {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString("en-CA");
 
-    header.textContent = `Rehearsals — ${formatTodayHeader(data.date)}`;
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
+    const endOfWeekStr = endOfWeek.toLocaleDateString("en-CA");
 
-    if (!data.rehearsals || data.rehearsals.length === 0) {
-        box.innerHTML = `<em class="empty-note">No rehearsals scheduled.</em>`;
-        return;
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const endOfMonthStr = endOfMonth.toLocaleDateString("en-CA");
+
+    const buckets = { today: [], week: [], month: [], year: [] };
+    rehearsals.forEach(r => {
+        const rDate = new Date(r.start).toLocaleDateString("en-CA");
+        if (rDate === todayStr) buckets.today.push(r);
+        else if (rDate <= endOfWeekStr) buckets.week.push(r);
+        else if (rDate <= endOfMonthStr) buckets.month.push(r);
+        else buckets.year.push(r);
+    });
+
+    container.innerHTML = "";
+
+    const todayHdr = document.createElement("div");
+    todayHdr.className = "timeline-today-header";
+    todayHdr.textContent = "Today";
+    container.appendChild(todayHdr);
+
+    if (buckets.today.length) {
+        buckets.today.forEach(r => container.appendChild(buildCard(r, absences)));
+    } else {
+        const empty = document.createElement("em");
+        empty.className = "empty-note";
+        empty.textContent = "No rehearsals today.";
+        container.appendChild(empty);
     }
 
-    studentTodayRehearsals = data.rehearsals;
+    [{ key: "week", label: "This Week" }, { key: "month", label: "This Month" }, { key: "year", label: "This Year" }]
+        .forEach(({ key, label }) => {
+            if (!buckets[key].length) return;
+            const toggle = document.createElement("button");
+            toggle.className = "timeline-toggle";
+            toggle.innerHTML = `${label} <span class="timeline-count">(${buckets[key].length})</span> <span class="timeline-chevron">▶</span>`;
+            const body = document.createElement("div");
+            body.className = "timeline-body hidden";
+            buckets[key].forEach(r => body.appendChild(buildCard(r, absences)));
+            toggle.addEventListener("click", () => {
+                const collapsed = body.classList.toggle("hidden");
+                toggle.querySelector(".timeline-chevron").textContent = collapsed ? "▶" : "▼";
+            });
+            container.appendChild(toggle);
+            container.appendChild(body);
+        });
+}
 
-    box.innerHTML = "";
-    data.rehearsals.forEach(r => {
-        const div = document.createElement("div");
-        div.className = "rehearsal-card";
-        div.innerHTML = `
-            <strong>${escapeHtml(r.opera)}</strong>
-            <div>Cast: ${escapeHtml(r.cast)}</div>
-            <div>${formatRehearsalTime(r.start)}–${formatRehearsalTime(r.end)}</div>
-            ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
-            <div class="rehearsal-card-footer">
-                <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
-            </div>
-        `;
-        box.appendChild(div);
-    });
+function buildStudentRehearsalCard(r, absences) {
+    const absent = absences.has(r.id);
+    const div = document.createElement("div");
+    div.className = "rehearsal-card";
+    const dateStr = new Date(r.start).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    div.innerHTML = `
+        <strong>${escapeHtml(r.opera)}</strong>
+        <div>Cast: ${escapeHtml(r.cast)}</div>
+        <div>${dateStr} &middot; ${formatRehearsalTime(r.start)}&ndash;${formatRehearsalTime(r.end)}</div>
+        ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+        <div class="rehearsal-card-footer">
+            ${absent
+                ? `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`
+                : `<button class="cancel-lesson-btn cant-make-btn" data-id="${r.id}">I can't make it</button>`
+            }
+            <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
+        </div>
+    `;
+    div.querySelector(".view-reh-notes-btn").addEventListener("click", () => openStudentViewNotes(r.id));
+    if (absent) {
+        div.querySelector(".undo-absent-btn").addEventListener("click", () => undoStudentAbsent(r.id));
+    } else {
+        div.querySelector(".cant-make-btn").addEventListener("click", () => markStudentAbsent(r.id));
+    }
+    return div;
+}
 
-    box.querySelectorAll(".view-reh-notes-btn").forEach(btn => {
-        btn.addEventListener("click", () => openStudentViewNotes(Number(btn.dataset.id)));
-    });
+async function loadRehearsalTimeline() {
+    const box = document.getElementById("rehearsals");
+    box.innerHTML = `<em class="empty-note">Loading…</em>`;
+    try {
+        const [rehRes, absRes] = await Promise.all([
+            fetch(`${API}/student/rehearsals`, { credentials: "include" }),
+            fetch(`${API}/student/absences`, { credentials: "include" }),
+        ]);
+        allStudentRehearsals = await rehRes.json();
+        const absIds = await absRes.json();
+        myAbsences = new Set(Array.isArray(absIds) ? absIds : []);
+        renderRehearsalTimeline(box, allStudentRehearsals, myAbsences, buildStudentRehearsalCard);
+    } catch (e) {
+        console.error(e);
+        box.innerHTML = `<em class="empty-note">Failed to load rehearsals.</em>`;
+    }
+}
+
+async function markStudentAbsent(rehearsalId) {
+    if (!confirm("Mark yourself absent for this rehearsal? The admin will be notified.")) return;
+    try {
+        await fetch(`${API}/student/absence`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rehearsal_id: rehearsalId }),
+        });
+        myAbsences.add(rehearsalId);
+        renderRehearsalTimeline(document.getElementById("rehearsals"), allStudentRehearsals, myAbsences, buildStudentRehearsalCard);
+    } catch (e) { alert("Server error."); }
+}
+
+async function undoStudentAbsent(rehearsalId) {
+    try {
+        await fetch(`${API}/student/absence/${rehearsalId}`, { method: "DELETE", credentials: "include" });
+        myAbsences.delete(rehearsalId);
+        renderRehearsalTimeline(document.getElementById("rehearsals"), allStudentRehearsals, myAbsences, buildStudentRehearsalCard);
+    } catch (e) { alert("Server error."); }
 }
 
 
@@ -515,12 +600,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Initial loads
     loadToday();
+    loadRehearsalTimeline();
     loadSharedNotes();
 
     // Auto-refresh when the user comes back to the tab after being away
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState !== "visible") return;
         loadToday();
+        loadRehearsalTimeline();
         loadSharedNotes();
     });
 });

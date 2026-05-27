@@ -209,10 +209,63 @@
   </div>
 </div>
 
+<!-- CHOIR REHEARSAL NOTES — VIEW -->
+<div id="choir-view-notes-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="choir-view-notes-title">Rehearsal Notes</h3>
+    <div id="choir-view-notes-body" class="notes-display"></div>
+    <div class="modal-actions">
+      <button id="close-choir-view-notes-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHOIR REHEARSAL NOTES — CREATE/EDIT -->
+<div id="choir-add-notes-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="choir-add-notes-title">Create Rehearsal Notes</h3>
+    <textarea id="choir-add-notes-textarea" rows="8" placeholder="Enter notes to share with the choir…"></textarea>
+    <div class="modal-actions">
+      <button id="send-choir-notes-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Notes</button>
+      <button id="close-choir-add-notes-btn">Cancel</button>
+    </div>
+    <p id="choir-add-notes-msg"></p>
+  </div>
+</div>
+
+<!-- CHOIR REHEARSAL EDIT -->
+<div id="choir-reh-edit-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3>Edit Rehearsal</h3>
+    <input id="edit-choir-reh-id" type="hidden">
+    <div class="time-pair">
+      <div>
+        <label for="edit-choir-reh-start">Start time <span class="required">*</span></label>
+        <input id="edit-choir-reh-start" type="time">
+      </div>
+      <div>
+        <label for="edit-choir-reh-end">End time</label>
+        <input id="edit-choir-reh-end" type="time">
+      </div>
+    </div>
+    <label for="edit-choir-reh-location">Location</label>
+    <input id="edit-choir-reh-location" type="text" placeholder="e.g. Sanctuary">
+    <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full choir)</span></label>
+    <div id="edit-section-checkboxes" class="checkbox-row"></div>
+    <label for="edit-choir-reh-notes">Notes</label>
+    <textarea id="edit-choir-reh-notes" rows="3"></textarea>
+    <div class="modal-actions">
+      <button id="save-choir-reh-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Changes</button>
+      <button id="close-choir-reh-edit-btn">Cancel</button>
+    </div>
+    <p id="choir-reh-edit-msg"></p>
+  </div>
+</div>
+
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir_admin.js?v=7"></script>
+<script src="/static/choir_admin.js?v=8"></script>
 </body>
 </html>

@@ -81,37 +81,52 @@ async function loadUpcoming() {
         list.innerHTML = "";
 
         const now = new Date();
-        const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const todayStr = now.toLocaleDateString("en-CA");
+        const endOfWeek = new Date(now);
+        endOfWeek.setDate(now.getDate() + (6 - now.getDay()));
+        const endOfWeekStr = endOfWeek.toLocaleDateString("en-CA");
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const endOfMonthStr = endOfMonth.toLocaleDateString("en-CA");
 
-        const byMonth = {};
+        const buckets = { today: [], week: [], month: [], year: [] };
         rehearsals.forEach(r => {
-            const d = new Date(r.date + "T00:00:00");
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-            const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-            if (!byMonth[key]) byMonth[key] = { label, rehearsals: [] };
-            byMonth[key].rehearsals.push(r);
+            if (r.date === todayStr) buckets.today.push(r);
+            else if (r.date <= endOfWeekStr) buckets.week.push(r);
+            else if (r.date <= endOfMonthStr) buckets.month.push(r);
+            else buckets.year.push(r);
         });
 
-        Object.entries(byMonth).forEach(([key, { label, rehearsals: group }]) => {
-            const open = key === currentKey;
+        // Today section — always visible
+        const todayHdr = document.createElement("div");
+        todayHdr.className = "timeline-today-header";
+        todayHdr.textContent = "Today";
+        list.appendChild(todayHdr);
+        if (buckets.today.length) {
+            buckets.today.forEach(r => buildRehearsalCard(r, list));
+        } else {
+            const empty = document.createElement("em");
+            empty.className = "empty-note";
+            empty.textContent = "No rehearsals today.";
+            list.appendChild(empty);
+        }
 
-            const hdr = document.createElement("div");
-            hdr.className = "upcoming-month-header";
-            hdr.innerHTML = `<span class="month-chevron">${open ? "▼" : "▶"}</span> ${label}`;
-
-            const body = document.createElement("div");
-            body.className = "upcoming-month-body";
-            if (!open) body.classList.add("collapsed");
-
-            hdr.addEventListener("click", () => {
-                const nowCollapsed = body.classList.toggle("collapsed");
-                hdr.querySelector(".month-chevron").textContent = nowCollapsed ? "▶" : "▼";
+        // Collapsible sections
+        [{ key: "week", label: "This Week" }, { key: "month", label: "This Month" }, { key: "year", label: "This Year" }]
+            .forEach(({ key, label }) => {
+                if (!buckets[key].length) return;
+                const toggle = document.createElement("button");
+                toggle.className = "timeline-toggle";
+                toggle.innerHTML = `${label} <span class="timeline-count">(${buckets[key].length})</span> <span class="timeline-chevron">▶</span>`;
+                const body = document.createElement("div");
+                body.className = "timeline-body hidden";
+                buckets[key].forEach(r => buildRehearsalCard(r, body));
+                toggle.addEventListener("click", () => {
+                    const collapsed = body.classList.toggle("hidden");
+                    toggle.querySelector(".timeline-chevron").textContent = collapsed ? "▶" : "▼";
+                });
+                list.appendChild(toggle);
+                list.appendChild(body);
             });
-
-            list.appendChild(hdr);
-            group.forEach(r => buildRehearsalCard(r, body));
-            list.appendChild(body);
-        });
     } catch (e) {
         console.error(e);
         list.innerHTML = `<em class="empty-note">Failed to load rehearsals.</em>`;

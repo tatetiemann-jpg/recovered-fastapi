@@ -622,7 +622,7 @@ async function loadWeekly() {
             </tr>`;
         });
         html += `</table>`;
-        out.innerHTML = html;
+        out.innerHTML = `<div style="overflow-x:auto">${html}</div>`;
     } catch (e) {
         console.error(e);
         out.innerHTML = `<em class="empty-note">Failed to load availability.</em>`;

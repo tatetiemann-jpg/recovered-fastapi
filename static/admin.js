@@ -1197,6 +1197,9 @@ function renderScheduledRehearsals() {
         box.querySelectorAll(".view-reh-notes-btn").forEach(btn => {
             btn.addEventListener("click", () => openViewRehearsalNotesModal(Number(btn.dataset.id)));
         });
+        box.querySelectorAll(".edit-rehearsal-btn").forEach(btn => {
+            btn.addEventListener("click", () => openEditRehearsalModal(Number(btn.dataset.id)));
+        });
     });
 }
 
@@ -1263,6 +1266,7 @@ function renderRehearsalRow(r) {
                 <div class="rehearsal-row-footer-left">
                     <button class="subtle-btn add-reh-notes-btn" data-id="${r.id}">Create Rehearsal Notes</button>
                     <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
+                    <button class="subtle-btn edit-rehearsal-btn" data-id="${r.id}">Edit</button>
                 </div>
                 <button class="subtle-btn danger-btn cancel-rehearsal-btn" data-id="${r.id}">Cancel</button>
             </div>
@@ -1333,6 +1337,89 @@ async function sendRehearsalNotes() {
         msgEl.textContent = data.message || "Failed to send notes.";
     }
 }
+
+// -----------------------------------------------------------
+// EDIT REHEARSAL
+// -----------------------------------------------------------
+
+let activeEditRehearsalId = null;
+
+function openEditRehearsalModal(rehearsalId) {
+    const r = scheduledAllRehearsals.find(x => x.id === rehearsalId);
+    if (!r) return;
+    activeEditRehearsalId = rehearsalId;
+
+    const start = new Date(r.start_time);
+    const end = r.end_time ? new Date(r.end_time) : null;
+    const pad = n => String(n).padStart(2, "0");
+    document.getElementById("edit-reh-start").value = `${pad(start.getHours())}:${pad(start.getMinutes())}`;
+    document.getElementById("edit-reh-end").value = end ? `${pad(end.getHours())}:${pad(end.getMinutes())}` : "";
+    document.getElementById("edit-reh-location").value = r.location || "";
+    document.getElementById("edit-reh-attendance").value = r.attendance_type || "full";
+    document.getElementById("edit-reh-notes").value = r.notes || "";
+    document.getElementById("reh-edit-title").textContent = `Edit Rehearsal — ${r.opera}`;
+    document.getElementById("reh-edit-msg").textContent = "";
+    document.getElementById("reh-edit-modal").classList.remove("hidden");
+}
+
+async function saveRehearsalEdit() {
+    const msg = document.getElementById("reh-edit-msg");
+    msg.textContent = "";
+    const r = scheduledAllRehearsals.find(x => x.id === activeEditRehearsalId);
+    if (!r) return;
+
+    const startTime = document.getElementById("edit-reh-start").value;
+    const endTime = document.getElementById("edit-reh-end").value;
+    const location = document.getElementById("edit-reh-location").value.trim();
+    const attendance_type = document.getElementById("edit-reh-attendance").value;
+    const notes = document.getElementById("edit-reh-notes").value.trim();
+
+    if (!startTime) { msg.textContent = "Start time is required."; return; }
+
+    // Reconstruct ISO datetimes using the original date
+    const origStart = new Date(r.start_time);
+    const [sh, sm] = startTime.split(":").map(Number);
+    origStart.setHours(sh, sm, 0, 0);
+    let endISO = null;
+    if (endTime) {
+        const origEnd = new Date(r.start_time);
+        const [eh, em] = endTime.split(":").map(Number);
+        origEnd.setHours(eh, em, 0, 0);
+        endISO = origEnd.toISOString();
+    }
+
+    const btn = document.getElementById("save-reh-edit-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+        const res = await fetch(`${API}/admin/rehearsals/${activeEditRehearsalId}`, {
+            method: "PUT", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                start_time: origStart.toISOString(),
+                end_time: endISO,
+                location,
+                attendance_type,
+                notes,
+            }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            // Update in-memory
+            r.start_time = origStart.toISOString();
+            r.end_time = endISO;
+            r.location = location;
+            r.attendance_type = attendance_type;
+            r.notes = notes;
+            renderScheduledRehearsals();
+            document.getElementById("reh-edit-modal").classList.add("hidden");
+        } else {
+            msg.className = "msg"; msg.textContent = data.message || "Failed.";
+        }
+    } catch (e) { msg.textContent = "Server error."; }
+    finally { btn.disabled = false; btn.textContent = "Save Changes"; }
+}
+
 
 // -----------------------------------------------------------
 // CANCEL REHEARSAL
@@ -2725,6 +2812,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             document.getElementById("edit-instruments-row")
                 ?.classList.toggle("hidden", radio.value !== "instrumental");
         });
+    });
+
+    // --- Edit Rehearsal modal ---
+    document.getElementById("save-reh-edit-btn")?.addEventListener("click", saveRehearsalEdit);
+    document.getElementById("close-reh-edit-btn")?.addEventListener("click", () =>
+        document.getElementById("reh-edit-modal")?.classList.add("hidden"));
+    document.getElementById("reh-edit-modal")?.addEventListener("click", e => {
+        if (e.target.id === "reh-edit-modal") e.target.classList.add("hidden");
     });
 
     // --- View / Add Rehearsal Notes modals ---

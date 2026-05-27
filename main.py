@@ -2509,6 +2509,18 @@ def render_rehearsal_notes_email(opera_name: str, date_str: str, time_str: str, 
     return html, text
 
 
+def render_choir_notes_email(date_str: str, time_str: str, notes: str):
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
+<h2 style="color:#333;margin-bottom:4px;">Rehearsal Notes</h2>
+<p style="color:#888;margin-top:0;">{date_str} &middot; {time_str}</p>
+<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">
+<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{notes}</div>
+</body></html>"""
+    text = f"Rehearsal Notes\n{date_str} \xb7 {time_str}\n\n{notes}"
+    return html, text
+
+
 @app.post("/admin/rehearsals/{rehearsal_id}/notes")
 def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request):
     admin = require_user(request, role="admin")
@@ -2611,6 +2623,46 @@ def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request
             sent += 1
 
     return {"status": "success", "emailed": sent}
+
+
+@app.put("/admin/rehearsals/{rehearsal_id}")
+def admin_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
+    admin = require_user(request, role="admin")
+
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time") or None
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+    attendance_type = payload.get("attendance_type") or None
+
+    if not start_time:
+        return {"status": "fail", "message": "start_time required"}
+
+    valid_attendance = {"full", "principals", "chorus", "coaching"}
+    if attendance_type and attendance_type not in valid_attendance:
+        return {"status": "fail", "message": "Invalid attendance_type"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            SELECT r.id FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id
+            WHERE r.id=%s AND o.org_id=%s
+            """,
+            (rehearsal_id, admin["org_id"]),
+        )
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Rehearsal not found"}
+
+        fields = "start_time=%s, end_time=%s, location=%s, notes=%s"
+        params = [start_time, end_time, location, notes]
+        if attendance_type:
+            fields += ", attendance_type=%s"
+            params.append(attendance_type)
+        params.append(rehearsal_id)
+        cur.execute(f"UPDATE rehearsals SET {fields} WHERE id=%s", params)
+
+    return {"status": "success"}
 
 
 @app.get("/admin/rehearsals")
@@ -4031,6 +4083,80 @@ def student_rehearsals(request: Request):
         }
         for r in rows
     ]
+@app.get("/student/absences")
+def student_absences(request: Request):
+    student = require_user(request, role="student")
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT rehearsal_id FROM absence_requests WHERE singer_id=%s",
+            (student["id"],),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+@app.post("/student/absence")
+def student_mark_absence(payload: dict, request: Request):
+    student = require_user(request, role="student")
+    rehearsal_id = payload.get("rehearsal_id")
+    if not rehearsal_id:
+        return {"status": "fail", "message": "rehearsal_id required"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO absence_requests (rehearsal_id, singer_id)
+            VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """,
+            (rehearsal_id, student["id"]),
+        )
+        cur.execute(
+            """
+            SELECT r.start_time, o.opera_name FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id WHERE r.id=%s
+            """,
+            (rehearsal_id,),
+        )
+        row = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT fullname, email FROM users
+            WHERE org_id=%s AND role IN ('admin','head_admin') AND email IS NOT NULL
+            """,
+            (student["org_id"],),
+        )
+        admins = cur.fetchall()
+
+    if row and admins:
+        start_dt, opera_name = row
+        org_tz = get_org_tz(student)
+        local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
+        date_str = local_dt.strftime("%A, %B %-d, %Y")
+        subject = f"Absence Notice – {student['fullname']} – {opera_name}"
+        html_body = f"""<!DOCTYPE html>
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
+<h2 style="color:#333;">Absence Notice</h2>
+<p><strong>{student['fullname']}</strong> has marked themselves absent for the
+<strong>{opera_name}</strong> rehearsal on <strong>{date_str}</strong>.</p>
+</body></html>"""
+        text_body = f"Absence Notice\n{student['fullname']} has marked themselves absent for the {opera_name} rehearsal on {date_str}."
+        for _, email in admins:
+            send_email(to=email, subject=subject, html_body=html_body, text_body=text_body)
+
+    return {"status": "success"}
+
+
+@app.delete("/student/absence/{rehearsal_id}")
+def student_cancel_absence(rehearsal_id: int, request: Request):
+    student = require_user(request, role="student")
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM absence_requests WHERE rehearsal_id=%s AND singer_id=%s",
+            (rehearsal_id, student["id"]),
+        )
+    return {"status": "success"}
+
+
 @app.post("/student/book")
 def student_book(payload: dict, request: Request):
     student = require_user(request, role="student")
@@ -4368,6 +4494,111 @@ def orchestra_member_today(request: Request):
         "teachers": teachers,
         "seats": seats,
     }
+
+
+@app.get("/orchestra-member/rehearsals")
+def orchestra_member_rehearsals(request: Request):
+    member = require_user(request, role="orchestra_member")
+    org_id = member["org_id"]
+    with db_cursor() as cur:
+        cur.execute(
+            """
+            SELECT r.id, r.start_time, r.end_time, r.notes, o.opera_name, r.location
+            FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id
+            WHERE r.rehearsal_type = 'orchestra'
+              AND o.org_id = %s
+              AND r.end_time >= NOW()
+            ORDER BY r.start_time
+            """,
+            (org_id,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "start": r[1].isoformat(),
+            "end": r[2].isoformat(),
+            "notes": r[3],
+            "opera": r[4],
+            "location": r[5] or "",
+        }
+        for r in rows
+    ]
+
+
+@app.get("/orchestra-member/absences")
+def orchestra_member_absences(request: Request):
+    member = require_user(request, role="orchestra_member")
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT rehearsal_id FROM absence_requests WHERE singer_id=%s",
+            (member["id"],),
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+@app.post("/orchestra-member/absence")
+def orchestra_member_mark_absence(payload: dict, request: Request):
+    member = require_user(request, role="orchestra_member")
+    rehearsal_id = payload.get("rehearsal_id")
+    if not rehearsal_id:
+        return {"status": "fail", "message": "rehearsal_id required"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO absence_requests (rehearsal_id, singer_id)
+            VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """,
+            (rehearsal_id, member["id"]),
+        )
+        cur.execute(
+            """
+            SELECT r.start_time, o.opera_name FROM rehearsals r
+            JOIN operas o ON o.id = r.opera_id WHERE r.id=%s
+            """,
+            (rehearsal_id,),
+        )
+        row = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT email FROM users
+            WHERE org_id=%s AND role IN ('admin','head_admin','orchestra_admin') AND email IS NOT NULL
+            """,
+            (member["org_id"],),
+        )
+        admin_emails = [r[0] for r in cur.fetchall()]
+
+    if row and admin_emails:
+        start_dt, opera_name = row
+        org_tz = get_org_tz(member)
+        local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
+        date_str = local_dt.strftime("%A, %B %-d, %Y")
+        subject = f"Absence Notice – {member['fullname']} – {opera_name}"
+        html_body = f"""<!DOCTYPE html>
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
+<h2 style="color:#333;">Absence Notice</h2>
+<p><strong>{member['fullname']}</strong> has marked themselves absent for the
+<strong>{opera_name}</strong> orchestra rehearsal on <strong>{date_str}</strong>.</p>
+</body></html>"""
+        text_body = f"Absence Notice\n{member['fullname']} has marked themselves absent for the {opera_name} orchestra rehearsal on {date_str}."
+        for email in admin_emails:
+            send_email(to=email, subject=subject, html_body=html_body, text_body=text_body)
+
+    return {"status": "success"}
+
+
+@app.delete("/orchestra-member/absence/{rehearsal_id}")
+def orchestra_member_cancel_absence(rehearsal_id: int, request: Request):
+    member = require_user(request, role="orchestra_member")
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM absence_requests WHERE rehearsal_id=%s AND singer_id=%s",
+            (rehearsal_id, member["id"]),
+        )
+    return {"status": "success"}
 
 
 @app.get("/orchestra-member/lessons")
@@ -5305,6 +5536,121 @@ def choir_delete_rehearsal(rehearsal_id: int, request: Request):
     with db_cursor(commit=True) as cur:
         cur.execute("DELETE FROM rehearsals WHERE id=%s AND org_id=%s",
                     (rehearsal_id, user["org_id"]))
+    return {"status": "success"}
+
+
+@app.post("/choir/rehearsals/{rehearsal_id}/notes")
+def choir_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request):
+    user = require_choir_admin(request)
+    org_id = user["org_id"]
+    notes = (payload.get("notes") or "").strip()
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "SELECT id, start_time, end_time FROM rehearsals WHERE id=%s AND org_id=%s",
+            (rehearsal_id, org_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Rehearsal not found"}
+        _, start_dt, end_dt = row
+
+        cur.execute("UPDATE rehearsals SET notes=%s WHERE id=%s", (notes or None, rehearsal_id))
+
+        cur.execute(
+            "SELECT section_id FROM rehearsal_sections WHERE rehearsal_id=%s",
+            (rehearsal_id,),
+        )
+        section_ids = [r[0] for r in cur.fetchall()]
+
+        # Collect recipients: choir members in called sections + choir admins
+        if section_ids:
+            cur.execute(
+                """
+                SELECT DISTINCT u.fullname, u.email FROM users u
+                WHERE u.org_id=%s AND u.role='choir_member'
+                  AND u.section_id = ANY(%s) AND u.email IS NOT NULL
+                """,
+                (org_id, section_ids),
+            )
+        else:
+            cur.execute(
+                "SELECT fullname, email FROM users WHERE org_id=%s AND role='choir_member' AND email IS NOT NULL",
+                (org_id,),
+            )
+        recipients = {email: name for name, email in cur.fetchall() if email}
+
+        cur.execute(
+            "SELECT fullname, email FROM users WHERE org_id=%s AND role='choir_admin' AND email IS NOT NULL",
+            (org_id,),
+        )
+        for name, email in cur.fetchall():
+            if email and email not in recipients:
+                recipients[email] = name
+
+    org_tz = get_org_tz(user)
+    local_start = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
+    local_end = end_dt.astimezone(org_tz) if end_dt and end_dt.tzinfo else end_dt
+    date_str = local_start.strftime("%A, %B %-d, %Y")
+    start_str = local_start.strftime("%-I:%M %p")
+    end_str = local_end.strftime("%-I:%M %p") if local_end else ""
+    time_str = f"{start_str}–{end_str}" if end_str else start_str
+
+    html_body, text_body = render_choir_notes_email(date_str, time_str, notes)
+    subject = f"Rehearsal Notes – {date_str}"
+
+    sent = 0
+    for email in recipients:
+        if send_email(to=email, subject=subject, html_body=html_body, text_body=text_body):
+            sent += 1
+
+    return {"status": "success", "emailed": sent}
+
+
+@app.put("/choir/rehearsals/{rehearsal_id}")
+def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
+    user = require_choir_admin(request)
+    org_id = user["org_id"]
+
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time") or None
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+    sections = payload.get("sections")  # list of int section IDs, or None = don't change
+
+    if not start_time:
+        return {"status": "fail", "message": "start_time required"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "SELECT start_time FROM rehearsals WHERE id=%s AND org_id=%s",
+            (rehearsal_id, org_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Rehearsal not found"}
+
+        existing_date = row[0].date()
+        new_start = datetime.fromisoformat(f"{existing_date}T{start_time}")
+        new_end = datetime.fromisoformat(f"{existing_date}T{end_time}") if end_time else None
+
+        cur.execute(
+            """
+            UPDATE rehearsals
+            SET start_time=%s, end_time=%s, location=%s, notes=%s
+            WHERE id=%s
+            """,
+            (new_start, new_end, location, notes, rehearsal_id),
+        )
+
+        if sections is not None:
+            cur.execute("DELETE FROM rehearsal_sections WHERE rehearsal_id=%s", (rehearsal_id,))
+            for sid in sections:
+                cur.execute(
+                    "INSERT INTO rehearsal_sections (rehearsal_id, section_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                    (rehearsal_id, sid),
+                )
+
     return {"status": "success"}
 
 

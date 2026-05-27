@@ -5,7 +5,10 @@
 const VALID_CHOIR_ADMIN_TABS = ["schedule", "upcoming", "subs", "sections", "invitations"];
 
 let choirSections = [];
+let choirRehearsals = [];
 let activeRehearsalId = null;
+let activeChoirNotesId = null;
+let activeChoirEditId = null;
 
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -86,7 +89,7 @@ function populateSectionSelects() {
 }
 
 function renderSectionCheckboxes() {
-    ["section-checkboxes"].forEach(id => {
+    ["section-checkboxes", "edit-section-checkboxes"].forEach(id => {
         const box = document.getElementById(id);
         if (!box) return;
         if (choirSections.length === 0) {
@@ -151,7 +154,8 @@ async function loadUpcoming() {
     try {
         const res = await fetch(`${API}/choir/rehearsals`, { credentials: "include" });
         const rehearsals = await res.json();
-        if (!rehearsals.length) {
+        choirRehearsals = Array.isArray(rehearsals) ? rehearsals : [];
+        if (!choirRehearsals.length) {
             list.innerHTML = `<em class="empty-note">No upcoming rehearsals.</em>`;
             return;
         }
@@ -161,7 +165,7 @@ async function loadUpcoming() {
         const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
         const byMonth = {};
-        rehearsals.forEach(r => {
+        choirRehearsals.forEach(r => {
             const d = new Date(r.date + "T00:00:00");
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             const label = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -201,29 +205,136 @@ async function loadUpcoming() {
                             <div class="rehearsal-roles">${fmtTime(r.start_time)}${r.end_time ? " – " + fmtTime(r.end_time) : ""}</div>
                             ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
                             <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
-                            ${r.notes ? `<em class="rehearsal-leaders">${escapeHtml(r.notes)}</em>` : ""}
+                            ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
                         </div>
                         <div class="rehearsal-row-actions">
+                            <button class="subtle-btn add-reh-notes-btn" data-id="${r.id}">Create Rehearsal Notes</button>
+                            <button class="subtle-btn view-reh-notes-btn" data-id="${r.id}">View Rehearsal Notes</button>
+                            <button class="subtle-btn edit-reh-btn" data-id="${r.id}">Edit</button>
                             <button class="subtle-btn view-absences-btn" data-id="${r.id}" data-date="${r.date}">
                                 Absences &amp; Subs
                             </button>
-                            <button class="subtle-btn delete-reh-btn" data-id="${r.id}" style="color:var(--danger);">
+                            <button class="subtle-btn danger-btn delete-reh-btn" data-id="${r.id}">
                                 Delete
                             </button>
                         </div>
                     </div>
                 `;
+                card.querySelector(".add-reh-notes-btn").addEventListener("click", () => openChoirAddNotesModal(r.id));
+                card.querySelector(".view-reh-notes-btn").addEventListener("click", () => openChoirViewNotesModal(r.id));
+                card.querySelector(".edit-reh-btn").addEventListener("click", () => openChoirEditModal(r.id));
+                card.querySelector(".view-absences-btn").addEventListener("click", () => openAbsenceModal(r.id, r.date));
+                card.querySelector(".delete-reh-btn").addEventListener("click", () => deleteRehearsal(r.id));
                 body.appendChild(card);
             });
             list.appendChild(body);
         });
-
-        list.querySelectorAll(".view-absences-btn").forEach(btn =>
-            btn.addEventListener("click", () => openAbsenceModal(btn.dataset.id, btn.dataset.date)));
-        list.querySelectorAll(".delete-reh-btn").forEach(btn =>
-            btn.addEventListener("click", () => deleteRehearsal(btn.dataset.id)));
     } catch (e) { console.error(e); list.innerHTML = `<em class="empty-note">Failed to load.</em>`; }
 }
+
+// ── Choir rehearsal notes ────────────────────────────────────────────────────
+
+function openChoirViewNotesModal(id) {
+    const r = choirRehearsals.find(x => x.id === Number(id));
+    const title = document.getElementById("choir-view-notes-title");
+    const body = document.getElementById("choir-view-notes-body");
+    title.textContent = r ? `Rehearsal Notes — ${fmtDate(r.date)}` : "Rehearsal Notes";
+    if (r && r.notes) {
+        body.innerHTML = r.notes.split("\n").map(p => `<p>${escapeHtml(p)}</p>`).join("");
+    } else {
+        body.innerHTML = `<em class="empty-note">No notes yet.</em>`;
+    }
+    document.getElementById("choir-view-notes-modal").classList.remove("hidden");
+}
+
+function openChoirAddNotesModal(id) {
+    activeChoirNotesId = Number(id);
+    const r = choirRehearsals.find(x => x.id === activeChoirNotesId);
+    document.getElementById("choir-add-notes-title").textContent =
+        r ? `Create Rehearsal Notes — ${fmtDate(r.date)}` : "Create Rehearsal Notes";
+    document.getElementById("choir-add-notes-textarea").value = r ? (r.notes || "") : "";
+    document.getElementById("choir-add-notes-msg").textContent = "";
+    document.getElementById("choir-add-notes-modal").classList.remove("hidden");
+}
+
+async function sendChoirNotes() {
+    const notes = document.getElementById("choir-add-notes-textarea").value.trim();
+    const msg = document.getElementById("choir-add-notes-msg");
+    msg.textContent = "";
+    if (!notes) { msg.textContent = "Notes cannot be empty."; return; }
+    const btn = document.getElementById("send-choir-notes-btn");
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    try {
+        const res = await fetch(`${API}/choir/rehearsals/${activeChoirNotesId}/notes`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ notes }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            msg.className = "msg success-msg";
+            msg.textContent = `Notes sent to ${data.emailed} recipient${data.emailed !== 1 ? "s" : ""}.`;
+            const r = choirRehearsals.find(x => x.id === activeChoirNotesId);
+            if (r) r.notes = notes;
+            setTimeout(() => document.getElementById("choir-add-notes-modal").classList.add("hidden"), 1500);
+        } else {
+            msg.className = "msg";
+            msg.textContent = data.message || "Failed.";
+        }
+    } catch (e) { msg.textContent = "Server error."; }
+    finally { btn.disabled = false; btn.textContent = "Send Notes"; }
+}
+
+
+// ── Choir rehearsal edit ──────────────────────────────────────────────────────
+
+function openChoirEditModal(id) {
+    activeChoirEditId = Number(id);
+    const r = choirRehearsals.find(x => x.id === activeChoirEditId);
+    if (!r) return;
+    document.getElementById("edit-choir-reh-start").value = r.start_time || "";
+    document.getElementById("edit-choir-reh-end").value = r.end_time || "";
+    document.getElementById("edit-choir-reh-location").value = r.location || "";
+    document.getElementById("edit-choir-reh-notes").value = r.notes || "";
+    document.getElementById("choir-reh-edit-msg").textContent = "";
+    // Pre-tick called sections
+    document.querySelectorAll("#edit-section-checkboxes input").forEach(cb => {
+        cb.checked = r.called_sections && r.called_sections.includes(Number(cb.value));
+    });
+    document.getElementById("choir-reh-edit-modal").classList.remove("hidden");
+}
+
+async function saveChoirRehearsalEdit() {
+    const msg = document.getElementById("choir-reh-edit-msg");
+    msg.textContent = "";
+    const start_time = document.getElementById("edit-choir-reh-start").value;
+    const end_time = document.getElementById("edit-choir-reh-end").value;
+    const location = document.getElementById("edit-choir-reh-location").value.trim();
+    const notes = document.getElementById("edit-choir-reh-notes").value.trim();
+    const sections = [...document.querySelectorAll("#edit-section-checkboxes input:checked")]
+        .map(cb => Number(cb.value));
+    if (!start_time) { msg.textContent = "Start time is required."; return; }
+    const btn = document.getElementById("save-choir-reh-edit-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+        const res = await fetch(`${API}/choir/rehearsals/${activeChoirEditId}`, {
+            method: "PUT", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            document.getElementById("choir-reh-edit-modal").classList.add("hidden");
+            await loadUpcoming();
+        } else {
+            msg.className = "msg"; msg.textContent = data.message || "Failed.";
+        }
+    } catch (e) { msg.textContent = "Server error."; }
+    finally { btn.disabled = false; btn.textContent = "Save Changes"; }
+}
+
 
 async function deleteRehearsal(id) {
     if (!confirm("Delete this rehearsal? This cannot be undone.")) return;
@@ -737,6 +848,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Upcoming tab
     document.getElementById("refresh-upcoming-btn").addEventListener("click", loadUpcoming);
+
+    // Choir rehearsal notes modals
+    document.getElementById("close-choir-view-notes-btn").addEventListener("click", () =>
+        document.getElementById("choir-view-notes-modal").classList.add("hidden"));
+    document.getElementById("choir-view-notes-modal").addEventListener("click", e => {
+        if (e.target.id === "choir-view-notes-modal") e.target.classList.add("hidden");
+    });
+    document.getElementById("send-choir-notes-btn").addEventListener("click", sendChoirNotes);
+    document.getElementById("close-choir-add-notes-btn").addEventListener("click", () =>
+        document.getElementById("choir-add-notes-modal").classList.add("hidden"));
+    document.getElementById("choir-add-notes-modal").addEventListener("click", e => {
+        if (e.target.id === "choir-add-notes-modal") e.target.classList.add("hidden");
+    });
+
+    // Choir rehearsal edit modal
+    document.getElementById("save-choir-reh-edit-btn").addEventListener("click", saveChoirRehearsalEdit);
+    document.getElementById("close-choir-reh-edit-btn").addEventListener("click", () =>
+        document.getElementById("choir-reh-edit-modal").classList.add("hidden"));
+    document.getElementById("choir-reh-edit-modal").addEventListener("click", e => {
+        if (e.target.id === "choir-reh-edit-modal") e.target.classList.add("hidden");
+    });
 
     // Absence modal
     document.getElementById("absence-modal-close").addEventListener("click", () => {

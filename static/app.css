@@ -1180,6 +1180,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   }
 
   /* Modal: full screen on mobile */
+
   .modal-overlay {
     padding: 0;
     align-items: flex-end;
@@ -1190,6 +1191,66 @@ tbody tr:hover td { background: var(--accent-soft); }
     border-bottom-right-radius: 0;
     max-height: 85vh;
   }
+}
+
+/* ======================================================
+   VERY NARROW (max-width: 480px) — stack day-rows vertically
+====================================================== */
+@media (max-width: 480px) {
+  .day-row {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+  .day-checkbox-label {
+    grid-column: 1 / -1;
+  }
+  .day-arrow {
+    display: none;
+  }
+}
+
+/* ======================================================
+   TIMELINE VIEW — upcoming rehearsal buckets
+====================================================== */
+
+.timeline-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  cursor: pointer;
+  padding: var(--space-3) 0;
+  font-size: 1rem;
+  color: var(--text);
+  text-align: left;
+}
+.timeline-toggle:hover {
+  color: var(--accent);
+}
+.timeline-chevron {
+  font-style: normal;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.timeline-count {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.875rem;
+}
+.timeline-body.hidden {
+  display: none;
+}
+.timeline-today-header {
+  font-size: 1rem;
+  font-weight: 600;
+  padding: var(--space-3) 0 var(--space-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+  color: var(--text);
 }
 
 /* ======================================================
