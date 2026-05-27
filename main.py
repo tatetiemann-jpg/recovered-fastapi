@@ -6784,7 +6784,14 @@ def choir_contact_one_sub(payload: dict, request: Request):
     tier = "preferred" if row[3] else "regular"
     sent = _send_sub_emails([sub], sub_request_id, rehearsal_id, section_id, tier)
     if sent == 0:
-        return {"status": "fail", "message": "Already contacted or email failed"}
+        with db_cursor() as cur:
+            cur.execute(
+                "SELECT id FROM sub_contacts WHERE sub_request_id=%s AND sub_id=%s",
+                (sub_request_id, sub_id),
+            )
+            if cur.fetchone():
+                return {"status": "fail", "message": "Already contacted"}
+        return {"status": "fail", "message": "Email failed to send"}
     return {"status": "success"}
 
 

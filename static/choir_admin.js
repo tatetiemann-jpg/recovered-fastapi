@@ -610,7 +610,12 @@ async function contactOneSub(subId, btn) {
             btn.textContent = "Sent ✓";
             btn.style.color = "var(--success)";
         } else {
-            btn.textContent = data.message === "Already contacted" ? "Already sent" : "Failed";
+            if (data.message === "Already contacted") {
+                btn.textContent = "Already contacted";
+                btn.style.color = "var(--muted)";
+            } else {
+                btn.textContent = "Email failed";
+            }
             btn.disabled = false;
         }
     } catch (e) {
