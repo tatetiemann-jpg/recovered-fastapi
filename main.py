@@ -940,22 +940,22 @@ def signup_page(request: Request):
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request):
-    return templates.TemplateResponse(request, "admin.html")
+    return templates.TemplateResponse(request, "opera/admin.html")
 
 
 @app.get("/teacher", response_class=HTMLResponse)
 def teacher_page(request: Request):
-    return templates.TemplateResponse(request, "teacher.html")
+    return templates.TemplateResponse(request, "opera/teacher.html")
 
 
 @app.get("/student", response_class=HTMLResponse)
 def student_page(request: Request):
-    return templates.TemplateResponse(request, "student.html")
+    return templates.TemplateResponse(request, "opera/student.html")
 
 
 @app.get("/orchestra-member", response_class=HTMLResponse)
 def orchestra_member_page(request: Request):
-    return templates.TemplateResponse(request, "orchestra_member.html")
+    return templates.TemplateResponse(request, "opera/orchestra_member.html")
 
 
 # ========================================================
@@ -5267,17 +5267,17 @@ def require_choir_member(request: Request):
 
 @app.get("/choir/admin", response_class=HTMLResponse)
 def choir_admin_page(request: Request):
-    return templates.TemplateResponse(request, "choir_admin.html")
+    return templates.TemplateResponse(request, "choir/choir_admin.html")
 
 @app.get("/choir/member", response_class=HTMLResponse)
 def choir_member_page(request: Request):
-    return templates.TemplateResponse(request, "choir_member.html")
+    return templates.TemplateResponse(request, "choir/choir_member.html")
 
 @app.get("/choir/sub-response/{token}", response_class=HTMLResponse)
 def choir_sub_response_page(token: str, r: Optional[str] = None, request: Request = None):
     """Public page â€” sub clicks Accept or Decline from their email link."""
     if not r or r not in ("accepted", "declined"):
-        return templates.TemplateResponse(request, "choir_sub_response.html",
+        return templates.TemplateResponse(request, "choir/choir_sub_response.html",
             {"message": "Invalid response link.", "success": False})
 
     with db_cursor(commit=True) as cur:
@@ -5293,18 +5293,18 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
         row = cur.fetchone()
 
         if not row:
-            return templates.TemplateResponse(request, "choir_sub_response.html",
+            return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": "This link is invalid or has expired.", "success": False})
 
         sc_id, req_id, existing_response, sub_id, req_status, rehearsal_id, section_id, sub_name, sub_email = row
 
         if existing_response != "pending":
-            return templates.TemplateResponse(request, "choir_sub_response.html",
+            return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": "You have already responded - thank you!", "success": True})
 
         if req_status == "filled":
             cur.execute("UPDATE sub_contacts SET response='declined', responded_at=NOW() WHERE id=%s", (sc_id,))
-            return templates.TemplateResponse(request, "choir_sub_response.html",
+            return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": "This position has already been filled. Thank you for your willingness!", "success": True})
 
         cur.execute("UPDATE sub_contacts SET response=%s, responded_at=NOW() WHERE id=%s", (r, sc_id))
@@ -5340,7 +5340,7 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
                 text_body = f"{sub_name} accepted the sub for {reh[1]} on {rdate}."
                 send_email(admin_row[0], f"Sub confirmed - {reh[1]}", html_body, text_body)
 
-            return templates.TemplateResponse(request, "choir_sub_response.html",
+            return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": f"You are confirmed! Thank you, {sub_name}. See you at rehearsal.", "success": True, "sub_token": token})
 
         # r == "declined": notify the choir member who created the request
@@ -5369,7 +5369,7 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
             )
             send_email(mbr_email, f"Sub declined - {sec_nm} on {rdate_d}", dec_html, dec_text)
 
-    return templates.TemplateResponse(request, "choir_sub_response.html",
+    return templates.TemplateResponse(request, "choir/choir_sub_response.html",
         {"message": "Your response has been recorded. Thank you!", "success": True})
 
 
@@ -6873,7 +6873,7 @@ def require_ensemble_member(request: Request):
 
 @app.get("/ensemble/member", response_class=HTMLResponse)
 def ensemble_member_page(request: Request):
-    return templates.TemplateResponse(request, "ensemble_member.html")
+    return templates.TemplateResponse(request, "choir/ensemble_member.html")
 
 
 @app.get("/ensemble/me")
