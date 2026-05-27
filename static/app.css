@@ -711,6 +711,16 @@ tbody tr:hover td { background: var(--accent-soft); }
   border-top: 1px solid var(--border);
 }
 
+.materials-link {
+  display: inline-block;
+  margin-top: var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.materials-link:hover { text-decoration: underline; }
+
 .rehearsal-notes-preview {
   display: block;
   margin-top: var(--space-2);

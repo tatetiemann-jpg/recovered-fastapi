@@ -171,6 +171,7 @@ function buildRehearsalCard(r, container) {
                 <div class="rehearsal-roles">${timeRange}</div>
                 ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
                 ${r.notes ? `<em class="rehearsal-leaders">${escapeHtml(r.notes)}</em>` : ""}
+                ${r.materials_url ? `<a href="${escapeHtml(r.materials_url)}" target="_blank" rel="noopener" class="materials-link">View Materials</a>` : ""}
             </div>
             <div class="rehearsal-row-actions">${actionButtons}</div>
         </div>

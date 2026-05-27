@@ -53,6 +53,7 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
+            cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS rehearsal_members (
                     rehearsal_id INT REFERENCES rehearsals(id) ON DELETE CASCADE,
@@ -5483,7 +5484,7 @@ def choir_get_rehearsals(request: Request):
     with db_cursor() as cur:
         cur.execute("""
             SELECT r.id, r.start_time, r.end_time, r.location, r.notes,
-                   COALESCE(r.choir_type, 'choir') AS choir_type
+                   COALESCE(r.choir_type, 'choir') AS choir_type, r.materials_url
             FROM rehearsals r
             WHERE r.org_id = %s AND r.start_time::date >= CURRENT_DATE
             ORDER BY r.start_time
@@ -5492,7 +5493,7 @@ def choir_get_rehearsals(request: Request):
 
         result = []
         for r in rows:
-            rid, rstart, rend, location, notes, ctype = r
+            rid, rstart, rend, location, notes, ctype, mat_url = r
             cur.execute("SELECT section_id FROM rehearsal_sections WHERE rehearsal_id=%s", (rid,))
             called = [row[0] for row in cur.fetchall()]
             if role != "admin" and section_id and called and section_id not in called:
@@ -5514,6 +5515,7 @@ def choir_get_rehearsals(request: Request):
                 "called_sections": called,
                 "choir_type": ctype,
                 "individual_members": indiv,
+                "materials_url": mat_url or "",
             })
         return result
 
@@ -5530,6 +5532,7 @@ def choir_create_rehearsal(payload: dict, request: Request):
     if choir_type not in ("choir", "ensemble"):
         choir_type = "choir"
     members = payload.get("members", [])
+    materials_url = (payload.get("materials_url") or "").strip() or None
 
     if not date or not start:
         return {"status": "fail", "message": "Date and start time required"}
@@ -5544,9 +5547,9 @@ def choir_create_rehearsal(payload: dict, request: Request):
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type, choir_type)
-            VALUES (%s, %s, %s, %s, %s, 'vocal', 'full', %s) RETURNING id
-        """, (user["org_id"], start_dt, end_dt, location, notes, choir_type))
+            INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type, choir_type, materials_url)
+            VALUES (%s, %s, %s, %s, %s, 'vocal', 'full', %s, %s) RETURNING id
+        """, (user["org_id"], start_dt, end_dt, location, notes, choir_type, materials_url))
         rid = cur.fetchone()[0]
         for sid in sections:
             cur.execute("""
@@ -5696,6 +5699,7 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
     choir_type = payload.get("choir_type")
     if choir_type and choir_type not in ("choir", "ensemble"):
         choir_type = None
+    materials_url = (payload.get("materials_url") or "").strip() or None
 
     if not start_time:
         return {"status": "fail", "message": "start_time required"}
@@ -5715,13 +5719,13 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
 
         if choir_type:
             cur.execute(
-                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s, choir_type=%s WHERE id=%s",
-                (new_start, new_end, location, notes, choir_type, rehearsal_id),
+                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s, choir_type=%s, materials_url=%s WHERE id=%s",
+                (new_start, new_end, location, notes, choir_type, materials_url, rehearsal_id),
             )
         else:
             cur.execute(
-                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s WHERE id=%s",
-                (new_start, new_end, location, notes, rehearsal_id),
+                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s, materials_url=%s WHERE id=%s",
+                (new_start, new_end, location, notes, materials_url, rehearsal_id),
             )
 
         if sections is not None:
@@ -5747,6 +5751,10 @@ def choir_create_rehearsals_bulk(payload: dict, request: Request):
     location = (payload.get("location") or "").strip() or None
     notes = (payload.get("notes") or "").strip() or None
     sections = payload.get("sections", [])
+    choir_type = payload.get("choir_type", "choir")
+    if choir_type not in ("choir", "ensemble"):
+        choir_type = "choir"
+    materials_url = (payload.get("materials_url") or "").strip() or None
 
     if not start_date or not end_date or not days or not start:
         return {"status": "fail", "message": "Start date, end date, days, and start time are required"}
@@ -5787,9 +5795,9 @@ def choir_create_rehearsals_bulk(payload: dict, request: Request):
                 start_dt = datetime.fromisoformat(f"{rdate}T{start}")
                 end_dt = datetime.fromisoformat(f"{rdate}T{end}") if end else None
                 cur.execute("""
-                    INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type)
-                    VALUES (%s, %s, %s, %s, %s, 'vocal', 'full') RETURNING id
-                """, (user["org_id"], start_dt, end_dt, location, notes))
+                    INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type, choir_type, materials_url)
+                    VALUES (%s, %s, %s, %s, %s, 'vocal', 'full', %s, %s) RETURNING id
+                """, (user["org_id"], start_dt, end_dt, location, notes, choir_type, materials_url))
                 rid = cur.fetchone()[0]
                 for sid in sections:
                     cur.execute("""
@@ -6871,7 +6879,7 @@ def ensemble_rehearsals(request: Request):
     with db_cursor() as cur:
         cur.execute("""
             SELECT DISTINCT r.id, r.start_time, r.end_time, r.location, r.notes,
-                   r.choir_type
+                   r.choir_type, r.materials_url
             FROM rehearsals r
             LEFT JOIN rehearsal_sections rs ON rs.rehearsal_id = r.id
             LEFT JOIN choir_sections cs ON cs.id = rs.section_id
@@ -6889,7 +6897,7 @@ def ensemble_rehearsals(request: Request):
         rows = cur.fetchall()
     result = []
     for row in rows:
-        rid, start, end, location, notes, choir_type = row
+        rid, start, end, location, notes, choir_type, mat_url = row
         result.append({
             "id": rid,
             "date": start.strftime("%Y-%m-%d"),
@@ -6897,6 +6905,7 @@ def ensemble_rehearsals(request: Request):
             "end_time": end.strftime("%H:%M") if end else None,
             "location": location or "",
             "notes": notes or "",
+            "materials_url": mat_url or "",
         })
     return result
 

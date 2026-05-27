@@ -24,6 +24,7 @@
     <button class="tab-btn" data-tab="upcoming">Upcoming</button>
     <button class="tab-btn" data-tab="subs">Subs</button>
     <button class="tab-btn" data-tab="sections">Sections</button>
+    <button class="tab-btn" data-tab="ensemble">Ensemble</button>
     <button class="tab-btn" data-tab="invitations">Invitations</button>
   </nav>
 
@@ -98,6 +99,9 @@
       <label for="reh-notes">Notes</label>
       <textarea id="reh-notes" rows="3" placeholder="Bring your music, warm-up starts on time…"></textarea>
 
+      <label for="reh-materials-url">Materials Link</label>
+      <input id="reh-materials-url" type="url" placeholder="https://sharepoint.com/…">
+
       <button id="create-reh-btn" style="margin-top:var(--space-3);background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">
         Schedule Rehearsal
       </button>
@@ -167,6 +171,15 @@
       <h2>Sections</h2>
       <p id="sections-reh-hint" class="hint"></p>
       <div id="sections-roster"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- ENSEMBLE TAB -->
+  <section class="tab-panel" data-tab-panel="ensemble">
+    <div class="box">
+      <h2>Ensemble Members</h2>
+      <p class="hint">Members of the contemporary ensemble managed by this organization.</p>
+      <div id="ensemble-members-list"><em class="empty-note">Loading…</em></div>
     </div>
   </section>
 
@@ -274,6 +287,8 @@
     <div id="edit-section-checkboxes" class="checkbox-row"></div>
     <label for="edit-choir-reh-notes">Notes</label>
     <textarea id="edit-choir-reh-notes" rows="3"></textarea>
+    <label for="edit-choir-reh-materials">Materials Link</label>
+    <input id="edit-choir-reh-materials" type="url" placeholder="https://sharepoint.com/…">
     <div class="modal-actions">
       <button id="save-choir-reh-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Changes</button>
       <button id="close-choir-reh-edit-btn">Cancel</button>
@@ -298,6 +313,6 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir_admin.js?v=9"></script>
+<script src="/static/choir_admin.js?v=10"></script>
 </body>
 </html>

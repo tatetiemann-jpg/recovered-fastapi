@@ -2,7 +2,7 @@
 // CHOIR ADMIN DASHBOARD
 // ======================================================
 
-const VALID_CHOIR_ADMIN_TABS = ["schedule", "upcoming", "subs", "sections", "invitations"];
+const VALID_CHOIR_ADMIN_TABS = ["schedule", "upcoming", "subs", "sections", "ensemble", "invitations"];
 
 let choirSections = [];
 let choirRehearsals = [];
@@ -48,6 +48,7 @@ function setActiveTab(tabName) {
     if (tabName === "upcoming") loadUpcoming();
     if (tabName === "subs") loadSubRoster();
     if (tabName === "sections") loadSections();
+    if (tabName === "ensemble") loadEnsembleMembers();
     if (tabName === "invitations") loadInvitations();
 }
 
@@ -120,6 +121,7 @@ async function createRehearsal() {
     const sections = [...document.querySelectorAll("#section-checkboxes input:checked")]
         .map(cb => Number(cb.value));
     const choir_type = document.querySelector("input[name='reh-choir-type']:checked")?.value || "choir";
+    const materials_url = document.getElementById("reh-materials-url").value.trim();
 
     if (!date || !start) { msg.textContent = "Date and start time are required."; return; }
 
@@ -127,7 +129,7 @@ async function createRehearsal() {
         const res = await fetch(`${API}/choir/rehearsals`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections, choir_type }),
+            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections, choir_type, materials_url: materials_url || null }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -138,6 +140,7 @@ async function createRehearsal() {
             document.getElementById("reh-end").value = "";
             document.getElementById("reh-location").value = "";
             document.getElementById("reh-notes").value = "";
+            document.getElementById("reh-materials-url").value = "";
             document.querySelectorAll("#section-checkboxes input").forEach(cb => cb.checked = false);
         } else {
             msg.className = "msg";
@@ -211,6 +214,7 @@ async function loadUpcoming() {
                             ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
                             <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
                             ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+                            ${r.materials_url ? `<a href="${escapeHtml(r.materials_url)}" target="_blank" rel="noopener" class="materials-link">View Materials</a>` : ""}
                         </div>
                         <div class="rehearsal-row-actions">
                             <button class="subtle-btn add-reh-notes-btn" data-id="${r.id}">Create Rehearsal Notes</button>
@@ -311,6 +315,7 @@ function openChoirEditModal(id) {
     document.getElementById("edit-choir-reh-end").value = r.end_time || "";
     document.getElementById("edit-choir-reh-location").value = r.location || "";
     document.getElementById("edit-choir-reh-notes").value = r.notes || "";
+    document.getElementById("edit-choir-reh-materials").value = r.materials_url || "";
     document.getElementById("choir-reh-edit-msg").textContent = "";
     const ctype = r.choir_type || "choir";
     document.querySelectorAll("input[name='edit-reh-choir-type']").forEach(rb => {
@@ -332,6 +337,7 @@ async function saveChoirRehearsalEdit() {
     const sections = [...document.querySelectorAll("#edit-section-checkboxes input:checked")]
         .map(cb => Number(cb.value));
     const choir_type = document.querySelector("input[name='edit-reh-choir-type']:checked")?.value || "choir";
+    const materials_url = document.getElementById("edit-choir-reh-materials").value.trim();
     if (!start_time) { msg.textContent = "Start time is required."; return; }
     const btn = document.getElementById("save-choir-reh-edit-btn");
     btn.disabled = true;
@@ -340,7 +346,7 @@ async function saveChoirRehearsalEdit() {
         const res = await fetch(`${API}/choir/rehearsals/${activeChoirEditId}`, {
             method: "PUT", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections, choir_type }),
+            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections, choir_type, materials_url: materials_url || null }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -918,6 +924,32 @@ async function loadInvitations() {
         });
     } catch (e) { list.innerHTML = `<em class="empty-note">Failed to load.</em>`; }
 }
+
+async function loadEnsembleMembers() {
+    const list = document.getElementById("ensemble-members-list");
+    list.innerHTML = `<em class="empty-note">Loading…</em>`;
+    try {
+        const res = await fetch(`${API}/ensemble/members`, { credentials: "include" });
+        const members = await res.json();
+        if (!members.length) {
+            list.innerHTML = `<em class="empty-note">No ensemble members yet. Invite them from the Invitations tab.</em>`;
+            return;
+        }
+        list.innerHTML = "";
+        members.forEach(m => {
+            const row = document.createElement("div");
+            row.className = "sections-singer-row";
+            row.innerHTML = `
+                <div>
+                    <strong>${escapeHtml(m.fullname)}</strong>
+                    ${m.instrument ? `<span class="hint" style="margin-left:var(--space-2);">${escapeHtml(m.instrument)}</span>` : ""}
+                </div>
+            `;
+            list.appendChild(row);
+        });
+    } catch (e) { list.innerHTML = `<em class="empty-note">Failed to load.</em>`; }
+}
+
 
 async function sendInvitation() {
     const msg = document.getElementById("invite-msg");
