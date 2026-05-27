@@ -7006,11 +7006,11 @@ def list_all_choir_members(request: Request):
     user = require_choir_admin(request)
     with db_cursor() as cur:
         cur.execute("""
-            SELECT u.id, u.fullname, u.role, u.instrument, s.name AS section_name
+            SELECT u.id, u.fullname, u.role, u.instrument, cs.name AS section_name
             FROM users u
-            LEFT JOIN sections s ON s.id = u.section_id
+            LEFT JOIN choir_sections cs ON cs.id = u.section_id
             WHERE u.org_id = %s AND u.role IN ('choir_member', 'ensemble_member')
-            ORDER BY s.name NULLS LAST, u.fullname
+            ORDER BY cs.sort_order NULLS LAST, u.fullname
         """, (user["org_id"],))
         rows = cur.fetchall()
     result = []
