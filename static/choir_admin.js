@@ -119,6 +119,7 @@ async function createRehearsal() {
     const notes = document.getElementById("reh-notes").value.trim();
     const sections = [...document.querySelectorAll("#section-checkboxes input:checked")]
         .map(cb => Number(cb.value));
+    const choir_type = document.querySelector("input[name='reh-choir-type']:checked")?.value || "choir";
 
     if (!date || !start) { msg.textContent = "Date and start time are required."; return; }
 
@@ -126,7 +127,7 @@ async function createRehearsal() {
         const res = await fetch(`${API}/choir/rehearsals`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections }),
+            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections, choir_type }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -192,16 +193,20 @@ async function loadUpcoming() {
             list.appendChild(monthHdr);
 
             group.forEach(r => {
+                const isEnsemble = r.choir_type === "ensemble";
                 const calledNames = choirSections
                     .filter(s => r.called_sections.includes(s.id))
-                    .map(s => s.name).join(", ") || "Full choir";
+                    .map(s => s.name).join(", ") || (isEnsemble ? "Full ensemble" : "Full choir");
+                const typeLabel = isEnsemble ? "Contemporary Ensemble" : "Choir";
 
                 const card = document.createElement("div");
                 card.className = "rehearsal-card";
+                card.dataset.rehearsalId = r.id;
                 card.innerHTML = `
                     <div class="rehearsal-row-header">
                         <div>
                             <strong>${fmtDate(r.date)}</strong>
+                            <span class="rehearsal-type-badge ${isEnsemble ? "badge-ensemble" : "badge-choir"}">${typeLabel}</span>
                             <div class="rehearsal-roles">${fmtTime(r.start_time)}${r.end_time ? " – " + fmtTime(r.end_time) : ""}</div>
                             ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
                             <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
@@ -219,12 +224,21 @@ async function loadUpcoming() {
                             </button>
                         </div>
                     </div>
+                    <div class="individual-members-section">
+                        <div class="individual-members-header">
+                            <span class="individual-members-label">Individually called</span>
+                            <button class="subtle-btn add-individual-btn" data-id="${r.id}">+ Add member</button>
+                        </div>
+                        <div class="individual-members-list" data-rehearsal="${r.id}">${renderIndividualMembers(r.individual_members || [], r.id)}</div>
+                    </div>
                 `;
                 card.querySelector(".add-reh-notes-btn").addEventListener("click", () => openChoirAddNotesModal(r.id));
                 card.querySelector(".view-reh-notes-btn").addEventListener("click", () => openChoirViewNotesModal(r.id));
                 card.querySelector(".edit-reh-btn").addEventListener("click", () => openChoirEditModal(r.id));
                 card.querySelector(".view-absences-btn").addEventListener("click", () => openAbsenceModal(r.id, r.date));
                 card.querySelector(".delete-reh-btn").addEventListener("click", () => deleteRehearsal(r.id));
+                card.querySelector(".add-individual-btn").addEventListener("click", () => openAddIndividualModal(r.id));
+                wireRemoveButtons(card, r.id);
                 body.appendChild(card);
             });
             list.appendChild(body);
@@ -298,7 +312,10 @@ function openChoirEditModal(id) {
     document.getElementById("edit-choir-reh-location").value = r.location || "";
     document.getElementById("edit-choir-reh-notes").value = r.notes || "";
     document.getElementById("choir-reh-edit-msg").textContent = "";
-    // Pre-tick called sections
+    const ctype = r.choir_type || "choir";
+    document.querySelectorAll("input[name='edit-reh-choir-type']").forEach(rb => {
+        rb.checked = rb.value === ctype;
+    });
     document.querySelectorAll("#edit-section-checkboxes input").forEach(cb => {
         cb.checked = r.called_sections && r.called_sections.includes(Number(cb.value));
     });
@@ -314,6 +331,7 @@ async function saveChoirRehearsalEdit() {
     const notes = document.getElementById("edit-choir-reh-notes").value.trim();
     const sections = [...document.querySelectorAll("#edit-section-checkboxes input:checked")]
         .map(cb => Number(cb.value));
+    const choir_type = document.querySelector("input[name='edit-reh-choir-type']:checked")?.value || "choir";
     if (!start_time) { msg.textContent = "Start time is required."; return; }
     const btn = document.getElementById("save-choir-reh-edit-btn");
     btn.disabled = true;
@@ -322,7 +340,7 @@ async function saveChoirRehearsalEdit() {
         const res = await fetch(`${API}/choir/rehearsals/${activeChoirEditId}`, {
             method: "PUT", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections }),
+            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections, choir_type }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -333,6 +351,123 @@ async function saveChoirRehearsalEdit() {
         }
     } catch (e) { msg.textContent = "Server error."; }
     finally { btn.disabled = false; btn.textContent = "Save Changes"; }
+}
+
+
+// ── Individual member calling ─────────────────────────────────────────────────
+
+let allOrgMembers = [];
+
+async function loadOrgMembers() {
+    if (allOrgMembers.length) return;
+    try {
+        const [choirRes, ensRes] = await Promise.all([
+            fetch(`${API}/choir/sections-roster`, { credentials: "include" }).catch(() => null),
+            fetch(`${API}/ensemble/members`, { credentials: "include" }),
+        ]);
+        const ensData = ensRes.ok ? await ensRes.json() : [];
+        allOrgMembers = Array.isArray(ensData) ? ensData : [];
+    } catch (e) { console.error(e); }
+}
+
+function renderIndividualMembers(members, rehearsalId) {
+    if (!members || !members.length) return `<span class="hint">None</span>`;
+    return members.map(m =>
+        `<span class="individual-member-chip">
+            ${escapeHtml(m.fullname)}${m.instrument ? ` <em>(${escapeHtml(m.instrument)})</em>` : ""}
+            <button class="chip-remove-btn" data-uid="${m.id}" data-rid="${rehearsalId}" title="Remove">&times;</button>
+        </span>`
+    ).join("");
+}
+
+function wireRemoveButtons(card, rehearsalId) {
+    card.querySelectorAll(".chip-remove-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            const uid = Number(btn.dataset.uid);
+            await removeIndividualMember(rehearsalId, uid);
+        });
+    });
+}
+
+async function removeIndividualMember(rehearsalId, userId) {
+    try {
+        const res = await fetch(`${API}/choir/rehearsals/${rehearsalId}/members/${userId}`, {
+            method: "DELETE", credentials: "include",
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            const r = choirRehearsals.find(x => x.id === rehearsalId);
+            if (r) r.individual_members = data.individual_members;
+            const listEl = document.querySelector(`.individual-members-list[data-rehearsal="${rehearsalId}"]`);
+            if (listEl) {
+                listEl.innerHTML = renderIndividualMembers(data.individual_members, rehearsalId);
+                wireRemoveButtons(listEl.closest(".rehearsal-card"), rehearsalId);
+            }
+        }
+    } catch (e) { console.error(e); }
+}
+
+let addIndividualRehearsalId = null;
+let ensembleMembers = [];
+
+async function openAddIndividualModal(rehearsalId) {
+    addIndividualRehearsalId = rehearsalId;
+    const modal = document.getElementById("add-individual-modal");
+    const list = document.getElementById("add-individual-list");
+    modal.classList.remove("hidden");
+    list.innerHTML = `<em class="empty-note">Loading…</em>`;
+    try {
+        const res = await fetch(`${API}/ensemble/members`, { credentials: "include" });
+        ensembleMembers = await res.json();
+        const r = choirRehearsals.find(x => x.id === rehearsalId);
+        const already = new Set((r?.individual_members || []).map(m => m.id));
+        if (!ensembleMembers.length) {
+            list.innerHTML = `<em class="empty-note">No ensemble members found.</em>`;
+            return;
+        }
+        list.innerHTML = "";
+        ensembleMembers.forEach(m => {
+            const row = document.createElement("div");
+            row.className = "individual-member-row";
+            row.innerHTML = `
+                <span>${escapeHtml(m.fullname)}${m.instrument ? ` <em>(${escapeHtml(m.instrument)})</em>` : ""}</span>
+                <button class="subtle-btn${already.has(m.id) ? " disabled-btn" : ""}" data-uid="${m.id}" ${already.has(m.id) ? "disabled" : ""}>
+                    ${already.has(m.id) ? "Added" : "Add"}
+                </button>
+            `;
+            if (!already.has(m.id)) {
+                row.querySelector("button").addEventListener("click", () => addIndividualMember(m.id, row));
+            }
+            list.appendChild(row);
+        });
+    } catch (e) { list.innerHTML = `<em class="empty-note">Failed to load.</em>`; }
+}
+
+async function addIndividualMember(userId, rowEl) {
+    const btn = rowEl.querySelector("button");
+    btn.disabled = true;
+    btn.textContent = "Adding…";
+    try {
+        const res = await fetch(`${API}/choir/rehearsals/${addIndividualRehearsalId}/members`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            btn.textContent = "Added";
+            btn.classList.add("disabled-btn");
+            const r = choirRehearsals.find(x => x.id === addIndividualRehearsalId);
+            if (r) r.individual_members = data.individual_members;
+            const listEl = document.querySelector(`.individual-members-list[data-rehearsal="${addIndividualRehearsalId}"]`);
+            if (listEl) {
+                listEl.innerHTML = renderIndividualMembers(data.individual_members, addIndividualRehearsalId);
+                wireRemoveButtons(listEl.closest(".rehearsal-card"), addIndividualRehearsalId);
+            }
+        } else {
+            btn.disabled = false; btn.textContent = "Add";
+        }
+    } catch (e) { btn.disabled = false; btn.textContent = "Add"; }
 }
 
 
@@ -789,12 +924,18 @@ async function sendInvitation() {
     msg.textContent = "";
     const email = document.getElementById("invite-email").value.trim().toLowerCase();
     const fullname = document.getElementById("invite-name").value.trim();
+    const role = document.querySelector("input[name='invite-member-type']:checked")?.value || "choir_member";
+    const instrument = document.getElementById("invite-instrument").value.trim();
     if (!email) { msg.textContent = "Email is required."; return; }
+    if (role === "ensemble_member" && !instrument) {
+        msg.textContent = "Instrument / Role is required for ensemble members.";
+        return;
+    }
     try {
         const res = await fetch(`${API}/admin/invite`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, fullname: fullname || null, role: "student" }),
+            body: JSON.stringify({ email, fullname: fullname || null, role, instrument: instrument || null }),
         });
         const data = await res.json();
         if (data.status === "success" || data.message?.includes("sent")) {
@@ -802,6 +943,9 @@ async function sendInvitation() {
             msg.textContent = `Invitation sent to ${email}.`;
             document.getElementById("invite-email").value = "";
             document.getElementById("invite-name").value = "";
+            document.getElementById("invite-instrument").value = "";
+            document.querySelector("input[name='invite-member-type'][value='choir_member']").checked = true;
+            document.getElementById("invite-instrument-row").classList.add("hidden");
             loadInvitations();
         } else {
             msg.className = "msg"; msg.textContent = data.message || "Failed.";
@@ -831,6 +975,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             const isRange = radio.value === "range";
             document.getElementById("reh-single-fields").classList.toggle("hidden", isRange);
             document.getElementById("reh-bulk-fields").classList.toggle("hidden", !isRange);
+        });
+    });
+
+    // Invite — member type toggle shows/hides instrument field
+    document.querySelectorAll("input[name='invite-member-type']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            document.getElementById("invite-instrument-row").classList.toggle("hidden", radio.value !== "ensemble_member");
         });
     });
 
@@ -868,6 +1019,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("choir-reh-edit-modal").classList.add("hidden"));
     document.getElementById("choir-reh-edit-modal").addEventListener("click", e => {
         if (e.target.id === "choir-reh-edit-modal") e.target.classList.add("hidden");
+    });
+
+    // Add individual member modal
+    document.getElementById("close-add-individual-btn").addEventListener("click", () =>
+        document.getElementById("add-individual-modal").classList.add("hidden"));
+    document.getElementById("add-individual-modal").addEventListener("click", e => {
+        if (e.target.id === "add-individual-modal") e.target.classList.add("hidden");
     });
 
     // Absence modal

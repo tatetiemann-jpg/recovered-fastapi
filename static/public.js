@@ -124,7 +124,9 @@ async function login() {
 
         // Server sets an HttpOnly session cookie. Redirect based on org_type then role.
         if (data.org_type === "choir") {
-            location.href = data.role === "admin" ? "/choir/admin" : "/choir/member";
+            if (data.role === "admin") location.href = "/choir/admin";
+            else if (data.role === "ensemble_member") location.href = "/ensemble/member";
+            else location.href = "/choir/member";
         } else if (["admin", "head_admin", "system_admin", "orchestra_admin"].includes(data.role)) {
             location.href = "/admin";
         } else if (data.role === "teacher") {

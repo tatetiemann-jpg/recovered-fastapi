@@ -32,6 +32,12 @@
     <div class="box">
       <h2>Schedule a Rehearsal</h2>
 
+      <label>Rehearsal type <span class="required">*</span></label>
+      <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+        <label class="inline-check"><input type="radio" name="reh-choir-type" value="choir" checked> Choir</label>
+        <label class="inline-check"><input type="radio" name="reh-choir-type" value="ensemble"> Contemporary Ensemble</label>
+      </div>
+
       <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
         <label class="inline-check"><input type="radio" name="reh-mode" value="single" checked> Single date</label>
         <label class="inline-check"><input type="radio" name="reh-mode" value="range"> Date range</label>
@@ -167,12 +173,21 @@
   <!-- INVITATIONS TAB -->
   <section class="tab-panel" data-tab-panel="invitations">
     <div class="box">
-      <h2>Invite a Singer</h2>
-      <p class="hint">The singer will receive an email with a link to create their account.</p>
+      <h2>Invite a Member</h2>
+      <p class="hint">The member will receive an email with a link to create their account.</p>
       <label for="invite-email">Email <span class="required">*</span></label>
-      <input id="invite-email" type="email" placeholder="singer@example.com">
+      <input id="invite-email" type="email" placeholder="member@example.com">
       <label for="invite-name">Full name (optional)</label>
       <input id="invite-name" type="text" placeholder="Jane Smith">
+      <label>Member type <span class="required">*</span></label>
+      <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+        <label class="inline-check"><input type="radio" name="invite-member-type" value="choir_member" checked> Choir Member</label>
+        <label class="inline-check"><input type="radio" name="invite-member-type" value="ensemble_member"> Ensemble Member</label>
+      </div>
+      <div id="invite-instrument-row" class="hidden">
+        <label for="invite-instrument">Instrument / Role <span class="required">*</span></label>
+        <input id="invite-instrument" type="text" placeholder="e.g. First Violin, Piano, Cello">
+      </div>
       <button id="send-invite-btn" style="margin-top:var(--space-3);background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">
         Send Invitation
       </button>
@@ -238,6 +253,11 @@
   <div class="modal-card modal-large">
     <h3>Edit Rehearsal</h3>
     <input id="edit-choir-reh-id" type="hidden">
+    <label>Rehearsal type</label>
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="edit-reh-choir-type" value="choir" checked> Choir</label>
+      <label class="inline-check"><input type="radio" name="edit-reh-choir-type" value="ensemble"> Contemporary Ensemble</label>
+    </div>
     <div class="time-pair">
       <div>
         <label for="edit-choir-reh-start">Start time <span class="required">*</span></label>
@@ -250,7 +270,7 @@
     </div>
     <label for="edit-choir-reh-location">Location</label>
     <input id="edit-choir-reh-location" type="text" placeholder="e.g. Sanctuary">
-    <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full choir)</span></label>
+    <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
     <div id="edit-section-checkboxes" class="checkbox-row"></div>
     <label for="edit-choir-reh-notes">Notes</label>
     <textarea id="edit-choir-reh-notes" rows="3"></textarea>
@@ -262,10 +282,22 @@
   </div>
 </div>
 
+<!-- ADD INDIVIDUAL MEMBER MODAL -->
+<div id="add-individual-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3>Add Individual Member</h3>
+    <p class="hint">Select ensemble members to call individually for this rehearsal.</p>
+    <div id="add-individual-list"><em class="empty-note">Loading…</em></div>
+    <div class="modal-actions">
+      <button id="close-add-individual-btn">Done</button>
+    </div>
+  </div>
+</div>
+
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir_admin.js?v=8"></script>
+<script src="/static/choir_admin.js?v=9"></script>
 </body>
 </html>

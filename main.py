@@ -50,6 +50,16 @@ async def lifespan(app: FastAPI):
         print(f"✅ Neon connection pool initialized (max {_connection_pool.maxconn} connections).")
         with db_cursor(commit=True) as cur:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_token TEXT UNIQUE;")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
+            cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
+            cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS rehearsal_members (
+                    rehearsal_id INT REFERENCES rehearsals(id) ON DELETE CASCADE,
+                    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+                    PRIMARY KEY (rehearsal_id, user_id)
+                );
+            """)
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -1515,6 +1525,7 @@ def admin_invite(payload: dict, request: Request):
     specialty_hint = (payload.get("specialty_hint") or "").strip() or None
     teacher_type = (payload.get("teacher_type") or "vocal").strip()
     teacher_instruments = (payload.get("teacher_instruments") or "").strip().lower()
+    instrument = (payload.get("instrument") or "").strip() or None
 
     if teacher_type not in ("vocal", "instrumental"):
         teacher_type = "vocal"
@@ -1528,7 +1539,7 @@ def admin_invite(payload: dict, request: Request):
     allowed_by_role = {
         "system_admin":    {"head_admin", "admin", "student"},
         "head_admin":      {"admin", "orchestra_admin", "teacher"},
-        "admin":           {"teacher", "student"} if org_type == "choir" else {"teacher"},
+        "admin":           {"teacher", "student", "choir_member", "ensemble_member"} if org_type == "choir" else {"teacher"},
         "orchestra_admin": {"teacher"},
     }
     allowed = allowed_by_role.get(admin_user["role"], set())
@@ -1597,11 +1608,11 @@ def admin_invite(payload: dict, request: Request):
         cur.execute("""
             INSERT INTO invitations (token, email, role, org_id, invited_by,
                                      fullname_hint, specialty_hint, expires_at,
-                                     teacher_type, teacher_instruments)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                     teacher_type, teacher_instruments, instrument)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (token, email, role, org_id, admin_user["id"],
               fullname_hint, specialty_hint, expires,
-              teacher_type, teacher_instruments))
+              teacher_type, teacher_instruments, instrument))
 
     invite_url = f"{APP_URL}/accept-invite?token={token}"
 
@@ -1705,7 +1716,7 @@ def invite_info(token: str):
             SELECT i.email, i.role, i.fullname_hint, i.specialty_hint,
                    i.expires_at, i.accepted_at, i.teacher_type, i.teacher_instruments,
                    o.name AS org_name, i.org_id,
-                   COALESCE(o.org_type, 'opera') AS org_type
+                   COALESCE(o.org_type, 'opera') AS org_type, i.instrument
             FROM invitations i
             LEFT JOIN organizations o ON o.id = i.org_id
             WHERE i.token = %s
@@ -1715,7 +1726,7 @@ def invite_info(token: str):
     if not row:
         return {"valid": False, "message": "Invalid invitation link."}
 
-    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id, org_type = row
+    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id, org_type, inv_instrument = row
     if accepted:
         return {"valid": False, "message": "This invitation has already been used."}
     if expires < datetime.now(EST):
@@ -1732,6 +1743,7 @@ def invite_info(token: str):
         "org_name": org_name or "",
         "org_id": org_id,
         "org_type": org_type,
+        "instrument": inv_instrument or "",
     }
 
 
@@ -1787,7 +1799,7 @@ def accept_invite(payload: dict):
     with db_cursor(commit=True) as cur:
         cur.execute("""
             SELECT email, role, org_id, expires_at, accepted_at,
-                   teacher_type, teacher_instruments
+                   teacher_type, teacher_instruments, instrument
             FROM invitations
             WHERE token = %s
         """, (token,))
@@ -1796,7 +1808,7 @@ def accept_invite(payload: dict):
         if not row:
             return {"status": "fail", "message": "Invalid invitation link."}
 
-        email, role, org_id, expires, accepted, t_type, t_instruments = row
+        email, role, org_id, expires, accepted, t_type, t_instruments, inv_instrument = row
         if accepted:
             return {"status": "fail", "message": "This invitation has already been used."}
         if expires < datetime.now(EST):
@@ -1812,14 +1824,14 @@ def accept_invite(payload: dict):
                     org_id, username, email, password_hash,
                     fullname, role, voice_type, specialty, pw_version,
                     email_verified, theme, teacher_type, teacher_instruments,
-                    section_id
+                    section_id, instrument
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'bcrypt', TRUE, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'bcrypt', TRUE, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 org_id, username, email, hash_password_bcrypt(password),
                 fullname, role, voice_type, specialty, theme, t_type, t_instruments,
-                section_id
+                section_id, inv_instrument
             ))
             user_id = cur.fetchone()[0]
         except pg_errors.UniqueViolation:
@@ -5470,7 +5482,8 @@ def choir_get_rehearsals(request: Request):
 
     with db_cursor() as cur:
         cur.execute("""
-            SELECT r.id, r.start_time, r.end_time, r.location, r.notes
+            SELECT r.id, r.start_time, r.end_time, r.location, r.notes,
+                   COALESCE(r.choir_type, 'choir') AS choir_type
             FROM rehearsals r
             WHERE r.org_id = %s AND r.start_time::date >= CURRENT_DATE
             ORDER BY r.start_time
@@ -5479,11 +5492,18 @@ def choir_get_rehearsals(request: Request):
 
         result = []
         for r in rows:
-            rid, rstart, rend, location, notes = r
+            rid, rstart, rend, location, notes, ctype = r
             cur.execute("SELECT section_id FROM rehearsal_sections WHERE rehearsal_id=%s", (rid,))
             called = [row[0] for row in cur.fetchall()]
             if role != "admin" and section_id and called and section_id not in called:
                 continue
+            cur.execute("""
+                SELECT u.id, u.fullname, u.instrument
+                FROM rehearsal_members rm
+                JOIN users u ON u.id = rm.user_id
+                WHERE rm.rehearsal_id = %s
+            """, (rid,))
+            indiv = [{"id": rw[0], "fullname": rw[1], "instrument": rw[2] or ""} for rw in cur.fetchall()]
             result.append({
                 "id": rid,
                 "date": rstart.date().isoformat(),
@@ -5492,6 +5512,8 @@ def choir_get_rehearsals(request: Request):
                 "location": location or "",
                 "notes": notes or "",
                 "called_sections": called,
+                "choir_type": ctype,
+                "individual_members": indiv,
             })
         return result
 
@@ -5504,6 +5526,10 @@ def choir_create_rehearsal(payload: dict, request: Request):
     location = (payload.get("location") or "").strip()
     notes = (payload.get("notes") or "").strip()
     sections = payload.get("sections", [])
+    choir_type = payload.get("choir_type", "choir")
+    if choir_type not in ("choir", "ensemble"):
+        choir_type = "choir"
+    members = payload.get("members", [])
 
     if not date or not start:
         return {"status": "fail", "message": "Date and start time required"}
@@ -5518,15 +5544,20 @@ def choir_create_rehearsal(payload: dict, request: Request):
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type)
-            VALUES (%s, %s, %s, %s, %s, 'vocal', 'full') RETURNING id
-        """, (user["org_id"], start_dt, end_dt, location, notes))
+            INSERT INTO rehearsals (org_id, start_time, end_time, location, notes, rehearsal_type, attendance_type, choir_type)
+            VALUES (%s, %s, %s, %s, %s, 'vocal', 'full', %s) RETURNING id
+        """, (user["org_id"], start_dt, end_dt, location, notes, choir_type))
         rid = cur.fetchone()[0]
         for sid in sections:
             cur.execute("""
                 INSERT INTO rehearsal_sections (rehearsal_id, section_id)
                 VALUES (%s, %s) ON CONFLICT DO NOTHING
             """, (rid, sid))
+        for uid in members:
+            cur.execute("""
+                INSERT INTO rehearsal_members (rehearsal_id, user_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """, (rid, uid))
 
     return {"status": "success", "rehearsal_id": rid}
 
@@ -5537,6 +5568,51 @@ def choir_delete_rehearsal(rehearsal_id: int, request: Request):
         cur.execute("DELETE FROM rehearsals WHERE id=%s AND org_id=%s",
                     (rehearsal_id, user["org_id"]))
     return {"status": "success"}
+
+
+@app.post("/choir/rehearsals/{rehearsal_id}/members")
+def choir_add_rehearsal_member(rehearsal_id: int, payload: dict, request: Request):
+    user = require_choir_admin(request)
+    user_id = payload.get("user_id")
+    if not user_id:
+        return {"status": "fail", "message": "user_id required"}
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT id FROM rehearsals WHERE id=%s AND org_id=%s", (rehearsal_id, user["org_id"]))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Rehearsal not found"}
+        cur.execute("""
+            INSERT INTO rehearsal_members (rehearsal_id, user_id)
+            VALUES (%s, %s) ON CONFLICT DO NOTHING
+        """, (rehearsal_id, user_id))
+        cur.execute("""
+            SELECT u.id, u.fullname, u.instrument
+            FROM rehearsal_members rm
+            JOIN users u ON u.id = rm.user_id
+            WHERE rm.rehearsal_id = %s
+        """, (rehearsal_id,))
+        members = [{"id": r[0], "fullname": r[1], "instrument": r[2] or ""} for r in cur.fetchall()]
+    return {"status": "success", "individual_members": members}
+
+
+@app.delete("/choir/rehearsals/{rehearsal_id}/members/{user_id}")
+def choir_remove_rehearsal_member(rehearsal_id: int, user_id: int, request: Request):
+    admin = require_choir_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT id FROM rehearsals WHERE id=%s AND org_id=%s", (rehearsal_id, admin["org_id"]))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Rehearsal not found"}
+        cur.execute(
+            "DELETE FROM rehearsal_members WHERE rehearsal_id=%s AND user_id=%s",
+            (rehearsal_id, user_id)
+        )
+        cur.execute("""
+            SELECT u.id, u.fullname, u.instrument
+            FROM rehearsal_members rm
+            JOIN users u ON u.id = rm.user_id
+            WHERE rm.rehearsal_id = %s
+        """, (rehearsal_id,))
+        members = [{"id": r[0], "fullname": r[1], "instrument": r[2] or ""} for r in cur.fetchall()]
+    return {"status": "success", "individual_members": members}
 
 
 @app.post("/choir/rehearsals/{rehearsal_id}/notes")
@@ -5616,7 +5692,10 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
     end_time = payload.get("end_time") or None
     location = (payload.get("location") or "").strip() or None
     notes = (payload.get("notes") or "").strip() or None
-    sections = payload.get("sections")  # list of int section IDs, or None = don't change
+    sections = payload.get("sections")
+    choir_type = payload.get("choir_type")
+    if choir_type and choir_type not in ("choir", "ensemble"):
+        choir_type = None
 
     if not start_time:
         return {"status": "fail", "message": "start_time required"}
@@ -5634,14 +5713,16 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
         new_start = datetime.fromisoformat(f"{existing_date}T{start_time}")
         new_end = datetime.fromisoformat(f"{existing_date}T{end_time}") if end_time else None
 
-        cur.execute(
-            """
-            UPDATE rehearsals
-            SET start_time=%s, end_time=%s, location=%s, notes=%s
-            WHERE id=%s
-            """,
-            (new_start, new_end, location, notes, rehearsal_id),
-        )
+        if choir_type:
+            cur.execute(
+                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s, choir_type=%s WHERE id=%s",
+                (new_start, new_end, location, notes, choir_type, rehearsal_id),
+            )
+        else:
+            cur.execute(
+                "UPDATE rehearsals SET start_time=%s, end_time=%s, location=%s, notes=%s WHERE id=%s",
+                (new_start, new_end, location, notes, rehearsal_id),
+            )
 
         if sections is not None:
             cur.execute("DELETE FROM rehearsal_sections WHERE rehearsal_id=%s", (rehearsal_id,))
@@ -6747,5 +6828,148 @@ def choir_contact_preferred_subs(payload: dict, request: Request):
         """, (sub_request_id,))
 
     return {"status": "success", "sent": sent, "total": len(preferred)}
+
+
+# ========================================================
+# ENSEMBLE MEMBER APP
+# ========================================================
+
+def require_ensemble_member(request: Request):
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    if user.get("org_type") != "choir":
+        raise HTTPException(status_code=403, detail="Choir org required")
+    if user.get("role") != "ensemble_member":
+        raise HTTPException(status_code=403, detail="Ensemble member required")
+    return user
+
+
+@app.get("/ensemble/member", response_class=HTMLResponse)
+def ensemble_member_page(request: Request):
+    return templates.TemplateResponse(request, "ensemble_member.html")
+
+
+@app.get("/ensemble/me")
+def ensemble_me(request: Request):
+    user = require_ensemble_member(request)
+    return {
+        "id": user["id"],
+        "fullname": user.get("fullname", ""),
+        "instrument": user.get("instrument", ""),
+        "username": user.get("username", ""),
+        "theme": user.get("theme", "queen-of-the-night"),
+    }
+
+
+@app.get("/ensemble/rehearsals")
+def ensemble_rehearsals(request: Request):
+    user = require_ensemble_member(request)
+    org_id = user["org_id"]
+    user_id = user["id"]
+    today = datetime.now(EST).date()
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT r.id, r.start_time, r.end_time, r.location, r.notes,
+                   r.choir_type
+            FROM rehearsals r
+            LEFT JOIN rehearsal_sections rs ON rs.rehearsal_id = r.id
+            LEFT JOIN choir_sections cs ON cs.id = rs.section_id
+            LEFT JOIN rehearsal_members rm ON rm.rehearsal_id = r.id AND rm.user_id = %s
+            WHERE r.org_id = %s
+              AND r.choir_type = 'ensemble'
+              AND r.start_time >= %s
+              AND (
+                  (SELECT COUNT(*) FROM rehearsal_sections rs2 WHERE rs2.rehearsal_id = r.id) = 0
+                  OR cs.org_id = %s
+                  OR rm.user_id IS NOT NULL
+              )
+            ORDER BY r.start_time
+        """, (user_id, org_id, today, org_id))
+        rows = cur.fetchall()
+    result = []
+    for row in rows:
+        rid, start, end, location, notes, choir_type = row
+        result.append({
+            "id": rid,
+            "date": start.strftime("%Y-%m-%d"),
+            "start_time": start.strftime("%H:%M"),
+            "end_time": end.strftime("%H:%M") if end else None,
+            "location": location or "",
+            "notes": notes or "",
+        })
+    return result
+
+
+@app.get("/ensemble/absences")
+def ensemble_absences(request: Request):
+    user = require_ensemble_member(request)
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT rehearsal_id FROM absence_requests WHERE singer_id = %s",
+            (user["id"],)
+        )
+        rows = cur.fetchall()
+    return [r[0] for r in rows]
+
+
+@app.post("/ensemble/absence")
+def ensemble_mark_absent(payload: dict, request: Request):
+    user = require_ensemble_member(request)
+    rehearsal_id = payload.get("rehearsal_id")
+    if not rehearsal_id:
+        return {"status": "fail", "message": "rehearsal_id required"}
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO absence_requests (rehearsal_id, singer_id)
+            VALUES (%s, %s) ON CONFLICT DO NOTHING
+        """, (rehearsal_id, user["id"]))
+        cur.execute("""
+            SELECT r.start_time, o.name
+            FROM rehearsals r
+            JOIN organizations o ON o.id = r.org_id
+            WHERE r.id = %s
+        """, (rehearsal_id,))
+        row = cur.fetchone()
+        cur.execute(
+            "SELECT email FROM users WHERE org_id = %s AND role IN ('admin', 'head_admin') AND email IS NOT NULL",
+            (user["org_id"],)
+        )
+        admins = [r[0] for r in cur.fetchall()]
+    if row:
+        reh_date = row[0].strftime("%B %-d, %Y") if hasattr(row[0], "strftime") else str(row[0])
+        org_name = row[1]
+        subject = f"{user['fullname']} marked absent — {reh_date}"
+        html_body = f"""<p><strong>{user['fullname']}</strong> ({user.get('instrument','')}) has marked themselves absent for the ensemble rehearsal on <strong>{reh_date}</strong> at {org_name}.</p>"""
+        text_body = f"{user['fullname']} ({user.get('instrument','')}) marked absent for ensemble rehearsal on {reh_date} at {org_name}."
+        for email in admins:
+            send_email(email, subject, html_body, text_body)
+    return {"status": "success"}
+
+
+@app.delete("/ensemble/absence/{rehearsal_id}")
+def ensemble_undo_absent(rehearsal_id: int, request: Request):
+    user = require_ensemble_member(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM absence_requests WHERE rehearsal_id = %s AND singer_id = %s",
+            (rehearsal_id, user["id"])
+        )
+    return {"status": "success"}
+
+
+@app.get("/ensemble/members")
+def list_ensemble_members(request: Request):
+    """Choir admin: list all ensemble members in the org."""
+    user = require_choir_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, fullname, instrument
+            FROM users
+            WHERE org_id = %s AND role = 'ensemble_member'
+            ORDER BY fullname
+        """, (user["org_id"],))
+        rows = cur.fetchall()
+    return [{"id": r[0], "fullname": r[1], "instrument": r[2] or ""} for r in rows]
 
 

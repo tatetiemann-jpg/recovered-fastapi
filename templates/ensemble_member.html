@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>My Ensemble</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+  <div class="top-actions">
+    <button id="logout-btn">Logout</button>
+    <button id="open-edit-account-btn">Edit Account</button>
+  </div>
+
+  <h1 id="welcome">Welcome</h1>
+  <p id="instrument-display" class="hint"></p>
+
+  <nav class="tab-nav">
+    <button class="tab-btn" data-tab="upcoming">Upcoming</button>
+  </nav>
+
+  <!-- UPCOMING TAB -->
+  <section class="tab-panel" data-tab-panel="upcoming">
+    <div class="box">
+      <h2>Upcoming Rehearsals</h2>
+      <div id="rehearsal-timeline"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+</div><!-- /.app-container -->
+
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js?v=2"></script>
+<script src="/static/themes.js?v=2"></script>
+<script src="/static/app.js?v=2"></script>
+<script src="/static/ensemble_member.js?v=1"></script>
+</body>
+</html>
