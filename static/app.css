@@ -737,6 +737,71 @@ tbody tr:hover td { background: var(--accent-soft); }
   color: var(--text);
 }
 
+.member-section-group {
+  width: 100%;
+  margin-bottom: var(--space-2);
+}
+
+.member-section-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: var(--space-1) 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.member-section-group > summary::before {
+  content: "\25B6";
+  font-size: 0.65rem;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.member-section-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.member-section-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+}
+
+.notes-existing-wrap {
+  position: relative;
+  padding-right: 28px;
+}
+
+.notes-delete-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.notes-existing-wrap:hover .notes-delete-btn {
+  opacity: 1;
+}
+
+.notes-delete-btn:hover {
+  color: var(--danger, #c0392b);
+}
+
 .rehearsal-type-badge {
   display: inline-block;
   font-size: 0.72rem;

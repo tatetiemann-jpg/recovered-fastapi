@@ -5686,6 +5686,17 @@ def choir_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request
     return {"status": "success", "emailed": sent}
 
 
+@app.delete("/choir/rehearsals/{rehearsal_id}/notes")
+def choir_delete_rehearsal_notes(rehearsal_id: int, request: Request):
+    user = require_choir_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE rehearsals SET notes=NULL WHERE id=%s AND org_id=%s",
+            (rehearsal_id, user["org_id"]),
+        )
+    return {"status": "success"}
+
+
 @app.put("/choir/rehearsals/{rehearsal_id}")
 def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
     user = require_choir_admin(request)
@@ -6980,5 +6991,30 @@ def list_ensemble_members(request: Request):
         """, (user["org_id"],))
         rows = cur.fetchall()
     return [{"id": r[0], "fullname": r[1], "instrument": r[2] or ""} for r in rows]
+
+
+@app.get("/choir/members/all")
+def list_all_choir_members(request: Request):
+    """Choir admin: list choir members + ensemble members for individual calling."""
+    user = require_choir_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT u.id, u.fullname, u.role, u.instrument, s.name AS section_name
+            FROM users u
+            LEFT JOIN sections s ON s.id = u.section_id
+            WHERE u.org_id = %s AND u.role IN ('choir_member', 'ensemble_member')
+            ORDER BY s.name NULLS LAST, u.fullname
+        """, (user["org_id"],))
+        rows = cur.fetchall()
+    result = []
+    for uid, fullname, role, instrument, section_name in rows:
+        result.append({
+            "id": uid,
+            "fullname": fullname,
+            "role": role,
+            "section_name": section_name or "",
+            "instrument": instrument or "",
+        })
+    return result
 
 

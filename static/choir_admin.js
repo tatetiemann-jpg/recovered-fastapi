@@ -9,6 +9,7 @@ let choirRehearsals = [];
 let activeRehearsalId = null;
 let activeChoirNotesId = null;
 let activeChoirEditId = null;
+let allChoirMembersCache = null;
 
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,22 +75,61 @@ async function loadSectionsData() {
 async function renderIndividualMemberCheckboxes() {
     const box = document.getElementById("individual-member-checkboxes");
     if (!box) return;
-    try {
-        const res = await fetch(`${API}/ensemble/members`, { credentials: "include" });
-        const members = await res.json();
+
+    if (!allChoirMembersCache) {
+        try {
+            const res = await fetch(`${API}/choir/members/all`, { credentials: "include" });
+            allChoirMembersCache = await res.json();
+        } catch (e) {
+            box.innerHTML = `<em class="empty-note">Failed to load members.</em>`;
+            return;
+        }
+    }
+
+    const type = document.querySelector("input[name='reh-choir-type']:checked")?.value || "choir";
+    box.innerHTML = "";
+
+    if (type === "choir") {
+        const members = allChoirMembersCache.filter(m => m.role === "choir_member");
+        if (!members.length) {
+            box.innerHTML = `<em class="empty-note">No choir members yet.</em>`;
+            return;
+        }
+        const bySection = {};
+        members.forEach(m => {
+            const sec = m.section_name || "Other";
+            if (!bySection[sec]) bySection[sec] = [];
+            bySection[sec].push(m);
+        });
+        Object.entries(bySection).forEach(([section, list]) => {
+            const details = document.createElement("details");
+            details.className = "member-section-group";
+            const summary = document.createElement("summary");
+            summary.textContent = `${section} (${list.length})`;
+            details.appendChild(summary);
+            const inner = document.createElement("div");
+            inner.className = "member-section-inner";
+            list.forEach(m => {
+                const lbl = document.createElement("label");
+                lbl.className = "checkbox-pill";
+                lbl.innerHTML = `<input type="checkbox" value="${m.id}"> ${escapeHtml(m.fullname)}`;
+                inner.appendChild(lbl);
+            });
+            details.appendChild(inner);
+            box.appendChild(details);
+        });
+    } else {
+        const members = allChoirMembersCache.filter(m => m.role === "ensemble_member");
         if (!members.length) {
             box.innerHTML = `<em class="empty-note">No ensemble members yet.</em>`;
             return;
         }
-        box.innerHTML = "";
         members.forEach(m => {
-            const label = document.createElement("label");
-            label.className = "checkbox-pill";
-            label.innerHTML = `<input type="checkbox" value="${m.id}"> ${escapeHtml(m.fullname)}${m.instrument ? ` <em>(${escapeHtml(m.instrument)})</em>` : ""}`;
-            box.appendChild(label);
+            const lbl = document.createElement("label");
+            lbl.className = "checkbox-pill";
+            lbl.innerHTML = `<input type="checkbox" value="${m.id}"> ${escapeHtml(m.fullname)}${m.instrument ? ` <em>(${escapeHtml(m.instrument)})</em>` : ""}`;
+            box.appendChild(lbl);
         });
-    } catch (e) {
-        box.innerHTML = `<em class="empty-note">Failed to load members.</em>`;
     }
 }
 
@@ -279,17 +319,40 @@ function openChoirNotesModal(id) {
     const r = choirRehearsals.find(x => x.id === activeChoirNotesId);
     document.getElementById("choir-notes-modal-title").textContent =
         r ? `Rehearsal Notes — ${fmtDate(r.date)}` : "Rehearsal Notes";
+    renderChoirNotesExisting(r ? r.notes : null);
+    document.getElementById("choir-notes-textarea").value = r ? (r.notes || "") : "";
+    document.getElementById("choir-notes-msg").textContent = "";
+    document.getElementById("choir-notes-modal").classList.remove("hidden");
+}
+
+function renderChoirNotesExisting(notes) {
     const existing = document.getElementById("choir-notes-existing");
-    if (r && r.notes) {
-        existing.innerHTML = r.notes.split("\n").map(p => `<p>${escapeHtml(p)}</p>`).join("");
+    if (notes) {
+        existing.innerHTML = `
+            <div class="notes-existing-wrap">
+                <div class="notes-existing-text">${notes.split("\n").map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
+                <button type="button" class="notes-delete-btn" title="Delete notes" aria-label="Delete notes">&#x2715;</button>
+            </div>`;
+        existing.querySelector(".notes-delete-btn").addEventListener("click", deleteChoirNotes);
         existing.classList.remove("hidden");
     } else {
         existing.innerHTML = "";
         existing.classList.add("hidden");
     }
-    document.getElementById("choir-notes-textarea").value = r ? (r.notes || "") : "";
-    document.getElementById("choir-notes-msg").textContent = "";
-    document.getElementById("choir-notes-modal").classList.remove("hidden");
+}
+
+async function deleteChoirNotes() {
+    if (!confirm("Delete these rehearsal notes?")) return;
+    try {
+        await fetch(`${API}/choir/rehearsals/${activeChoirNotesId}/notes`, {
+            method: "DELETE", credentials: "include",
+        });
+        const r = choirRehearsals.find(x => x.id === activeChoirNotesId);
+        if (r) r.notes = null;
+        renderChoirNotesExisting(null);
+        document.getElementById("choir-notes-textarea").value = "";
+        document.getElementById("choir-notes-msg").textContent = "";
+    } catch (e) { console.error(e); }
 }
 
 async function sendChoirNotes() {
@@ -912,6 +975,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Load shared section data first
     await loadSectionsData();
+
+    // Schedule tab — rehearsal type toggle re-renders individual member list
+    document.querySelectorAll("input[name='reh-choir-type']").forEach(radio => {
+        radio.addEventListener("change", renderIndividualMemberCheckboxes);
+    });
 
     // Schedule tab — mode toggle
     document.querySelectorAll("input[name='reh-mode']").forEach(radio => {
