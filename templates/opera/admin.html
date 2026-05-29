@@ -70,33 +70,6 @@
             </div>
         </div>
 
-        <!-- Casting panel — revealed when a production is opened -->
-        <div class="box hidden" id="casting-panel" style="margin-top:var(--space-4);">
-            <div class="section-header">
-                <h2 id="casting-panel-title">Casting</h2>
-                <div class="casting-top-controls">
-                    <button id="manage-opera-students-btn" class="subtle-btn">Manage Roster</button>
-                    <button id="open-assign-roles-btn" class="subtle-btn">Assign Roles</button>
-                </div>
-            </div>
-
-            <!-- Production Staff -->
-            <div class="staff-section">
-                <div class="staff-header">
-                    <h3>Production Staff</h3>
-                    <button id="open-add-staff-btn" class="subtle-btn">+ Add Staff</button>
-                </div>
-                <div id="staff-list" class="staff-list">
-                    <em class="empty-note">No staff assigned yet.</em>
-                </div>
-            </div>
-
-            <hr>
-
-            <div id="casting-cast-columns" class="casting-cast-columns">
-                <em class="empty-note">Loading…</em>
-            </div>
-        </div>
 
     </section>
 
@@ -539,16 +512,11 @@
         </div>
         <p id="edit-prod-staff-msg" class="hint"></p>
 
-        <!-- Section: Vocalist Roster -->
-        <hr class="modal-section-divider">
-        <h4 class="modal-section-title">Vocalist Roster</h4>
-        <p class="hint">Check vocalists to include them in this production.</p>
-        <div id="edit-prod-roster-list"><em class="empty-note">Loading…</em></div>
-
         <!-- Section: Role Assignments -->
         <hr class="modal-section-divider">
         <h4 class="modal-section-title">Role Assignments</h4>
         <p class="hint">Assign vocalists to each role and cast combination.</p>
+        <input type="text" id="vocalist-search" placeholder="Search vocalists…">
         <div id="edit-prod-roles-grid"><em class="empty-note">Loading…</em></div>
 
         <div class="modal-actions" style="margin-top:var(--space-5);">

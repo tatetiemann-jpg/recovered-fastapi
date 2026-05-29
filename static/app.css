@@ -1708,28 +1708,50 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 /* Productions list row */
 .production-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: var(--space-2);
-  gap: var(--space-3);
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s;
 }
 
-.production-row.prod-active {
+.production-row.prod-expanded {
   border-color: var(--accent);
-  background: var(--hover);
 }
 
-.prod-main {
+.prod-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.prod-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  min-width: 0;
+  padding: var(--space-1) 0;
+}
+
+.prod-info {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
   flex: 1;
+}
+
+.prod-chevron {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.prod-chevron--open {
+  transform: rotate(90deg);
 }
 
 .prod-dates, .prod-casts {
@@ -1741,6 +1763,16 @@ tbody tr:hover td { background: var(--accent-soft); }
   display: flex;
   gap: var(--space-2);
   flex-shrink: 0;
+}
+
+.prod-inline-casting {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.prod-inline-casting.hidden {
+  display: none;
 }
 
 .staff-section {
