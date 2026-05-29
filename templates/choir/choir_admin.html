@@ -91,15 +91,8 @@
       <label for="reh-location">Location</label>
       <input id="reh-location" type="text" placeholder="e.g. Sanctuary">
 
-      <div id="sections-called-row">
-        <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
-        <div id="section-checkboxes" class="checkbox-row">
-          <em class="empty-note">Loading sections…</em>
-        </div>
-      </div>
-
-      <label>Individual members <span class="hint" style="font-style:italic;">(optional — leave unchecked if calling whole ensemble)</span></label>
-      <div id="individual-member-checkboxes" class="checkbox-row">
+      <label>Who's called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
+      <div id="unified-caller">
         <em class="empty-note">Loading…</em>
       </div>
 
@@ -280,8 +273,8 @@
     </div>
     <label for="edit-choir-reh-location">Location</label>
     <input id="edit-choir-reh-location" type="text" placeholder="e.g. Sanctuary">
-    <label>Sections called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
-    <div id="edit-section-checkboxes" class="checkbox-row"></div>
+    <label>Who's called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
+    <div id="edit-unified-caller"></div>
     <label for="edit-choir-reh-notes">Notes</label>
     <textarea id="edit-choir-reh-notes" rows="3"></textarea>
     <label for="edit-choir-reh-materials">Materials Link</label>
@@ -299,6 +292,6 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir/choir_admin.js?v=14"></script>
+<script src="/static/choir/choir_admin.js?v=15"></script>
 </body>
 </html>

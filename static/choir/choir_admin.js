@@ -67,71 +67,10 @@ async function loadSectionsData() {
         const data = await res.json();
         choirSections = Array.isArray(data) ? data : [];
         populateSectionSelects();
-        renderSectionCheckboxes();
     } catch (e) { console.error(e); }
-    await renderIndividualMemberCheckboxes();
+    await renderUnifiedCaller("unified-caller");
 }
 
-async function renderIndividualMemberCheckboxes() {
-    const box = document.getElementById("individual-member-checkboxes");
-    if (!box) return;
-
-    if (!allChoirMembersCache) {
-        try {
-            const res = await fetch(`${API}/choir/members/all`, { credentials: "include" });
-            allChoirMembersCache = await res.json();
-        } catch (e) {
-            box.innerHTML = `<em class="empty-note">Failed to load members.</em>`;
-            return;
-        }
-    }
-
-    const type = document.querySelector("input[name='reh-choir-type']:checked")?.value || "choir";
-    box.innerHTML = "";
-
-    if (type === "choir") {
-        const members = allChoirMembersCache.filter(m => m.role === "choir_member");
-        if (!members.length) {
-            box.innerHTML = `<em class="empty-note">No choir members yet.</em>`;
-            return;
-        }
-        const bySection = {};
-        members.forEach(m => {
-            const sec = m.section_name || "Other";
-            if (!bySection[sec]) bySection[sec] = [];
-            bySection[sec].push(m);
-        });
-        Object.entries(bySection).forEach(([section, list]) => {
-            const details = document.createElement("details");
-            details.className = "member-section-group";
-            const summary = document.createElement("summary");
-            summary.textContent = `${section} (${list.length})`;
-            details.appendChild(summary);
-            const inner = document.createElement("div");
-            inner.className = "member-section-inner";
-            list.forEach(m => {
-                const lbl = document.createElement("label");
-                lbl.className = "checkbox-pill";
-                lbl.innerHTML = `<input type="checkbox" value="${m.id}"> ${escapeHtml(m.fullname)}`;
-                inner.appendChild(lbl);
-            });
-            details.appendChild(inner);
-            box.appendChild(details);
-        });
-    } else {
-        const members = allChoirMembersCache.filter(m => m.role === "ensemble_member");
-        if (!members.length) {
-            box.innerHTML = `<em class="empty-note">No ensemble members yet.</em>`;
-            return;
-        }
-        members.forEach(m => {
-            const lbl = document.createElement("label");
-            lbl.className = "checkbox-pill";
-            lbl.innerHTML = `<input type="checkbox" value="${m.id}"> ${escapeHtml(m.fullname)}${m.instrument ? ` <em>(${escapeHtml(m.instrument)})</em>` : ""}`;
-            box.appendChild(lbl);
-        });
-    }
-}
 
 function populateSectionSelects() {
     const selects = ["sub-section-filter", "new-sub-section"];
@@ -152,22 +91,161 @@ function populateSectionSelects() {
 
 }
 
-function renderSectionCheckboxes() {
-    ["section-checkboxes", "edit-section-checkboxes"].forEach(id => {
-        const box = document.getElementById(id);
-        if (!box) return;
-        if (choirSections.length === 0) {
-            box.innerHTML = `<em class="empty-note">No sections configured.</em>`;
+// ── Unified caller (sections + individual members combined) ──────────────────
+
+async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCheckedMemberIds = []) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+
+    if (!allChoirMembersCache) {
+        try {
+            const res = await fetch(`${API}/choir/members/all`, { credentials: "include" });
+            allChoirMembersCache = await res.json();
+        } catch (e) {
+            box.innerHTML = `<em class="empty-note">Failed to load members.</em>`;
             return;
         }
-        box.innerHTML = "";
-        choirSections.forEach(s => {
-            const label = document.createElement("label");
-            label.className = "checkbox-pill";
-            label.innerHTML = `<input type="checkbox" value="${s.id}"> ${escapeHtml(s.name)}`;
-            box.appendChild(label);
+    }
+
+    const radioName = containerId === "edit-unified-caller" ? "edit-reh-choir-type" : "reh-choir-type";
+    const type = document.querySelector(`input[name='${radioName}']:checked`)?.value || "choir";
+    box.innerHTML = "";
+
+    if (type === "choir") {
+        const members = allChoirMembersCache.filter(m => m.role === "choir_member");
+        if (!members.length) {
+            box.innerHTML = `<em class="empty-note">No choir members yet.</em>`;
+            return;
+        }
+        // Build ordered section map from choirSections, then add any extras from members
+        const bySection = new Map();
+        choirSections.forEach(s => bySection.set(s.name, { sectionId: s.id, members: [] }));
+        members.forEach(m => {
+            const key = m.section_name || "Other";
+            if (!bySection.has(key)) bySection.set(key, { sectionId: m.section_id, members: [] });
+            bySection.get(key).members.push(m);
         });
+
+        bySection.forEach(({ sectionId, members: list }, sectionName) => {
+            if (!list.length) return;
+
+            const group = document.createElement("div");
+            group.className = "unified-section-group";
+            if (sectionId) group.dataset.sectionId = sectionId;
+
+            const header = document.createElement("div");
+            header.className = "unified-section-header";
+
+            const headerCb = document.createElement("input");
+            headerCb.type = "checkbox";
+            headerCb.className = "section-header-cb";
+            headerCb.checked = sectionId != null && preCheckedSectionIds.includes(sectionId);
+
+            const nameSpan = document.createElement("span");
+            nameSpan.className = "section-name";
+            nameSpan.textContent = `${sectionName} (${list.length})`;
+
+            const chevron = document.createElement("span");
+            chevron.className = "section-chevron";
+            chevron.textContent = "▶";
+
+            header.appendChild(headerCb);
+            header.appendChild(nameSpan);
+            header.appendChild(chevron);
+            group.appendChild(header);
+
+            const inner = document.createElement("div");
+            inner.className = "unified-section-inner";
+            if (!headerCb.checked) inner.classList.add("hidden");
+            else group.classList.add("open");
+
+            list.forEach(m => {
+                const lbl = document.createElement("label");
+                lbl.className = "checkbox-pill";
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.value = m.id;
+                cb.className = "member-cb";
+                cb.checked = headerCb.checked || preCheckedMemberIds.includes(m.id);
+                lbl.appendChild(cb);
+                lbl.appendChild(document.createTextNode(" " + m.fullname));
+                inner.appendChild(lbl);
+                cb.addEventListener("change", () => updateSectionHeaderState(headerCb, inner));
+            });
+            group.appendChild(inner);
+
+            headerCb.addEventListener("change", e => {
+                e.stopPropagation();
+                inner.querySelectorAll("input.member-cb").forEach(cb => cb.checked = headerCb.checked);
+                headerCb.indeterminate = false;
+                if (headerCb.checked) {
+                    group.classList.add("open");
+                    inner.classList.remove("hidden");
+                }
+            });
+
+            const toggleOpen = () => {
+                const isOpen = group.classList.toggle("open");
+                inner.classList.toggle("hidden", !isOpen);
+            };
+            nameSpan.addEventListener("click", toggleOpen);
+            chevron.addEventListener("click", toggleOpen);
+
+            box.appendChild(group);
+        });
+    } else {
+        const members = allChoirMembersCache.filter(m => m.role === "ensemble_member");
+        if (!members.length) {
+            box.innerHTML = `<em class="empty-note">No ensemble members yet.</em>`;
+            return;
+        }
+        members.forEach(m => {
+            const lbl = document.createElement("label");
+            lbl.className = "checkbox-pill";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.value = m.id;
+            cb.className = "member-cb";
+            cb.checked = preCheckedMemberIds.includes(m.id);
+            lbl.appendChild(cb);
+            lbl.appendChild(document.createTextNode(` ${m.fullname}`));
+            if (m.instrument) {
+                const em = document.createElement("em");
+                em.textContent = ` (${m.instrument})`;
+                lbl.appendChild(em);
+            }
+            box.appendChild(lbl);
+        });
+    }
+}
+
+function updateSectionHeaderState(headerCb, inner) {
+    const cbs = [...inner.querySelectorAll("input.member-cb")];
+    const n = cbs.filter(cb => cb.checked).length;
+    headerCb.checked = n === cbs.length && cbs.length > 0;
+    headerCb.indeterminate = n > 0 && n < cbs.length;
+}
+
+function collectFromUnifiedCaller(containerId) {
+    const box = document.getElementById(containerId);
+    const sections = [];
+    const members = [];
+    box.querySelectorAll(".unified-section-group").forEach(group => {
+        const sectionId = group.dataset.sectionId ? Number(group.dataset.sectionId) : null;
+        const memberCbs = [...group.querySelectorAll("input.member-cb")];
+        const checked = memberCbs.filter(cb => cb.checked);
+        if (!checked.length) return;
+        if (sectionId && checked.length === memberCbs.length) {
+            sections.push(sectionId);
+        } else {
+            checked.forEach(cb => members.push(Number(cb.value)));
+        }
     });
+    // Ensemble flat members (direct child labels)
+    box.querySelectorAll(":scope > label > input.member-cb:checked").forEach(cb => {
+        members.push(Number(cb.value));
+    });
+    return { sections, members };
 }
 
 
@@ -181,10 +259,7 @@ async function createRehearsal() {
     const end = document.getElementById("reh-end").value;
     const location = document.getElementById("reh-location").value.trim();
     const notes = document.getElementById("reh-notes").value.trim();
-    const sections = [...document.querySelectorAll("#section-checkboxes input:checked")]
-        .map(cb => Number(cb.value));
-    const members = [...document.querySelectorAll("#individual-member-checkboxes input:checked")]
-        .map(cb => Number(cb.value));
+    const { sections, members } = collectFromUnifiedCaller("unified-caller");
     const choir_type = document.querySelector("input[name='reh-choir-type']:checked")?.value || "choir";
     const materials_url = document.getElementById("reh-materials-url").value.trim();
 
@@ -206,8 +281,11 @@ async function createRehearsal() {
             document.getElementById("reh-location").value = "";
             document.getElementById("reh-notes").value = "";
             document.getElementById("reh-materials-url").value = "";
-            document.querySelectorAll("#section-checkboxes input").forEach(cb => cb.checked = false);
-            document.querySelectorAll("#individual-member-checkboxes input").forEach(cb => cb.checked = false);
+            document.querySelectorAll("#unified-caller input").forEach(cb => { cb.checked = false; cb.indeterminate = false; });
+            document.querySelectorAll("#unified-caller .unified-section-group").forEach(g => {
+                g.classList.remove("open");
+                g.querySelector(".unified-section-inner")?.classList.add("hidden");
+            });
         } else {
             msg.className = "msg";
             msg.textContent = data.message || "Failed to schedule.";
@@ -387,7 +465,7 @@ async function sendChoirNotes() {
 
 // ── Choir rehearsal edit ──────────────────────────────────────────────────────
 
-function openChoirEditModal(id) {
+async function openChoirEditModal(id) {
     activeChoirEditId = Number(id);
     const r = choirRehearsals.find(x => x.id === activeChoirEditId);
     if (!r) return;
@@ -401,9 +479,8 @@ function openChoirEditModal(id) {
     document.querySelectorAll("input[name='edit-reh-choir-type']").forEach(rb => {
         rb.checked = rb.value === ctype;
     });
-    document.querySelectorAll("#edit-section-checkboxes input").forEach(cb => {
-        cb.checked = r.called_sections && r.called_sections.includes(Number(cb.value));
-    });
+    const preMembers = (r.individual_members || []).map(m => m.id);
+    await renderUnifiedCaller("edit-unified-caller", r.called_sections || [], preMembers);
     document.getElementById("choir-reh-edit-modal").classList.remove("hidden");
 }
 
@@ -414,8 +491,7 @@ async function saveChoirRehearsalEdit() {
     const end_time = document.getElementById("edit-choir-reh-end").value;
     const location = document.getElementById("edit-choir-reh-location").value.trim();
     const notes = document.getElementById("edit-choir-reh-notes").value.trim();
-    const sections = [...document.querySelectorAll("#edit-section-checkboxes input:checked")]
-        .map(cb => Number(cb.value));
+    const { sections, members } = collectFromUnifiedCaller("edit-unified-caller");
     const choir_type = document.querySelector("input[name='edit-reh-choir-type']:checked")?.value || "choir";
     const materials_url = document.getElementById("edit-choir-reh-materials").value.trim();
     if (!start_time) { msg.textContent = "Start time is required."; return; }
@@ -426,7 +502,7 @@ async function saveChoirRehearsalEdit() {
         const res = await fetch(`${API}/choir/rehearsals/${activeChoirEditId}`, {
             method: "PUT", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections, choir_type, materials_url: materials_url || null }),
+            body: JSON.stringify({ start_time, end_time: end_time || null, location, notes, sections, members, choir_type, materials_url: materials_url || null }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -983,11 +1059,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Schedule tab — rehearsal type toggle
     document.querySelectorAll("input[name='reh-choir-type']").forEach(radio => {
-        radio.addEventListener("change", () => {
-            const isEnsemble = radio.value === "ensemble";
-            document.getElementById("sections-called-row").classList.toggle("hidden", isEnsemble);
-            renderIndividualMemberCheckboxes();
-        });
+        radio.addEventListener("change", () => renderUnifiedCaller("unified-caller"));
+    });
+    document.querySelectorAll("input[name='edit-reh-choir-type']").forEach(radio => {
+        radio.addEventListener("change", () => renderUnifiedCaller("edit-unified-caller"));
     });
 
     // Schedule tab — mode toggle

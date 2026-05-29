@@ -5707,6 +5707,7 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
     location = (payload.get("location") or "").strip() or None
     notes = (payload.get("notes") or "").strip() or None
     sections = payload.get("sections")
+    members = payload.get("members")
     choir_type = payload.get("choir_type")
     if choir_type and choir_type not in ("choir", "ensemble"):
         choir_type = None
@@ -5745,6 +5746,13 @@ def choir_edit_rehearsal(rehearsal_id: int, payload: dict, request: Request):
                 cur.execute(
                     "INSERT INTO rehearsal_sections (rehearsal_id, section_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
                     (rehearsal_id, sid),
+                )
+        if members is not None:
+            cur.execute("DELETE FROM rehearsal_members WHERE rehearsal_id=%s", (rehearsal_id,))
+            for uid in members:
+                cur.execute(
+                    "INSERT INTO rehearsal_members (rehearsal_id, user_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                    (rehearsal_id, uid),
                 )
 
     return {"status": "success"}
@@ -7003,7 +7011,7 @@ def list_all_choir_members(request: Request):
     user = require_choir_admin(request)
     with db_cursor() as cur:
         cur.execute("""
-            SELECT u.id, u.fullname, u.role, u.voice_type, u.instrument, cs.name AS section_name
+            SELECT u.id, u.fullname, u.role, u.voice_type, u.instrument, cs.name AS section_name, cs.id AS section_id
             FROM users u
             LEFT JOIN choir_sections cs ON cs.id = u.section_id
             WHERE u.org_id = %s AND u.role IN ('student', 'choir_member', 'ensemble_member')
@@ -7011,7 +7019,7 @@ def list_all_choir_members(request: Request):
         """, (user["org_id"],))
         rows = cur.fetchall()
     result = []
-    for uid, fullname, role, voice_type, instrument, section_name in rows:
+    for uid, fullname, role, voice_type, instrument, section_name, section_id in rows:
         # Normalize legacy 'student' role to 'choir_member' for the frontend
         normalized_role = "choir_member" if role in ("student", "choir_member") else role
         # Choir members may store voice type as section name when no section_id set
@@ -7021,6 +7029,7 @@ def list_all_choir_members(request: Request):
             "fullname": fullname,
             "role": normalized_role,
             "section_name": display_section,
+            "section_id": section_id,
             "instrument": instrument or "",
         })
     return result

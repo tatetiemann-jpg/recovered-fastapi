@@ -737,41 +737,63 @@ tbody tr:hover td { background: var(--accent-soft); }
   color: var(--text);
 }
 
-.member-section-group {
-  width: 100%;
+/* Unified caller accordion (sections + members combined) */
+.unified-section-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   margin-bottom: var(--space-2);
+  overflow: hidden;
 }
 
-.member-section-group > summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  padding: var(--space-1) 0;
-  list-style: none;
+.unified-section-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--text);
+  padding: var(--space-2) var(--space-3);
+  cursor: default;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.member-section-group > summary::before {
-  content: "\25B6";
+.unified-section-header:hover {
+  background: var(--hover);
+}
+
+.unified-section-header .section-header-cb {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.unified-section-header .section-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.unified-section-header .section-chevron {
   font-size: 0.65rem;
   color: var(--muted);
   transition: transform 0.15s;
+  cursor: pointer;
 }
 
-.member-section-group[open] > summary::before {
+.unified-section-group.open .section-chevron {
   transform: rotate(90deg);
 }
 
-.member-section-inner {
+.unified-section-inner {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.unified-section-inner.hidden {
+  display: none;
 }
 
 .notes-existing-wrap {
