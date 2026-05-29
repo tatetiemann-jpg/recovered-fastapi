@@ -202,7 +202,7 @@ function openOrchestraViewNotes(rehearsalId) {
     document.getElementById("view-notes-title").textContent = `Rehearsal Notes — ${r.opera}`;
     const body = document.getElementById("view-notes-body");
     body.innerHTML = r.notes
-        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${escapeHtml(l)}</p>`).join("")
+        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${renderNotes(l)}</p>`).join("")
         : `<em class="empty-note">No notes for this rehearsal yet.</em>`;
     document.getElementById("reh-view-notes-modal").classList.remove("hidden");
 }
@@ -270,7 +270,7 @@ function buildOrchestraRehearsalCard(r, absences) {
         <strong>${escapeHtml(r.opera)}</strong>
         <div>${dateStr} &middot; ${formatRehearsalTime(r.start)}&ndash;${formatRehearsalTime(r.end)}</div>
         ${r.location ? `<div>${escapeHtml(r.location)}</div>` : ""}
-        ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+        ${r.notes ? `<em class="rehearsal-notes-preview">${renderNotes(r.notes)}</em>` : ""}
         <div class="rehearsal-card-footer">
             ${absent
                 ? `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`

@@ -1261,7 +1261,7 @@ function renderRehearsalRow(r) {
             ${locationLine}
             ${rolesLine}
             ${leadersLine}
-            ${r.notes ? `<br><em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+            ${r.notes ? `<br><em class="rehearsal-notes-preview">${renderNotes(r.notes)}</em>` : ""}
             <div class="rehearsal-row-footer">
                 <div class="rehearsal-row-footer-left">
                     <button class="subtle-btn add-reh-notes-btn" data-id="${r.id}">Create Rehearsal Notes</button>
@@ -1288,7 +1288,7 @@ function openViewRehearsalNotesModal(rehearsalId) {
     const body = document.getElementById("view-notes-body");
     body.textContent = r.notes || "";
     body.innerHTML = r.notes
-        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${escapeHtml(l)}</p>`).join("")
+        ? r.notes.split("\n").map(l => `<p style="margin:0 0 6px;">${renderNotes(l)}</p>`).join("")
         : `<em class="empty-note">No notes for this rehearsal yet.</em>`;
     document.getElementById("reh-view-notes-modal").classList.remove("hidden");
 }

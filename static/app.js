@@ -84,6 +84,26 @@ function showEmailVerificationBanner() {
 const ME_READY = loadMe();
 
 
+// -------------------- SHARED UTILITIES ----------------------
+
+function escapeHtml(s) {
+    if (s == null) return "";
+    return String(s)
+        .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+// Escape HTML then wrap bare URLs in clickable <a> tags.
+function renderNotes(text) {
+    if (!text) return "";
+    const escaped = escapeHtml(text);
+    return escaped.replace(
+        /(https?:\/\/[^\s<>"]+)/g,
+        '<a href="$1" target="_blank" rel="noopener" class="notes-url">$1</a>'
+    );
+}
+
+
 // -------------------- EDIT ACCOUNT MODAL --------------------
 
 function openEditAccount() {

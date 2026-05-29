@@ -279,7 +279,7 @@ async function loadUpcoming() {
                             <div class="rehearsal-roles">${fmtTime(r.start_time)}${r.end_time ? " – " + fmtTime(r.end_time) : ""}</div>
                             ${r.location ? `<div class="rehearsal-cast">${escapeHtml(r.location)}</div>` : ""}
                             <div class="rehearsal-cast">${escapeHtml(calledNames)}</div>
-                            ${r.notes ? `<em class="rehearsal-notes-preview">${escapeHtml(r.notes)}</em>` : ""}
+                            ${r.notes ? `<em class="rehearsal-notes-preview">${renderNotes(r.notes)}</em>` : ""}
                             ${r.materials_url ? `<a href="${escapeHtml(r.materials_url)}" target="_blank" rel="noopener" class="materials-link">View Materials</a>` : ""}
                         </div>
                         <div class="rehearsal-row-actions">
@@ -330,7 +330,7 @@ function renderChoirNotesExisting(notes) {
     if (notes) {
         existing.innerHTML = `
             <div class="notes-existing-wrap">
-                <div class="notes-existing-text">${notes.split("\n").map(p => `<p>${escapeHtml(p)}</p>`).join("")}</div>
+                <div class="notes-existing-text">${notes.split("\n").map(p => `<p>${renderNotes(p)}</p>`).join("")}</div>
                 <button type="button" class="notes-delete-btn" title="Delete notes" aria-label="Delete notes">&#x2715;</button>
             </div>`;
         existing.querySelector(".notes-delete-btn").addEventListener("click", deleteChoirNotes);
