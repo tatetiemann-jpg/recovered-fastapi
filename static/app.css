@@ -743,6 +743,15 @@ tbody tr:hover td { background: var(--accent-soft); }
   border-radius: var(--radius);
   margin-bottom: var(--space-2);
   overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.unified-section-group.some-selected {
+  border-color: var(--accent);
+}
+
+.unified-section-group.all-selected {
+  border-color: var(--accent);
 }
 
 .unified-section-header {
@@ -750,27 +759,40 @@ tbody tr:hover td { background: var(--accent-soft); }
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  cursor: default;
   -webkit-user-select: none;
   user-select: none;
 }
 
-.unified-section-header:hover {
-  background: var(--hover);
+.section-name-area {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  border-radius: var(--radius);
 }
 
-.unified-section-header .section-header-cb {
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
+.section-name-area:hover .section-name {
+  color: var(--accent);
 }
 
 .unified-section-header .section-name {
-  flex: 1;
   font-weight: 500;
   font-size: 0.9rem;
-  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.unified-section-header .section-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+
+.unified-section-group.some-selected .section-count,
+.unified-section-group.all-selected .section-count {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .unified-section-header .section-chevron {
@@ -778,6 +800,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   color: var(--muted);
   transition: transform 0.15s;
   cursor: pointer;
+  padding: var(--space-1);
 }
 
 .unified-section-group.open .section-chevron {
@@ -794,6 +817,41 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 .unified-section-inner.hidden {
   display: none;
+}
+
+/* Caller pills (member selection) */
+.caller-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 13px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.caller-pill:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.caller-pill.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.caller-flat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .notes-existing-wrap {

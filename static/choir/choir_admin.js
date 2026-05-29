@@ -117,7 +117,6 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             box.innerHTML = `<em class="empty-note">No choir members yet.</em>`;
             return;
         }
-        // Build ordered section map from choirSections, then add any extras from members
         const bySection = new Map();
         choirSections.forEach(s => bySection.set(s.name, { sectionId: s.id, members: [] }));
         members.forEach(m => {
@@ -129,68 +128,77 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
         bySection.forEach(({ sectionId, members: list }, sectionName) => {
             if (!list.length) return;
 
+            const allPreSelected = sectionId != null && preCheckedSectionIds.includes(sectionId);
+
             const group = document.createElement("div");
             group.className = "unified-section-group";
             if (sectionId) group.dataset.sectionId = sectionId;
 
+            // Header: name area (click = select/deselect all) + chevron (click = expand/collapse)
             const header = document.createElement("div");
             header.className = "unified-section-header";
 
-            const headerCb = document.createElement("input");
-            headerCb.type = "checkbox";
-            headerCb.className = "section-header-cb";
-            headerCb.checked = sectionId != null && preCheckedSectionIds.includes(sectionId);
+            const nameArea = document.createElement("span");
+            nameArea.className = "section-name-area";
 
             const nameSpan = document.createElement("span");
             nameSpan.className = "section-name";
-            nameSpan.textContent = `${sectionName} (${list.length})`;
+            nameSpan.textContent = sectionName;
+
+            const countSpan = document.createElement("span");
+            countSpan.className = "section-count";
+            countSpan.textContent = `(${list.length})`;
+
+            nameArea.appendChild(nameSpan);
+            nameArea.appendChild(countSpan);
 
             const chevron = document.createElement("span");
             chevron.className = "section-chevron";
             chevron.textContent = "▶";
 
-            header.appendChild(headerCb);
-            header.appendChild(nameSpan);
+            header.appendChild(nameArea);
             header.appendChild(chevron);
             group.appendChild(header);
 
             const inner = document.createElement("div");
             inner.className = "unified-section-inner";
-            if (!headerCb.checked) inner.classList.add("hidden");
+            if (!allPreSelected) inner.classList.add("hidden");
             else group.classList.add("open");
 
             list.forEach(m => {
-                const lbl = document.createElement("label");
-                lbl.className = "checkbox-pill";
-                const cb = document.createElement("input");
-                cb.type = "checkbox";
-                cb.value = m.id;
-                cb.className = "member-cb";
-                cb.checked = headerCb.checked || preCheckedMemberIds.includes(m.id);
-                lbl.appendChild(cb);
-                lbl.appendChild(document.createTextNode(" " + m.fullname));
-                inner.appendChild(lbl);
-                cb.addEventListener("change", () => updateSectionHeaderState(headerCb, inner));
+                const pill = document.createElement("span");
+                pill.className = "caller-pill";
+                pill.dataset.memberId = m.id;
+                pill.textContent = m.fullname;
+                if (allPreSelected || preCheckedMemberIds.includes(m.id)) pill.classList.add("selected");
+                pill.addEventListener("click", () => {
+                    pill.classList.toggle("selected");
+                    updateSectionCount(header, inner, list.length);
+                });
+                inner.appendChild(pill);
             });
             group.appendChild(inner);
 
-            headerCb.addEventListener("change", e => {
-                e.stopPropagation();
-                inner.querySelectorAll("input.member-cb").forEach(cb => cb.checked = headerCb.checked);
-                headerCb.indeterminate = false;
-                if (headerCb.checked) {
+            // Name area click: toggle all members on/off
+            nameArea.addEventListener("click", () => {
+                const pills = [...inner.querySelectorAll(".caller-pill")];
+                const allOn = pills.every(p => p.classList.contains("selected"));
+                pills.forEach(p => p.classList.toggle("selected", !allOn));
+                updateSectionCount(header, inner, list.length);
+                if (!allOn) {
                     group.classList.add("open");
                     inner.classList.remove("hidden");
                 }
             });
 
-            const toggleOpen = () => {
+            // Chevron click: expand/collapse
+            chevron.addEventListener("click", () => {
                 const isOpen = group.classList.toggle("open");
                 inner.classList.toggle("hidden", !isOpen);
-            };
-            nameSpan.addEventListener("click", toggleOpen);
-            chevron.addEventListener("click", toggleOpen);
+            });
 
+            // Initial count
+            updateSectionCount(header, inner, list.length);
             box.appendChild(group);
         });
     } else {
@@ -199,31 +207,27 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             box.innerHTML = `<em class="empty-note">No ensemble members yet.</em>`;
             return;
         }
+        const wrap = document.createElement("div");
+        wrap.className = "caller-flat-list";
         members.forEach(m => {
-            const lbl = document.createElement("label");
-            lbl.className = "checkbox-pill";
-            const cb = document.createElement("input");
-            cb.type = "checkbox";
-            cb.value = m.id;
-            cb.className = "member-cb";
-            cb.checked = preCheckedMemberIds.includes(m.id);
-            lbl.appendChild(cb);
-            lbl.appendChild(document.createTextNode(` ${m.fullname}`));
-            if (m.instrument) {
-                const em = document.createElement("em");
-                em.textContent = ` (${m.instrument})`;
-                lbl.appendChild(em);
-            }
-            box.appendChild(lbl);
+            const pill = document.createElement("span");
+            pill.className = "caller-pill";
+            pill.dataset.memberId = m.id;
+            pill.textContent = m.fullname + (m.instrument ? ` (${m.instrument})` : "");
+            if (preCheckedMemberIds.includes(m.id)) pill.classList.add("selected");
+            pill.addEventListener("click", () => pill.classList.toggle("selected"));
+            wrap.appendChild(pill);
         });
+        box.appendChild(wrap);
     }
 }
 
-function updateSectionHeaderState(headerCb, inner) {
-    const cbs = [...inner.querySelectorAll("input.member-cb")];
-    const n = cbs.filter(cb => cb.checked).length;
-    headerCb.checked = n === cbs.length && cbs.length > 0;
-    headerCb.indeterminate = n > 0 && n < cbs.length;
+function updateSectionCount(header, inner, total) {
+    const n = inner.querySelectorAll(".caller-pill.selected").length;
+    const countSpan = header.querySelector(".section-count");
+    if (countSpan) countSpan.textContent = n > 0 ? `(${n} / ${total})` : `(${total})`;
+    header.classList.toggle("some-selected", n > 0 && n < total);
+    header.classList.toggle("all-selected", n > 0 && n === total);
 }
 
 function collectFromUnifiedCaller(containerId) {
@@ -232,18 +236,18 @@ function collectFromUnifiedCaller(containerId) {
     const members = [];
     box.querySelectorAll(".unified-section-group").forEach(group => {
         const sectionId = group.dataset.sectionId ? Number(group.dataset.sectionId) : null;
-        const memberCbs = [...group.querySelectorAll("input.member-cb")];
-        const checked = memberCbs.filter(cb => cb.checked);
-        if (!checked.length) return;
-        if (sectionId && checked.length === memberCbs.length) {
+        const pills = [...group.querySelectorAll(".caller-pill")];
+        const selected = pills.filter(p => p.classList.contains("selected"));
+        if (!selected.length) return;
+        if (sectionId && selected.length === pills.length) {
             sections.push(sectionId);
         } else {
-            checked.forEach(cb => members.push(Number(cb.value)));
+            selected.forEach(p => members.push(Number(p.dataset.memberId)));
         }
     });
-    // Ensemble flat members (direct child labels)
-    box.querySelectorAll(":scope > label > input.member-cb:checked").forEach(cb => {
-        members.push(Number(cb.value));
+    // Ensemble flat members
+    box.querySelectorAll(".caller-flat-list .caller-pill.selected").forEach(p => {
+        members.push(Number(p.dataset.memberId));
     });
     return { sections, members };
 }
@@ -269,7 +273,7 @@ async function createRehearsal() {
         const res = await fetch(`${API}/choir/rehearsals`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections, choir_type, materials_url: materials_url || null }),
+            body: JSON.stringify({ date, start_time: start, end_time: end || null, location, notes, sections, members, choir_type, materials_url: materials_url || null }),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -281,10 +285,15 @@ async function createRehearsal() {
             document.getElementById("reh-location").value = "";
             document.getElementById("reh-notes").value = "";
             document.getElementById("reh-materials-url").value = "";
-            document.querySelectorAll("#unified-caller input").forEach(cb => { cb.checked = false; cb.indeterminate = false; });
+            document.querySelectorAll("#unified-caller .caller-pill").forEach(p => p.classList.remove("selected"));
             document.querySelectorAll("#unified-caller .unified-section-group").forEach(g => {
-                g.classList.remove("open");
+                g.classList.remove("open", "some-selected", "all-selected");
                 g.querySelector(".unified-section-inner")?.classList.add("hidden");
+                const count = g.querySelector(".section-count");
+                if (count) {
+                    const total = g.querySelectorAll(".caller-pill").length;
+                    count.textContent = `(${total})`;
+                }
             });
         } else {
             msg.className = "msg";
