@@ -1901,6 +1901,9 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 
 .prod-inline-casting {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-4);
   padding: var(--space-3);
   border-top: 1px solid var(--border);
   overflow-x: auto;
