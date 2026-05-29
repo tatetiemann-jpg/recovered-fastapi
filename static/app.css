@@ -1677,15 +1677,41 @@ tbody tr:hover td { background: var(--accent-soft); }
 .inline-radio-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .inline-radio-row .inline-check {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  font-weight: 400;
   cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.inline-radio-row .inline-check:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* Hide the native radio circle */
+.inline-radio-row .inline-check input[type="radio"] {
+  display: none;
+}
+
+/* Checked state */
+.inline-radio-row .inline-check:has(input[type="radio"]:checked) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1f1b15;
+  font-weight: 600;
 }
 
 /* Checkbox pill layout for rehearsal creation */
