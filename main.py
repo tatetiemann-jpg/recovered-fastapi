@@ -57,6 +57,31 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS staff_messages (
+                    id SERIAL PRIMARY KEY,
+                    org_id INT NOT NULL,
+                    opera_id INT REFERENCES operas(id) ON DELETE CASCADE,
+                    sender_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    body TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS staff_message_recipients (
+                    message_id INT NOT NULL REFERENCES staff_messages(id) ON DELETE CASCADE,
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    PRIMARY KEY (message_id, user_id)
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS staff_board_views (
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    scope VARCHAR(60) NOT NULL,
+                    last_viewed_at TIMESTAMPTZ DEFAULT NOW(),
+                    PRIMARY KEY (user_id, scope)
+                );
+            """)
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
             cur.execute("""
@@ -7140,5 +7165,212 @@ def list_all_choir_members(request: Request):
             "instrument": instrument or "",
         })
     return result
+
+
+# ========================================================
+# STAFF MESSAGING
+# ========================================================
+
+def render_staff_message_email(sender_name, body, scope_label, reply_url, recipient_name=""):
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hi there,"
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 40px auto; padding: 24px; color: #222;">
+    <h2 style="color: #444;">New message from {sender_name}</h2>
+    <p>{greeting}</p>
+    <p style="color: #666; font-size: 13px; margin-bottom: 4px;">{scope_label}</p>
+    <blockquote style="border-left: 3px solid #6b5b3e; margin: 16px 0; padding: 12px 16px; background: #faf8f5; color: #333; font-size: 15px; white-space: pre-wrap;">{body}</blockquote>
+    <p style="margin: 32px 0;">
+        <a href="{reply_url}" style="background: #6b5b3e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Reply in App</a>
+    </p>
+    <p style="color: #999; font-size: 13px;">You received this because you were addressed directly in CountrPnt.</p>
+</body>
+</html>"""
+    text = f"{greeting}\n\n{sender_name} sent you a message ({scope_label}):\n\n{body}\n\nReply in the app: {reply_url}\n"
+    return html, text
+
+
+@app.get("/admin/messages/staff")
+def get_message_staff(request: Request):
+    """Return all admins in the org for the recipient picker."""
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, fullname, admin_role, role
+            FROM users
+            WHERE org_id = %s AND role IN ('admin', 'orchestra_admin', 'head_admin')
+            AND id != %s
+            ORDER BY fullname
+        """, (org_id, user["id"]))
+        rows = cur.fetchall()
+    return [{"id": r[0], "fullname": r[1], "admin_role": r[2], "role": r[3]} for r in rows]
+
+
+@app.get("/admin/messages")
+def get_admin_messages(request: Request, scope: str = "org"):
+    """Return messages for a board scope ('org' or 'opera_123')."""
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    uid = user["id"]
+
+    opera_id = None
+    if scope.startswith("opera_"):
+        try:
+            opera_id = int(scope[6:])
+        except ValueError:
+            return {"status": "fail", "message": "Invalid scope"}
+
+    with db_cursor(commit=True) as cur:
+        if opera_id is not None:
+            cur.execute("""
+                SELECT m.id, m.sender_id, u.fullname, m.body, m.created_at, m.opera_id, o.title
+                FROM staff_messages m
+                JOIN users u ON u.id = m.sender_id
+                LEFT JOIN operas o ON o.id = m.opera_id
+                WHERE m.org_id = %s AND m.opera_id = %s
+                ORDER BY m.created_at DESC LIMIT 100
+            """, (org_id, opera_id))
+        else:
+            cur.execute("""
+                SELECT m.id, m.sender_id, u.fullname, m.body, m.created_at, m.opera_id, NULL
+                FROM staff_messages m
+                JOIN users u ON u.id = m.sender_id
+                WHERE m.org_id = %s AND m.opera_id IS NULL
+                ORDER BY m.created_at DESC LIMIT 100
+            """, (org_id,))
+        rows = cur.fetchall()
+
+        msg_ids = [r[0] for r in rows]
+        recipients_by_msg = {}
+        if msg_ids:
+            cur.execute("""
+                SELECT smr.message_id, u.fullname
+                FROM staff_message_recipients smr
+                JOIN users u ON u.id = smr.user_id
+                WHERE smr.message_id = ANY(%s)
+            """, (msg_ids,))
+            for mid, name in cur.fetchall():
+                recipients_by_msg.setdefault(mid, []).append(name)
+
+        cur.execute("""
+            INSERT INTO staff_board_views (user_id, scope, last_viewed_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (user_id, scope) DO UPDATE SET last_viewed_at = NOW()
+        """, (uid, scope))
+
+    return [
+        {
+            "id": r[0], "sender_id": r[1], "sender_name": r[2],
+            "body": r[3], "created_at": r[4].isoformat() if r[4] else None,
+            "opera_id": r[5], "opera_title": r[6],
+            "recipients": recipients_by_msg.get(r[0], []),
+        }
+        for r in rows
+    ]
+
+
+@app.post("/admin/messages")
+def send_staff_message(payload: dict, request: Request):
+    """Post a board message or send a directed message to specific admins."""
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    uid = user["id"]
+
+    body = (payload.get("body") or "").strip()
+    if not body:
+        return {"status": "fail", "message": "Message cannot be empty"}
+
+    scope = payload.get("scope", "org")
+    opera_id = None
+    if scope.startswith("opera_"):
+        try:
+            opera_id = int(scope[6:])
+        except ValueError:
+            return {"status": "fail", "message": "Invalid scope"}
+
+    recipient_ids = [int(x) for x in (payload.get("recipient_ids") or [])]
+
+    with db_cursor(commit=True) as cur:
+        scope_label = "Org-wide board"
+        if opera_id is not None:
+            cur.execute("SELECT title FROM operas WHERE id=%s AND org_id=%s", (opera_id, org_id))
+            row = cur.fetchone()
+            if not row:
+                return {"status": "fail", "message": "Production not found"}
+            scope_label = f"Production: {row[0]}"
+
+        recipients = []
+        if recipient_ids:
+            cur.execute("""
+                SELECT id, fullname, email FROM users
+                WHERE id = ANY(%s) AND org_id = %s
+                AND role IN ('admin', 'orchestra_admin', 'head_admin')
+            """, (recipient_ids, org_id))
+            recipients = cur.fetchall()
+
+        cur.execute("""
+            INSERT INTO staff_messages (org_id, opera_id, sender_id, body)
+            VALUES (%s, %s, %s, %s) RETURNING id
+        """, (org_id, opera_id, uid, body))
+        message_id = cur.fetchone()[0]
+
+        for rid, _, _ in recipients:
+            cur.execute("""
+                INSERT INTO staff_message_recipients (message_id, user_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """, (message_id, rid))
+
+    if recipients:
+        reply_url = f"{APP_URL}/admin#messages"
+        sender_name = user.get("fullname") or "A staff member"
+        for _, rec_name, rec_email in recipients:
+            if not rec_email:
+                continue
+            html, text = render_staff_message_email(sender_name, body, scope_label, reply_url, rec_name)
+            send_email(rec_email, f"New message from {sender_name} — CountrPnt", html, text)
+
+    return {"status": "success", "message_id": message_id}
+
+
+@app.get("/admin/messages/unread")
+def get_message_unread(request: Request):
+    """Return unread message counts per scope."""
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    uid = user["id"]
+
+    with db_cursor() as cur:
+        cur.execute("SELECT scope, last_viewed_at FROM staff_board_views WHERE user_id = %s", (uid,))
+        views = {row[0]: row[1] for row in cur.fetchall()}
+
+        org_last = views.get("org")
+        if org_last:
+            cur.execute("""
+                SELECT COUNT(*) FROM staff_messages
+                WHERE org_id=%s AND opera_id IS NULL AND created_at > %s
+            """, (org_id, org_last))
+        else:
+            cur.execute("SELECT COUNT(*) FROM staff_messages WHERE org_id=%s AND opera_id IS NULL", (org_id,))
+        org_unread = cur.fetchone()[0]
+
+        cur.execute("SELECT id, title FROM operas WHERE org_id=%s ORDER BY title", (org_id,))
+        productions = cur.fetchall()
+
+        prod_unread = {}
+        for pid, _ in productions:
+            scope_key = f"opera_{pid}"
+            prod_last = views.get(scope_key)
+            if prod_last:
+                cur.execute("""
+                    SELECT COUNT(*) FROM staff_messages
+                    WHERE opera_id=%s AND created_at > %s
+                """, (pid, prod_last))
+            else:
+                cur.execute("SELECT COUNT(*) FROM staff_messages WHERE opera_id=%s", (pid,))
+            prod_unread[str(pid)] = cur.fetchone()[0]
+
+    total = org_unread + sum(prod_unread.values())
+    return {"org": org_unread, "productions": prod_unread, "total": total}
 
 

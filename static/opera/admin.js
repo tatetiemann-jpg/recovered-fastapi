@@ -17,7 +17,7 @@
 
 const output = document.getElementById("output");
 const ADMIN_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const VALID_TABS = ["rehearsals", "casting", "invitations", "orchestra"];
+const VALID_TABS = ["rehearsals", "casting", "invitations", "orchestra", "messages"];
 
 // Voice compatibility (which voice types can sing which roles)
 const VOICE_COMPATIBILITY = {
@@ -79,6 +79,7 @@ function setActiveTab(tabName) {
     // Lazy-load data only when the relevant tab becomes active
     if (tabName === "invitations") { loadInvitations(); loadOrgTransferRequests(); loadTeachersList(); }
     if (tabName === "orchestra") loadOrchestra();
+    if (tabName === "messages") loadMessagesTab();
 }
 
 function getTabFromURL() {
@@ -3032,6 +3033,180 @@ async function loadScheduleSummary() {
     }
 }
 // -----------------------------------------------------------
+// 6b. STAFF MESSAGING
+// -----------------------------------------------------------
+
+let msgCurrentScope = "org";
+let msgStaffList = [];        // all admins for recipient picker
+let msgProductionList = [];   // productions for scope nav
+
+async function loadMessagesTab() {
+    await Promise.all([loadMsgScopeNav(), loadMsgStaff()]);
+    loadMsgBoard(msgCurrentScope);
+    refreshMsgBadge();
+}
+
+async function loadMsgScopeNav() {
+    try {
+        const res = await fetch(`${API}/admin/productions`, { credentials: "include" });
+        const prods = await res.json();
+        msgProductionList = Array.isArray(prods) ? prods : [];
+    } catch (e) {
+        msgProductionList = [];
+    }
+    renderMsgScopeNav();
+}
+
+function renderMsgScopeNav() {
+    const nav = document.getElementById("msg-scope-nav");
+    if (!nav) return;
+    nav.innerHTML = "";
+
+    const addBtn = (label, scope) => {
+        const btn = document.createElement("button");
+        btn.className = "sub-tab-btn" + (scope === msgCurrentScope ? " active" : "");
+        btn.dataset.scope = scope;
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+            msgCurrentScope = scope;
+            nav.querySelectorAll(".sub-tab-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            loadMsgBoard(scope);
+        });
+        nav.appendChild(btn);
+    };
+
+    addBtn("Org-wide", "org");
+    msgProductionList.forEach(p => addBtn(p.title, `opera_${p.id}`));
+}
+
+async function loadMsgStaff() {
+    try {
+        const res = await fetch(`${API}/admin/messages/staff`, { credentials: "include" });
+        msgStaffList = await res.json();
+    } catch (e) {
+        msgStaffList = [];
+    }
+    renderMsgRecipientSelect();
+}
+
+function renderMsgRecipientSelect() {
+    const sel = document.getElementById("msg-recipient-select");
+    if (!sel) return;
+    sel.innerHTML = "";
+    msgStaffList.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        const roleLabel = STAFF_ROLE_LABELS[s.admin_role] || s.role;
+        opt.textContent = `${s.fullname} — ${roleLabel}`;
+        sel.appendChild(opt);
+    });
+}
+
+async function loadMsgBoard(scope) {
+    const list = document.getElementById("msg-list");
+    if (!list) return;
+    list.innerHTML = `<em class="empty-note">Loading…</em>`;
+    try {
+        const res = await fetch(`${API}/admin/messages?scope=${encodeURIComponent(scope)}`, { credentials: "include" });
+        const msgs = await res.json();
+        renderMsgList(msgs);
+        refreshMsgBadge();
+    } catch (e) {
+        list.innerHTML = `<em class="empty-note">Failed to load messages.</em>`;
+    }
+}
+
+function renderMsgList(msgs) {
+    const list = document.getElementById("msg-list");
+    if (!list) return;
+    if (!msgs.length) {
+        list.innerHTML = `<em class="empty-note">No messages yet. Be the first to post.</em>`;
+        return;
+    }
+    list.innerHTML = "";
+    // Show newest-first (already sorted desc from backend)
+    msgs.forEach(m => {
+        const card = document.createElement("div");
+        card.className = "msg-card" + (m.recipients.length ? " msg-card--directed" : "");
+
+        const ts = m.created_at ? new Date(m.created_at).toLocaleString(undefined, {
+            month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+        }) : "";
+
+        const recipientLine = m.recipients.length
+            ? `<div class="msg-recipients">To: ${m.recipients.map(escapeHtml).join(", ")}</div>`
+            : "";
+
+        card.innerHTML = `
+            <div class="msg-meta">
+                <span class="msg-sender">${escapeHtml(m.sender_name)}</span>
+                <span class="msg-time">${ts}</span>
+                ${m.recipients.length ? `<span class="msg-directed-tag">Direct</span>` : ""}
+            </div>
+            ${recipientLine}
+            <div class="msg-body">${escapeHtml(m.body)}</div>
+        `;
+        list.appendChild(card);
+    });
+}
+
+async function sendMsg() {
+    const body = (document.getElementById("msg-body")?.value || "").trim();
+    const status = document.getElementById("msg-send-status");
+    if (!body) { status.textContent = "Message cannot be empty."; return; }
+
+    const directedToggle = document.getElementById("msg-directed-toggle");
+    let recipientIds = [];
+    if (directedToggle?.checked) {
+        const sel = document.getElementById("msg-recipient-select");
+        recipientIds = sel ? [...sel.selectedOptions].map(o => Number(o.value)) : [];
+        if (!recipientIds.length) { status.textContent = "Select at least one recipient."; return; }
+    }
+
+    const btn = document.getElementById("msg-send-btn");
+    btn.disabled = true;
+    status.textContent = "Sending…";
+
+    try {
+        const res = await fetch(`${API}/admin/messages`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scope: msgCurrentScope, body, recipient_ids: recipientIds }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            document.getElementById("msg-body").value = "";
+            status.textContent = recipientIds.length
+                ? "Message sent and email delivered to recipients."
+                : "Posted to board.";
+            loadMsgBoard(msgCurrentScope);
+        } else {
+            status.textContent = data.message || "Failed to send.";
+        }
+    } catch (e) {
+        status.textContent = "Server error.";
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function refreshMsgBadge() {
+    try {
+        const res = await fetch(`${API}/admin/messages/unread`, { credentials: "include" });
+        const data = await res.json();
+        const badge = document.getElementById("msg-badge");
+        if (!badge) return;
+        if (data.total > 0) {
+            badge.textContent = data.total;
+            badge.classList.remove("hidden");
+        } else {
+            badge.classList.add("hidden");
+        }
+    } catch (e) { /* silent */ }
+}
+
+// -----------------------------------------------------------
 // 7. INIT
 // -----------------------------------------------------------
 
@@ -3210,6 +3385,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     // --- Requests ---
     // (event delegation handles approve/deny buttons rendered dynamically)
     document.getElementById("requests-list")?.addEventListener("click", onTransferReviewClick);
+
+    // --- Messaging ---
+    document.getElementById("msg-send-btn")?.addEventListener("click", sendMsg);
+    document.getElementById("msg-directed-toggle")?.addEventListener("change", e => {
+        document.getElementById("msg-recipient-section")?.classList.toggle("hidden", !e.target.checked);
+    });
+
+    // Load unread badge on init
+    refreshMsgBadge();
 
     // system_admin only needs Invitations — hide everything else
     if (USER_ROLE === "system_admin") {

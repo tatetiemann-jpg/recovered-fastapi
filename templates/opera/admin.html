@@ -23,6 +23,7 @@
         <button class="tab-btn" data-tab="rehearsals">Rehearsals</button>
         <button class="tab-btn" data-tab="casting">Productions</button>
         <button class="tab-btn tab-btn--hidden" data-tab="orchestra">Orchestra</button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="msg-badge" class="msg-badge hidden">0</span></button>
         <button class="tab-btn" data-tab="invitations">Invitations</button>
     </nav>
 
@@ -217,6 +218,50 @@
                 <button type="button" id="add-staff-btn" class="subtle-btn">Add</button>
             </div>
             <p id="staff-add-msg" class="hint"></p>
+        </div>
+
+    </section>
+
+    <!-- MESSAGES -->
+    <section class="tab-panel" data-tab-panel="messages">
+
+        <div class="box">
+            <div class="section-header">
+                <h2>Messages</h2>
+            </div>
+            <p class="hint">Communicate with production staff. Board posts are visible to all admins; directed messages send an email to the recipients.</p>
+
+            <!-- Board selector sub-nav -->
+            <nav id="msg-scope-nav" class="sub-tab-nav">
+                <button class="sub-tab-btn active" data-scope="org">Org-wide</button>
+            </nav>
+
+            <!-- Message list -->
+            <div id="msg-list" class="msg-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+
+            <!-- Compose -->
+            <div class="msg-compose-box">
+                <textarea id="msg-body" rows="3" placeholder="Write a message…"></textarea>
+
+                <div class="msg-compose-controls">
+                    <div class="msg-recipient-toggle-row">
+                        <label class="inline-check">
+                            <input type="checkbox" id="msg-directed-toggle"> Address to specific people
+                        </label>
+                    </div>
+                    <div id="msg-recipient-section" class="hidden">
+                        <label for="msg-recipient-select">Recipients</label>
+                        <select id="msg-recipient-select" multiple size="4"></select>
+                        <p class="hint">Hold Ctrl/Cmd to select multiple.</p>
+                    </div>
+                    <div class="modal-actions" style="justify-content:flex-start;margin-top:var(--space-3);">
+                        <button type="button" id="msg-send-btn">Send</button>
+                    </div>
+                    <p id="msg-send-status" class="hint"></p>
+                </div>
+            </div>
         </div>
 
     </section>
