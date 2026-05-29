@@ -130,7 +130,7 @@
                 <option value="admin">Admin</option>
                 <option value="orchestra_admin">Orchestra Admin</option>
                 <option value="head_admin">Head Admin</option>
-                <option value="student">Singer (Choir)</option>
+                <option value="student">Vocalist</option>
             </select>
 
             <div id="invite-org-section" class="hidden">
@@ -181,7 +181,7 @@
 
         <div class="box" style="margin-top:var(--space-4);">
             <h2>Org Transfer Requests</h2>
-            <p class="hint">Students requesting to transfer into your organization. Approving moves them immediately.</p>
+            <p class="hint">Vocalists requesting to transfer into your organization. Approving moves them immediately.</p>
             <div id="requests-list">
                 <em class="empty-note">Loading…</em>
             </div>
@@ -432,10 +432,10 @@
 <div id="manage-students-modal" class="modal-overlay hidden">
     <div class="modal-card modal-large">
         <h3 id="manage-students-title">Manage Opera Roster</h3>
-        <p class="hint">Tick students to add them to this opera. Untick to remove them (loses any cast/role).</p>
+        <p class="hint">Tick vocalists to add them to this production. Untick to remove them (loses any cast/role).</p>
 
         <div id="manage-students-list">
-            <em class="empty-note">Loading students…</em>
+            <em class="empty-note">Loading vocalists…</em>
         </div>
 
         <div class="modal-actions">
@@ -468,7 +468,7 @@
 <div id="assign-roles-modal" class="modal-overlay hidden">
     <div class="modal-card modal-large">
         <h3 id="assign-roles-title">Assign Roles</h3>
-        <p class="hint">Pick a student for each role/cast combination. Students can be cast in different roles across casts.</p>
+        <p class="hint">Pick a vocalist for each role/cast combination. Vocalists can be cast in different roles across casts.</p>
 
         <div id="assign-roles-grid">
             <em class="empty-note">Loading…</em>
@@ -611,7 +611,7 @@
         <input type="hidden" id="assign-seat-opera-id">
         <input type="hidden" id="assign-seat-section-id">
         <input type="hidden" id="assign-seat-chair">
-        <label for="assign-seat-member">Orchestra Member</label>
+        <label for="assign-seat-member">Instrumentalist</label>
         <select id="assign-seat-member">
             <option value="">— Unassigned —</option>
         </select>

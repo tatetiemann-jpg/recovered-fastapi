@@ -737,7 +737,7 @@ function openManageStudentsModal() {
             });
         html += `</div>`;
     });
-    list.innerHTML = html || `<em class="empty-note">No students in the system yet.</em>`;
+    list.innerHTML = html || `<em class="empty-note">No vocalists in the system yet.</em>`;
 
     list.querySelectorAll(".manage-student-check").forEach(cb => {
         cb.addEventListener("change", onManageStudentToggle);

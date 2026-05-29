@@ -43,7 +43,7 @@
     intro.classList.add("hidden");
     formWrapper.classList.remove("hidden");
 
-    const roleLabelMap = { admin: "Admin", head_admin: "Head Admin", teacher: "Teacher", orchestra_admin: "Orchestra Admin", student: "Singer", choir_member: "Choir Member", ensemble_member: "Ensemble Member" };
+    const roleLabelMap = { admin: "Admin", head_admin: "Head Admin", teacher: "Teacher", orchestra_admin: "Orchestra Admin", student: "Vocalist", orchestra_member: "Instrumentalist", choir_member: "Choir Member", ensemble_member: "Ensemble Member" };
     const roleLabel = roleLabelMap[inviteInfo.role] || inviteInfo.role;
     const orgPart = inviteInfo.org_name ? ` of ${inviteInfo.org_name}` : "";
     let summaryText = `You've been invited as ${roleLabel}${orgPart}. Email: ${inviteInfo.email}`;
