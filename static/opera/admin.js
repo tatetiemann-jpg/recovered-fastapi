@@ -116,28 +116,23 @@ async function loadCastingOperas() {
 }
 
 function renderCastingOperaTabs() {
-    const nav = document.getElementById("casting-opera-tabs");
-    if (!nav) return;
+    // Navigation is now handled by the productions list "View Casting" button
+}
 
-    if (castingOperas.length === 0) {
-        nav.innerHTML = `<em class="empty-note">No operas yet.</em>`;
-        return;
+function openProductionCasting(prodId) {
+    castingSelectedOperaId = prodId;
+    const prod = productionsList.find(p => p.id === prodId);
+    const panel = document.getElementById("casting-panel");
+    panel.classList.remove("hidden");
+    if (prod) {
+        document.getElementById("casting-panel-title").textContent =
+            `Casting — ${escapeHtml(prod.title)}`;
     }
-
-    nav.innerHTML = castingOperas.map(o => `
-        <button class="sub-tab-btn ${o.id === castingSelectedOperaId ? "active" : ""}"
-                data-opera-id="${o.id}">
-            ${escapeHtml(o.name)}
-        </button>
-    `).join("");
-
-    nav.querySelectorAll(".sub-tab-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            castingSelectedOperaId = Number(btn.dataset.operaId);
-            renderCastingOperaTabs();  // update active state
-            loadCastingForOpera(castingSelectedOperaId);
-        });
+    document.querySelectorAll(".production-row").forEach(row => {
+        row.classList.toggle("prod-active", Number(row.dataset.id) === prodId);
     });
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    loadCastingForOpera(prodId);
 }
 
 async function loadCastingForOpera(operaId) {
@@ -392,8 +387,8 @@ function closeAssignRolesModal() {
     document.getElementById("assign-roles-modal").classList.add("hidden");
 }
 
-function renderAssignRolesGrid() {
-    const container = document.getElementById("assign-roles-grid");
+function renderAssignRolesGrid(containerId = "assign-roles-grid") {
+    const container = document.getElementById(containerId);
     container.innerHTML = "";
 
     if (!castingData || castingData.roles.length === 0) {
@@ -538,9 +533,10 @@ async function onPrincipalAssignmentChange(e) {
         if (data.status !== "success") {
             alert(data.message || "Failed to save.");
         }
-        // Refresh both the modal grid AND the columns behind it
+        // Refresh cast columns and both role grids (separate modal + edit modal)
         await loadCastingForOpera(operaId);
         renderAssignRolesGrid();
+        renderAssignRolesGrid("edit-prod-roles-grid");
     } catch (err) {
         console.error(err);
         alert("Server error.");
@@ -2449,12 +2445,16 @@ async function loadProductions() {
                         <span class="prod-casts">${p.num_casts} cast${p.num_casts !== 1 ? "s" : ""}</span>
                     </div>
                     <div class="prod-actions">
+                        <button class="subtle-btn view-casting-btn" data-id="${p.id}">View Casting</button>
                         <button class="subtle-btn edit-prod-btn" data-id="${p.id}">Edit</button>
                     </div>
                 </div>
             `;
         }).join("");
 
+        box.querySelectorAll(".view-casting-btn").forEach(btn => {
+            btn.addEventListener("click", () => openProductionCasting(Number(btn.dataset.id)));
+        });
         box.querySelectorAll(".edit-prod-btn").forEach(btn => {
             btn.addEventListener("click", () => openEditProductionModal(Number(btn.dataset.id)));
         });
@@ -2527,15 +2527,14 @@ async function createProduction() {
         });
         const data = await res.json();
         if (data.status === "success") {
-            msg.textContent = "Production created!";
             document.getElementById("prod-title").value = "";
             document.getElementById("prod-start-date").value = "";
             document.getElementById("prod-end-date").value = "";
             document.getElementById("prod-num-casts").value = "1";
             document.getElementById("prod-roles-list").innerHTML = "";
-            loadProductions();
-            loadCastingOperas();
-            setTimeout(() => document.getElementById("prod-create-modal")?.classList.add("hidden"), 1200);
+            document.getElementById("prod-create-modal")?.classList.add("hidden");
+            await loadProductions();
+            if (data.opera_id) openEditProductionModal(data.opera_id);
         } else {
             msg.textContent = data.message || "Failed to create production.";
         }
@@ -2545,15 +2544,40 @@ async function createProduction() {
     }
 }
 
-function openEditProductionModal(prodId) {
+async function openEditProductionModal(prodId) {
     const p = productionsList.find(x => x.id === prodId);
     if (!p) return;
     document.getElementById("edit-prod-id").value = p.id;
+    document.getElementById("edit-prod-modal-title").textContent = p.title;
     document.getElementById("edit-prod-title").value = p.title;
     document.getElementById("edit-prod-start-date").value = p.start_date || "";
     document.getElementById("edit-prod-end-date").value = p.end_date || "";
     document.getElementById("edit-prod-msg").textContent = "";
+    document.getElementById("edit-prod-staff-msg").textContent = "";
+    document.getElementById("edit-prod-staff-list").innerHTML = `<em class="empty-note">Loading…</em>`;
+    document.getElementById("edit-prod-roster-list").innerHTML = `<em class="empty-note">Loading…</em>`;
+    document.getElementById("edit-prod-roles-grid").innerHTML = `<em class="empty-note">Loading…</em>`;
     document.getElementById("edit-production-modal").classList.remove("hidden");
+
+    try {
+        const [castingRes, staffRes] = await Promise.all([
+            fetch(`${API}/admin/opera-casting/${prodId}`, { credentials: "include" }),
+            fetch(`${API}/admin/opera-staff/${prodId}`, { credentials: "include" }),
+        ]);
+        const casting = await castingRes.json();
+        const staffPayload = await staffRes.json();
+        if (!casting.error) {
+            castingData = casting;
+            castingSelectedOperaId = prodId;
+        }
+        staffData = staffPayload;
+    } catch (e) {
+        console.error(e);
+    }
+
+    renderEditModalStaff();
+    renderEditModalRoster();
+    renderAssignRolesGrid("edit-prod-roles-grid");
 }
 
 function closeEditProductionModal() {
@@ -2579,7 +2603,8 @@ async function saveEditProduction() {
         });
         const data = await res.json();
         if (data.status === "success") {
-            closeEditProductionModal();
+            msg.textContent = "Saved.";
+            document.getElementById("edit-prod-modal-title").textContent = title;
             loadProductions();
         } else {
             msg.textContent = data.message || "Failed to save.";
@@ -2588,6 +2613,114 @@ async function saveEditProduction() {
         console.error(e);
         msg.textContent = "Server error.";
     }
+}
+
+function renderEditModalStaff() {
+    const box = document.getElementById("edit-prod-staff-list");
+    const teacherSelect = document.getElementById("edit-prod-staff-teacher");
+
+    teacherSelect.innerHTML = "";
+    if (staffData.teachers && staffData.teachers.length > 0) {
+        staffData.teachers.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.textContent = t.name;
+            teacherSelect.appendChild(opt);
+        });
+    } else {
+        teacherSelect.innerHTML = `<option value="">No teachers in system yet</option>`;
+    }
+
+    if (!staffData.staff || staffData.staff.length === 0) {
+        box.innerHTML = `<em class="empty-note">No staff assigned yet.</em>`;
+        return;
+    }
+
+    const roleOrder = ["director", "assistant_director", "conductor", "assistant_conductor"];
+    const byRole = {};
+    staffData.staff.forEach(s => {
+        if (!byRole[s.staff_role]) byRole[s.staff_role] = [];
+        byRole[s.staff_role].push(s);
+    });
+
+    let html = "";
+    roleOrder.forEach(role => {
+        if (!byRole[role]) return;
+        html += `<div class="staff-role-group"><h5>${STAFF_ROLE_LABELS[role]}</h5><ul>`;
+        byRole[role].forEach(s => {
+            html += `<li>${escapeHtml(s.teacher_name)}
+                <button class="remove-staff-btn" data-staff-id="${s.id}"
+                        data-name="${escapeHtml(s.teacher_name)}"
+                        data-role="${STAFF_ROLE_LABELS[role]}">✕</button></li>`;
+        });
+        html += `</ul></div>`;
+    });
+    box.innerHTML = html;
+
+    box.querySelectorAll(".remove-staff-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+            if (!confirm(`Remove ${btn.dataset.name} as ${btn.dataset.role}?`)) return;
+            await fetch(`${API}/admin/remove-staff`, {
+                credentials: "include", method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ staff_id: Number(btn.dataset.staffId) }),
+            });
+            const res = await fetch(`${API}/admin/opera-staff/${castingSelectedOperaId}`, { credentials: "include" });
+            staffData = await res.json();
+            renderEditModalStaff();
+            renderStaffList();
+        });
+    });
+}
+
+function renderEditModalRoster() {
+    const list = document.getElementById("edit-prod-roster-list");
+    if (!castingData) {
+        list.innerHTML = `<em class="empty-note">No casting data loaded.</em>`;
+        return;
+    }
+
+    const assignedIds = new Set(castingData.assigned_students.map(s => s.id));
+    const byVoice = {};
+    castingData.all_students.forEach(s => {
+        const v = (s.voice_type || "unknown").toLowerCase();
+        if (!byVoice[v]) byVoice[v] = [];
+        byVoice[v].push(s);
+    });
+
+    let html = "";
+    VOICE_SORT_ORDER.forEach(voice => {
+        if (!byVoice[voice] || !byVoice[voice].length) return;
+        html += `<h4 class="manage-voice-header">${voice}</h4><div class="manage-student-list">`;
+        byVoice[voice].sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
+            const chk = assignedIds.has(s.id) ? "checked" : "";
+            html += `<label class="manage-student-label">
+                <input type="checkbox" class="edit-modal-roster-cb" data-student-id="${s.id}" ${chk}>
+                ${escapeHtml(s.name)}
+            </label>`;
+        });
+        html += `</div>`;
+    });
+    list.innerHTML = html || `<em class="empty-note">No vocalists in the system yet.</em>`;
+
+    list.querySelectorAll(".edit-modal-roster-cb").forEach(cb => {
+        cb.addEventListener("change", async () => {
+            const studentId = Number(cb.dataset.studentId);
+            const operaId = castingData.opera.id;
+            if (cb.checked) {
+                await fetch(`${API}/admin/add-to-opera`, { credentials: "include", method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ opera_id: operaId, student_ids: [studentId] }) });
+            } else {
+                await fetch(`${API}/admin/remove-from-opera`, { credentials: "include", method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ opera_id: operaId, student_id: studentId }) });
+            }
+            await loadCastingForOpera(operaId);
+            renderEditModalRoster();
+            renderAssignRolesGrid("edit-prod-roles-grid");
+        });
+    });
 }
 
 
@@ -2716,9 +2849,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     setActiveTab(getTabFromURL());
     window.addEventListener("hashchange", () => setActiveTab(getTabFromURL()));
 
-    // --- Casting (new) ---
+    // --- Productions / Casting ---
     loadCastingOperas();
     loadProductions();
+
+    // Casting panel buttons (revealed when a production is opened)
     document.getElementById("open-assign-roles-btn")
         ?.addEventListener("click", openAssignRolesModal);
     document.getElementById("close-assign-roles-btn")
@@ -2733,16 +2868,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("manage-students-modal")?.addEventListener("click", (e) => {
         if (e.target.id === "manage-students-modal") closeManageStudentsModal();
     });
-
-    // Production Staff
     document.getElementById("open-add-staff-btn")
         ?.addEventListener("click", openAddStaffModal);
     document.getElementById("cancel-staff-btn")
         ?.addEventListener("click", closeAddStaffModal);
-    document.getElementById("save-staff-btn")
-        ?.addEventListener("click", saveStaff);
+    document.getElementById("save-staff-btn")?.addEventListener("click", saveStaff);
     document.getElementById("add-staff-modal")?.addEventListener("click", (e) => {
         if (e.target.id === "add-staff-modal") closeAddStaffModal();
+    });
+
+    // Edit Production modal — inline add staff
+    document.getElementById("edit-prod-add-staff-btn")?.addEventListener("click", async () => {
+        const msg = document.getElementById("edit-prod-staff-msg");
+        msg.textContent = "";
+        const teacherId = Number(document.getElementById("edit-prod-staff-teacher").value);
+        const staffRole = document.getElementById("edit-prod-staff-role").value;
+        if (!teacherId) { msg.textContent = "No teacher selected."; return; }
+        try {
+            const res = await fetch(`${API}/admin/assign-staff`, {
+                credentials: "include", method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ opera_id: castingSelectedOperaId, teacher_id: teacherId, staff_role: staffRole }),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                const staffRes = await fetch(`${API}/admin/opera-staff/${castingSelectedOperaId}`, { credentials: "include" });
+                staffData = await staffRes.json();
+                renderEditModalStaff();
+                renderStaffList();
+            } else {
+                msg.textContent = data.message || "Failed.";
+            }
+        } catch (e) { msg.textContent = "Server error."; }
     });
 
 // --- Rehearsals ---

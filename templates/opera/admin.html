@@ -57,21 +57,28 @@
 
     </section>
 
-    <!-- PRODUCTIONS (casting + productions list) -->
+    <!-- PRODUCTIONS -->
     <section class="tab-panel" data-tab-panel="casting">
 
         <div class="box">
             <div class="section-header">
-                <h2>Casting</h2>
+                <h2>Productions</h2>
+                <button id="new-production-btn" class="subtle-btn">+ New Production</button>
+            </div>
+            <div id="productions-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
+
+        <!-- Casting panel — revealed when a production is opened -->
+        <div class="box hidden" id="casting-panel" style="margin-top:var(--space-4);">
+            <div class="section-header">
+                <h2 id="casting-panel-title">Casting</h2>
                 <div class="casting-top-controls">
                     <button id="manage-opera-students-btn" class="subtle-btn">Manage Roster</button>
+                    <button id="open-assign-roles-btn" class="subtle-btn">Assign Roles</button>
                 </div>
             </div>
-
-            <!-- Per-opera sub-tabs, built by JS -->
-            <nav id="casting-opera-tabs" class="sub-tab-nav">
-                <em class="empty-note">Loading…</em>
-            </nav>
 
             <!-- Production Staff -->
             <div class="staff-section">
@@ -80,27 +87,13 @@
                     <button id="open-add-staff-btn" class="subtle-btn">+ Add Staff</button>
                 </div>
                 <div id="staff-list" class="staff-list">
-                    <em class="empty-note">Loading…</em>
+                    <em class="empty-note">No staff assigned yet.</em>
                 </div>
             </div>
 
             <hr>
 
-            <div style="margin-bottom:var(--space-3);text-align:right;">
-                <button id="open-assign-roles-btn" class="subtle-btn">Assign Roles</button>
-            </div>
-
             <div id="casting-cast-columns" class="casting-cast-columns">
-                <em class="empty-note">Select an opera…</em>
-            </div>
-        </div>
-
-        <div class="box" style="margin-top:var(--space-4);">
-            <div class="section-header">
-                <h2>Productions</h2>
-                <button id="new-production-btn" class="subtle-btn">+ New Production</button>
-            </div>
-            <div id="productions-list">
                 <em class="empty-note">Loading…</em>
             </div>
         </div>
@@ -508,13 +501,13 @@
 
 <!-- EDIT PRODUCTION MODAL -->
 <div id="edit-production-modal" class="modal-overlay hidden">
-    <div class="modal-card">
-        <h3>Edit Production</h3>
+    <div class="modal-card modal-large">
+        <h3 id="edit-prod-modal-title">Edit Production</h3>
         <input type="hidden" id="edit-prod-id">
 
+        <!-- Section: Details -->
         <label for="edit-prod-title">Title</label>
         <input type="text" id="edit-prod-title">
-
         <div class="time-pair">
             <div>
                 <label for="edit-prod-start-date">Start date</label>
@@ -525,12 +518,42 @@
                 <input type="date" id="edit-prod-end-date">
             </div>
         </div>
-
-        <div class="modal-actions">
-            <button type="button" id="save-edit-prod-btn">Save</button>
-            <button type="button" id="cancel-edit-prod-btn">Cancel</button>
+        <div class="modal-actions" style="justify-content:flex-start;margin-bottom:0;">
+            <button type="button" id="save-edit-prod-btn">Save Details</button>
         </div>
         <p id="edit-prod-msg"></p>
+
+        <!-- Section: Production Staff -->
+        <hr class="modal-section-divider">
+        <h4 class="modal-section-title">Production Staff</h4>
+        <div id="edit-prod-staff-list"><em class="empty-note">Loading…</em></div>
+        <div class="edit-staff-add-row">
+            <select id="edit-prod-staff-teacher" title="Teacher"><option value="">No teachers yet</option></select>
+            <select id="edit-prod-staff-role" title="Staff role">
+                <option value="director">Director</option>
+                <option value="assistant_director">Asst. Director</option>
+                <option value="conductor">Conductor</option>
+                <option value="assistant_conductor">Asst. Conductor</option>
+            </select>
+            <button type="button" id="edit-prod-add-staff-btn">+ Add</button>
+        </div>
+        <p id="edit-prod-staff-msg" class="hint"></p>
+
+        <!-- Section: Vocalist Roster -->
+        <hr class="modal-section-divider">
+        <h4 class="modal-section-title">Vocalist Roster</h4>
+        <p class="hint">Check vocalists to include them in this production.</p>
+        <div id="edit-prod-roster-list"><em class="empty-note">Loading…</em></div>
+
+        <!-- Section: Role Assignments -->
+        <hr class="modal-section-divider">
+        <h4 class="modal-section-title">Role Assignments</h4>
+        <p class="hint">Assign vocalists to each role and cast combination.</p>
+        <div id="edit-prod-roles-grid"><em class="empty-note">Loading…</em></div>
+
+        <div class="modal-actions" style="margin-top:var(--space-5);">
+            <button type="button" id="cancel-edit-prod-btn">Close</button>
+        </div>
     </div>
 </div>
 

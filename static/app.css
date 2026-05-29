@@ -1679,6 +1679,70 @@ tbody tr:hover td { background: var(--accent-soft); }
    PRODUCTION STAFF (inside Casting tab)
 ====================================================== */
 
+/* Modal section dividers (edit production modal) */
+.modal-section-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-4) 0 var(--space-3);
+}
+
+.modal-section-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent);
+}
+
+/* Inline staff add row inside edit modal */
+.edit-staff-add-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.edit-staff-add-row select {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* Productions list row */
+.production-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-2);
+  gap: var(--space-3);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.production-row.prod-active {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.prod-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.prod-dates, .prod-casts {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.prod-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .staff-section {
   margin: var(--space-3) 0;
 }
