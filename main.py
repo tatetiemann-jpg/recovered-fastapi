@@ -3325,6 +3325,54 @@ def admin_add_cast(opera_id: int, request: Request):
     return {"status": "success", "cast": {"id": new_cast_id, "name": new_name}}
 
 
+@app.patch("/admin/casts/{cast_id}")
+def admin_rename_cast(cast_id: int, payload: dict, request: Request):
+    """Rename a cast."""
+    user = require_head_admin(request)
+    org_id = user["org_id"]
+    new_name = (payload.get("name") or "").strip()
+    if not new_name:
+        return {"status": "fail", "message": "Name is required."}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE casts SET name=%s
+            WHERE id=%s
+              AND opera_id IN (SELECT id FROM operas WHERE org_id=%s)
+        """, (new_name, cast_id, org_id))
+
+    return {"status": "success"}
+
+
+@app.delete("/admin/casts/{cast_id}")
+def admin_delete_cast(cast_id: int, request: Request):
+    """Remove a cast and all its assignments."""
+    user = require_head_admin(request)
+    org_id = user["org_id"]
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT opera_id FROM casts
+            WHERE id=%s AND opera_id IN (SELECT id FROM operas WHERE org_id=%s)
+        """, (cast_id, org_id))
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Cast not found."}
+        opera_id = row[0]
+
+        cur.execute("DELETE FROM student_assignments WHERE cast_id=%s", (cast_id,))
+        cur.execute("DELETE FROM student_roles WHERE cast_id=%s", (cast_id,))
+        cur.execute("DELETE FROM rehearsal_casts WHERE cast_id=%s", (cast_id,))
+        cur.execute("DELETE FROM casts WHERE id=%s", (cast_id,))
+        cur.execute("""
+            UPDATE operas
+            SET num_casts = (SELECT COUNT(*) FROM casts WHERE opera_id=%s)
+            WHERE id=%s
+        """, (opera_id, opera_id))
+
+    return {"status": "success"}
+
+
 # ========================================================
 # ORG TRANSFER REQUESTS (student submits; head_admin reviews)
 # ========================================================

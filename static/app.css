@@ -986,9 +986,50 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 
 .casting-role-label { padding-left: var(--space-2); }
+
 .casting-cast-label {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: var(--accent);
+  font-weight: 600;
+}
+
+.cast-label-name {
+  text-align: center;
+}
+
+.cast-label-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  padding: 1px 3px;
+  color: var(--text-muted);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.casting-cast-label:hover .cast-label-btn {
+  opacity: 1;
+}
+
+.cast-rename-btn:hover { color: var(--accent); }
+.cast-remove-btn:hover { color: var(--error, #c0392b); }
+
+.cast-rename-input {
+  width: 90px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 2px 4px;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .casting-role-row {

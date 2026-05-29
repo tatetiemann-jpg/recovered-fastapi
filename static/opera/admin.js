@@ -430,11 +430,75 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
     const header = document.createElement("div");
     header.className = "casting-header";
     header.style.gridTemplateColumns = `1fr repeat(${castingData.casts.length}, 1fr)`;
-    let headerHtml = `<div class="casting-role-label">Role</div>`;
+
+    const roleHeaderCell = document.createElement("div");
+    roleHeaderCell.className = "casting-role-label";
+    roleHeaderCell.textContent = "Role";
+    header.appendChild(roleHeaderCell);
+
     castingData.casts.forEach(c => {
-        headerHtml += `<div class="casting-cast-label">${escapeHtml(c.name)}</div>`;
+        const castLabel = document.createElement("div");
+        castLabel.className = "casting-cast-label";
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "cast-label-name";
+        nameSpan.textContent = c.name;
+
+        const renameBtn = document.createElement("button");
+        renameBtn.type = "button";
+        renameBtn.className = "cast-label-btn cast-rename-btn";
+        renameBtn.title = "Rename";
+        renameBtn.textContent = "✏";
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "cast-label-btn cast-remove-btn";
+        removeBtn.title = "Remove cast";
+        removeBtn.textContent = "✕";
+
+        castLabel.appendChild(nameSpan);
+        castLabel.appendChild(renameBtn);
+        castLabel.appendChild(removeBtn);
+
+        renameBtn.addEventListener("click", () => {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "cast-rename-input";
+            input.value = c.name;
+            castLabel.innerHTML = "";
+            castLabel.appendChild(input);
+            input.focus();
+            input.select();
+
+            const restore = () => {
+                castLabel.innerHTML = "";
+                castLabel.appendChild(nameSpan);
+                castLabel.appendChild(renameBtn);
+                castLabel.appendChild(removeBtn);
+            };
+            const save = async () => {
+                const newName = input.value.trim();
+                if (newName && newName !== c.name) {
+                    await renameCast(castingData.opera.id, c.id, newName);
+                } else {
+                    restore();
+                }
+            };
+            input.addEventListener("keydown", e => {
+                if (e.key === "Enter") save();
+                if (e.key === "Escape") restore();
+            });
+            input.addEventListener("blur", save);
+        });
+
+        removeBtn.addEventListener("click", () => {
+            if (!confirm(`Remove "${c.name}"? All role assignments for this cast will be lost.`)) return;
+            removeCast(castingData.opera.id, c.id);
+        });
+
+        header.appendChild(castLabel);
     });
-    header.innerHTML = headerHtml;
+
     container.appendChild(header);
 
     sortedRoles.forEach(role => {
@@ -505,7 +569,7 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
             const searchToggleBtn = document.createElement("button");
             searchToggleBtn.type = "button";
             searchToggleBtn.className = "casting-search-toggle";
-            searchToggleBtn.textContent = "Search";
+            searchToggleBtn.textContent = "\u{1F50D}";
             assignRow.appendChild(select);
             assignRow.appendChild(searchToggleBtn);
 
@@ -2760,6 +2824,47 @@ function renderEditModalStaff() {
     });
 }
 
+
+async function renameCast(operaId, castId, newName) {
+    try {
+        const res = await fetch(`${API}/admin/casts/${castId}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newName }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            const cast = castingData.casts.find(c => c.id === castId);
+            if (cast) cast.name = newName;
+            renderAssignRolesGrid("edit-prod-roles-grid");
+            await loadProductions();
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function removeCast(operaId, castId) {
+    try {
+        const res = await fetch(`${API}/admin/casts/${castId}`, {
+            method: "DELETE",
+            credentials: "include",
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            const castingRes = await fetch(`${API}/admin/opera-casting/${operaId}`, { credentials: "include" });
+            castingData = await castingRes.json();
+            renderAssignRolesGrid("edit-prod-roles-grid");
+            await loadProductions();
+        } else {
+            alert(data.message || "Failed to remove cast.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Server error.");
+    }
+}
 
 async function addCastToProduction() {
     const prodId = castingSelectedOperaId;
