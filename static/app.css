@@ -1710,7 +1710,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 .inline-radio-row .inline-check:has(input[type="radio"]:checked) {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1f1b15;
+  color: #fff;
   font-weight: 600;
 }
 
