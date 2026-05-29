@@ -458,57 +458,133 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
             const key = `${cast.id}::${role.name}`;
             const currentAssignment = byCastRole[key];
 
+            const allowedVoices = VOICE_COMPATIBILITY[(role.voice_type || "").toLowerCase()] || [];
+            const compatibleStudents = castingData.all_students
+                .filter(s => allowedVoices.includes((s.voice_type || "").toLowerCase()))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            const sameCastCastings = studentsInCast(cast.id);
+
+            // --- Select ---
             const select = document.createElement("select");
             select.className = "casting-select";
             select.dataset.operaId = castingData.opera.id;
             select.dataset.castId = cast.id;
             select.dataset.roleName = role.name;
 
-            // "Not cast" default
             const noneOpt = document.createElement("option");
             noneOpt.value = "";
             noneOpt.textContent = "— Not cast —";
             select.appendChild(noneOpt);
 
-            // Compatible students
-            const allowedVoices = VOICE_COMPATIBILITY[(role.voice_type || "").toLowerCase()] || [];
-            const compatibleStudents = castingData.all_students
-                .filter(s => allowedVoices.includes((s.voice_type || "").toLowerCase()))
-                .sort((a, b) => a.name.localeCompare(b.name));
-
-            // Who's already principal IN THIS CAST (excluding this role)?
-            const sameCastCastings = studentsInCast(cast.id);
-
             compatibleStudents.forEach(student => {
                 const opt = document.createElement("option");
                 opt.value = student.id;
                 opt.textContent = student.name;
-
-                // Check: is this student already principal in THIS cast in a different role?
-                const conflictInThisCast = sameCastCastings.find(
+                const conflict = sameCastCastings.find(
                     c => c.student_id === student.id && c.role !== role.name
                 );
-
-                if (conflictInThisCast) {
-                    opt.textContent = `${student.name} (already ${conflictInThisCast.role} in ${cast.name})`;
+                if (conflict) {
+                    opt.textContent = `${student.name} (already ${conflict.role})`;
                     opt.disabled = true;
                     opt.style.color = "var(--text-faint)";
                 }
-
-                // If this student is currently in this exact slot, select it
                 if (currentAssignment && currentAssignment.student_id === student.id) {
                     opt.selected = true;
                     opt.disabled = false;
                     opt.textContent = student.name;
                     opt.style.color = "";
                 }
-
                 select.appendChild(opt);
             });
-
             select.addEventListener("change", onPrincipalAssignmentChange);
 
-            cell.appendChild(select);
+            // --- Assign row (select + search button) ---
+            const assignRow = document.createElement("div");
+            assignRow.className = "casting-assign-row";
+            const searchToggleBtn = document.createElement("button");
+            searchToggleBtn.type = "button";
+            searchToggleBtn.className = "casting-search-toggle";
+            searchToggleBtn.textContent = "Search";
+            assignRow.appendChild(select);
+            assignRow.appendChild(searchToggleBtn);
+
+            // --- Search panel ---
+            const searchPanel = document.createElement("div");
+            searchPanel.className = "casting-search-panel hidden";
+            const searchTop = document.createElement("div");
+            searchTop.className = "casting-search-top";
+            const searchInput = document.createElement("input");
+            searchInput.type = "text";
+            searchInput.className = "casting-search-input";
+            searchInput.placeholder = "Search singers…";
+            const searchCloseBtn = document.createElement("button");
+            searchCloseBtn.type = "button";
+            searchCloseBtn.className = "casting-search-close";
+            searchCloseBtn.textContent = "✕";
+            searchTop.appendChild(searchInput);
+            searchTop.appendChild(searchCloseBtn);
+            const searchResults = document.createElement("div");
+            searchResults.className = "casting-search-results";
+            searchPanel.appendChild(searchTop);
+            searchPanel.appendChild(searchResults);
+
+            cell.appendChild(assignRow);
+            cell.appendChild(searchPanel);
+
+            // Toggle into search mode
+            searchToggleBtn.addEventListener("click", () => {
+                assignRow.classList.add("hidden");
+                searchPanel.classList.remove("hidden");
+                searchInput.value = "";
+                searchResults.innerHTML = "";
+                searchInput.focus();
+            });
+
+            // Back to select mode
+            searchCloseBtn.addEventListener("click", () => {
+                searchPanel.classList.add("hidden");
+                assignRow.classList.remove("hidden");
+            });
+
+            // Filter as user types
+            searchInput.addEventListener("input", () => {
+                const query = searchInput.value.toLowerCase().trim();
+                searchResults.innerHTML = "";
+                if (!query) return;
+                const matches = compatibleStudents.filter(s => s.name.toLowerCase().includes(query));
+                if (!matches.length) {
+                    const noResult = document.createElement("div");
+                    noResult.className = "casting-no-results";
+                    noResult.textContent = "Singer not found";
+                    searchResults.appendChild(noResult);
+                    return;
+                }
+                matches.forEach(student => {
+                    const item = document.createElement("div");
+                    item.className = "casting-search-result-item";
+                    const conflict = sameCastCastings.find(
+                        c => c.student_id === student.id && c.role !== role.name
+                    );
+                    if (conflict) {
+                        item.textContent = `${student.name} (already ${conflict.role})`;
+                        item.classList.add("casting-result-conflict");
+                    } else {
+                        item.textContent = student.name;
+                        item.addEventListener("click", async () => {
+                            const ok = await doAssignPrincipal(
+                                castingData.opera.id, cast.id, role.name, student.id
+                            );
+                            if (ok) {
+                                searchPanel.classList.add("hidden");
+                                assignRow.classList.remove("hidden");
+                            }
+                        });
+                    }
+                    searchResults.appendChild(item);
+                });
+            });
+
             row.appendChild(cell);
         });
 
@@ -516,37 +592,38 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
     });
 }
 
-async function onPrincipalAssignmentChange(e) {
-    const select = e.target;
-    const operaId = Number(select.dataset.operaId);
-    const castId = Number(select.dataset.castId);
-    const roleName = select.dataset.roleName;
-    const studentId = select.value ? Number(select.value) : null;
-
+async function doAssignPrincipal(operaId, castId, roleName, studentId) {
     try {
         const res = await fetch(`${API}/admin/assign-principal`, {
             credentials: "include",
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                opera_id: operaId,
-                cast_id: castId,
-                role_name: roleName,
-                student_id: studentId,
-            })
+            body: JSON.stringify({ opera_id: operaId, cast_id: castId, role_name: roleName, student_id: studentId }),
         });
         const data = await res.json();
         if (data.status !== "success") {
             alert(data.message || "Failed to save.");
+            return false;
         }
-        // Refresh cast columns and both role grids (separate modal + edit modal)
         await loadCastingForOpera(operaId);
         renderAssignRolesGrid();
         renderAssignRolesGrid("edit-prod-roles-grid");
+        return true;
     } catch (err) {
         console.error(err);
         alert("Server error.");
+        return false;
     }
+}
+
+async function onPrincipalAssignmentChange(e) {
+    const select = e.target;
+    await doAssignPrincipal(
+        Number(select.dataset.operaId),
+        Number(select.dataset.castId),
+        select.dataset.roleName,
+        select.value ? Number(select.value) : null
+    );
 }
 // -----------------------------------------------------------
 // PRODUCTION STAFF (inside Casting tab)
@@ -2568,8 +2645,6 @@ async function openEditProductionModal(prodId) {
     document.getElementById("edit-prod-staff-msg").textContent = "";
     document.getElementById("edit-prod-staff-list").innerHTML = `<em class="empty-note">Loading…</em>`;
     document.getElementById("edit-prod-roles-grid").innerHTML = `<em class="empty-note">Loading…</em>`;
-    const vocalistSearch = document.getElementById("vocalist-search");
-    if (vocalistSearch) vocalistSearch.value = "";
     document.getElementById("edit-production-modal").classList.remove("hidden");
 
     try {
@@ -2686,12 +2761,31 @@ function renderEditModalStaff() {
 }
 
 
-function filterVocalistsBySearch() {
-    const query = (document.getElementById("vocalist-search")?.value || "").toLowerCase().trim();
-    document.querySelectorAll("#edit-prod-roles-grid .casting-select option").forEach(opt => {
-        if (!opt.value) return;
-        opt.hidden = query.length > 0 && !opt.textContent.toLowerCase().includes(query);
-    });
+async function addCastToProduction() {
+    const prodId = castingSelectedOperaId;
+    if (!prodId) return;
+    const btn = document.getElementById("add-cast-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Adding…"; }
+    try {
+        const res = await fetch(`${API}/admin/productions/${prodId}/casts`, {
+            method: "POST",
+            credentials: "include",
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            const castingRes = await fetch(`${API}/admin/opera-casting/${prodId}`, { credentials: "include" });
+            castingData = await castingRes.json();
+            renderAssignRolesGrid("edit-prod-roles-grid");
+            await loadProductions();
+        } else {
+            alert(data.message || "Failed to add cast.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Server error.");
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "+ Add Cast"; }
+    }
 }
 
 // -----------------------------------------------------------
@@ -2980,7 +3074,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("edit-production-modal")?.addEventListener("click", e => {
         if (e.target.id === "edit-production-modal") closeEditProductionModal();
     });
-    document.getElementById("vocalist-search")?.addEventListener("input", filterVocalistsBySearch);
+    document.getElementById("add-cast-btn")?.addEventListener("click", addCastToProduction);
 
     // --- Requests ---
     // (event delegation handles approve/deny buttons rendered dynamically)

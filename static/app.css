@@ -1693,6 +1693,100 @@ tbody tr:hover td { background: var(--accent-soft); }
   color: var(--accent);
 }
 
+.modal-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.modal-section-header-row .modal-section-title {
+  margin-bottom: 0;
+}
+
+/* Per-cell singer search in role assignment grid */
+.casting-assign-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.casting-search-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.casting-search-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.casting-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.casting-search-top {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.casting-search-input {
+  flex: 1;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+.casting-search-close {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 2px 7px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.casting-search-results {
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+}
+
+.casting-search-result-item {
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.casting-search-result-item:hover {
+  background: var(--hover);
+}
+
+.casting-result-conflict {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  font-style: italic;
+}
+
+.casting-no-results {
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* Inline staff add row inside edit modal */
 .edit-staff-add-row {
   display: flex;

@@ -3289,6 +3289,42 @@ def admin_update_production(opera_id: int, payload: dict, request: Request):
     return {"status": "success"}
 
 
+@app.post("/admin/productions/{opera_id}/casts")
+def admin_add_cast(opera_id: int, request: Request):
+    """Add a new cast to an existing production."""
+    user = require_head_admin(request)
+    org_id = user["org_id"]
+
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "SELECT num_casts FROM operas WHERE id=%s AND org_id=%s",
+            (opera_id, org_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Production not found."}
+
+        current_count = row[0] or 0
+        if current_count >= 10:
+            return {"status": "fail", "message": "Maximum of 10 casts allowed."}
+
+        cast_letters = "ABCDEFGHIJ"
+        new_name = f"Cast {cast_letters[current_count]}"
+
+        cur.execute(
+            "INSERT INTO casts (opera_id, name) VALUES (%s, %s) RETURNING id",
+            (opera_id, new_name)
+        )
+        new_cast_id = cur.fetchone()[0]
+
+        cur.execute(
+            "UPDATE operas SET num_casts = num_casts + 1 WHERE id=%s",
+            (opera_id,)
+        )
+
+    return {"status": "success", "cast": {"id": new_cast_id, "name": new_name}}
+
+
 # ========================================================
 # ORG TRANSFER REQUESTS (student submits; head_admin reviews)
 # ========================================================
