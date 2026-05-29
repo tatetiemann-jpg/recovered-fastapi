@@ -698,8 +698,11 @@ let staffData = { staff: [], teachers: [] };
 const STAFF_ROLE_LABELS = {
     "director": "Director",
     "assistant_director": "Assistant Director",
+    "stage_manager": "Stage Manager",
+    "assistant_stage_manager": "Assistant Stage Manager",
     "conductor": "Conductor",
     "assistant_conductor": "Assistant Conductor",
+    "orchestra_manager": "Orchestra Manager",
 };
 
 async function loadStaffForOpera(operaId) {
@@ -731,7 +734,7 @@ function renderStaffList() {
         byRole[s.staff_role].push(s);
     });
 
-    const roleOrder = ["director", "assistant_director", "conductor", "assistant_conductor"];
+    const roleOrder = ["director", "assistant_director", "stage_manager", "assistant_stage_manager", "conductor", "assistant_conductor", "orchestra_manager"];
     let html = "";
 
     roleOrder.forEach(role => {
@@ -790,14 +793,17 @@ function openAddStaffModal() {
 
     const teacherSelect = document.getElementById("staff-teacher");
     teacherSelect.innerHTML = "";
-    staffData.teachers.forEach(t => {
-        const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.textContent = t.name;
-        teacherSelect.appendChild(opt);
-    });
+    if (staffData.teachers && staffData.teachers.length > 0) {
+        staffData.teachers.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.textContent = `${t.name} — ${STAFF_ROLE_LABELS[t.admin_role] || t.admin_role}`;
+            teacherSelect.appendChild(opt);
+        });
+    } else {
+        teacherSelect.innerHTML = `<option value="">No admins with roles found</option>`;
+    }
 
-    document.getElementById("staff-role").value = "director";
     document.getElementById("staff-msg").textContent = "";
     document.getElementById("add-staff-modal").classList.remove("hidden");
 }
@@ -811,10 +817,9 @@ async function saveStaff() {
     msg.textContent = "";
 
     const teacherId = Number(document.getElementById("staff-teacher").value);
-    const staffRole = document.getElementById("staff-role").value;
 
     if (!teacherId) {
-        msg.textContent = "Please pick a teacher.";
+        msg.textContent = "Please pick an admin.";
         return;
     }
 
@@ -826,7 +831,6 @@ async function saveStaff() {
             body: JSON.stringify({
                 opera_id: castingData.opera.id,
                 teacher_id: teacherId,
-                staff_role: staffRole,
             })
         });
         const data = await res.json();
@@ -1920,6 +1924,9 @@ async function sendInvite() {
     const teacherType = document.querySelector('input[name="invite-teacher-type"]:checked')?.value || "vocal";
     const teacherInstruments = document.getElementById("invite-instruments")?.value.trim() || "";
 
+    // Admin sub-role (only relevant when role === "admin" or "orchestra_admin")
+    const adminRole = document.getElementById("invite-admin-role")?.value || "";
+
     // Org fields (relevant when system_admin invites head_admin / admin / student)
     const orgName = document.getElementById("invite-org-name")?.value.trim() || "";
     const orgSlug = document.getElementById("invite-org-slug")?.value.trim() || "";
@@ -1946,6 +1953,7 @@ async function sendInvite() {
                 fullname_hint: fullnameHint || null,
                 teacher_type: role === "teacher" ? teacherType : "vocal",
                 teacher_instruments: role === "teacher" ? teacherInstruments : "",
+                admin_role: (role === "admin" || role === "orchestra_admin") ? adminRole : null,
                 org_name: orgName || null,
                 org_slug: orgSlug || null,
                 org_type: orgType || null,
@@ -2068,6 +2076,25 @@ function onInviteRoleChange() {
     const teacherTypeSection = document.getElementById("invite-teacher-type-section");
     if (teacherTypeSection) {
         teacherTypeSection.classList.toggle("hidden", role !== "teacher");
+    }
+
+    // Admin sub-role section: shown when inviting opera admin or orchestra admin
+    const adminRoleSection = document.getElementById("invite-admin-role-section");
+    const adminRoleSelect = document.getElementById("invite-admin-role");
+    if (adminRoleSection && adminRoleSelect) {
+        const isAdminInvite = role === "admin" || role === "orchestra_admin";
+        adminRoleSection.classList.toggle("hidden", !isAdminInvite);
+
+        if (isAdminInvite) {
+            // Show only relevant optgroups based on role
+            const operaGroup = adminRoleSelect.querySelector("optgroup:first-of-type");
+            const orchGroup = adminRoleSelect.querySelector("optgroup:last-of-type");
+            if (operaGroup) operaGroup.style.display = role === "admin" ? "" : "none";
+            if (orchGroup) orchGroup.style.display = role === "orchestra_admin" ? "" : "none";
+            // Set a valid default for the selected role type
+            if (role === "admin") adminRoleSelect.value = "director";
+            else adminRoleSelect.value = "conductor";
+        }
     }
 }
 
@@ -2775,11 +2802,11 @@ function renderEditModalStaff() {
         staffData.teachers.forEach(t => {
             const opt = document.createElement("option");
             opt.value = t.id;
-            opt.textContent = t.name;
+            opt.textContent = `${t.name} — ${STAFF_ROLE_LABELS[t.admin_role] || t.admin_role}`;
             teacherSelect.appendChild(opt);
         });
     } else {
-        teacherSelect.innerHTML = `<option value="">No teachers in system yet</option>`;
+        teacherSelect.innerHTML = `<option value="">No admins with roles found</option>`;
     }
 
     if (!staffData.staff || staffData.staff.length === 0) {
@@ -2787,7 +2814,7 @@ function renderEditModalStaff() {
         return;
     }
 
-    const roleOrder = ["director", "assistant_director", "conductor", "assistant_conductor"];
+    const roleOrder = ["director", "assistant_director", "stage_manager", "assistant_stage_manager", "conductor", "assistant_conductor", "orchestra_manager"];
     const byRole = {};
     staffData.staff.forEach(s => {
         if (!byRole[s.staff_role]) byRole[s.staff_role] = [];
@@ -3028,13 +3055,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         const msg = document.getElementById("edit-prod-staff-msg");
         msg.textContent = "";
         const teacherId = Number(document.getElementById("edit-prod-staff-teacher").value);
-        const staffRole = document.getElementById("edit-prod-staff-role").value;
-        if (!teacherId) { msg.textContent = "No teacher selected."; return; }
+        if (!teacherId) { msg.textContent = "No admin selected."; return; }
         try {
             const res = await fetch(`${API}/admin/assign-staff`, {
                 credentials: "include", method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ opera_id: castingSelectedOperaId, teacher_id: teacherId, staff_role: staffRole }),
+                body: JSON.stringify({ opera_id: castingSelectedOperaId, teacher_id: teacherId }),
             });
             const data = await res.json();
             if (data.status === "success") {

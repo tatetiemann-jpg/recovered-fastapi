@@ -115,6 +115,23 @@
                 <input type="text" id="invite-org-slug" placeholder="e.g. grace-lutheran (auto-filled)">
             </div>
 
+            <div id="invite-admin-role-section" class="hidden">
+                <label for="invite-admin-role">Production Role</label>
+                <select id="invite-admin-role">
+                    <optgroup label="Opera Admin Roles">
+                        <option value="director">Director</option>
+                        <option value="assistant_director">Assistant Director</option>
+                        <option value="stage_manager">Stage Manager</option>
+                        <option value="assistant_stage_manager">Assistant Stage Manager</option>
+                    </optgroup>
+                    <optgroup label="Orchestra Admin Roles">
+                        <option value="conductor">Conductor</option>
+                        <option value="assistant_conductor">Assistant Conductor</option>
+                        <option value="orchestra_manager">Orchestra Manager</option>
+                    </optgroup>
+                </select>
+            </div>
+
             <div id="invite-teacher-type-section" class="hidden">
                 <label>Teacher Type</label>
                 <div class="checkbox-row">
@@ -450,18 +467,10 @@
 <div id="add-staff-modal" class="modal-overlay hidden">
     <div class="modal-card">
         <h3>Add Production Staff</h3>
-        <p class="hint">Pick a teacher and a role on this opera.</p>
+        <p class="hint">Pick an admin to assign to this production. Their role is set when they are invited.</p>
 
-        <label for="staff-teacher">Teacher</label>
+        <label for="staff-teacher">Admin</label>
         <select id="staff-teacher"></select>
-
-        <label for="staff-role">Role</label>
-        <select id="staff-role">
-            <option value="director">Director</option>
-            <option value="assistant_director">Assistant Director</option>
-            <option value="conductor">Conductor</option>
-            <option value="assistant_conductor">Assistant Conductor</option>
-        </select>
 
         <div class="modal-actions">
             <button id="save-staff-btn">Add</button>
@@ -501,13 +510,7 @@
         <h4 class="modal-section-title">Production Staff</h4>
         <div id="edit-prod-staff-list"><em class="empty-note">Loading…</em></div>
         <div class="edit-staff-add-row">
-            <select id="edit-prod-staff-teacher" title="Teacher"><option value="">No teachers yet</option></select>
-            <select id="edit-prod-staff-role" title="Staff role">
-                <option value="director">Director</option>
-                <option value="assistant_director">Asst. Director</option>
-                <option value="conductor">Conductor</option>
-                <option value="assistant_conductor">Asst. Conductor</option>
-            </select>
+            <select id="edit-prod-staff-teacher" title="Admin"><option value="">No admins yet</option></select>
             <button type="button" id="edit-prod-add-staff-btn">+ Add</button>
         </div>
         <p id="edit-prod-staff-msg" class="hint"></p>

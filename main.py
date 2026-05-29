@@ -36,6 +36,9 @@ EST = pytz.timezone("US/Eastern")
 # All role values that are considered "admin-level"
 ADMIN_ROLES = frozenset({"admin", "head_admin", "system_admin", "orchestra_admin"})
 
+OPERA_ADMIN_ROLES = frozenset({"director", "assistant_director", "stage_manager", "assistant_stage_manager"})
+ORCHESTRA_ADMIN_ROLES = frozenset({"conductor", "assistant_conductor", "orchestra_manager"})
+
 
 # ========================================================
 # LIFESPAN (startup/shutdown)
@@ -51,7 +54,9 @@ async def lifespan(app: FastAPI):
         with db_cursor(commit=True) as cur:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_token TEXT UNIQUE;")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
+            cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
             cur.execute("""
@@ -1527,6 +1532,7 @@ def admin_invite(payload: dict, request: Request):
     teacher_type = (payload.get("teacher_type") or "vocal").strip()
     teacher_instruments = (payload.get("teacher_instruments") or "").strip().lower()
     instrument = (payload.get("instrument") or "").strip() or None
+    admin_role = (payload.get("admin_role") or "").strip() or None
 
     if teacher_type not in ("vocal", "instrumental"):
         teacher_type = "vocal"
@@ -1546,6 +1552,16 @@ def admin_invite(payload: dict, request: Request):
     allowed = allowed_by_role.get(admin_user["role"], set())
     if role not in allowed:
         return {"status": "fail", "message": f"Your role cannot invite '{role}'."}
+
+    # Validate admin sub-role when inviting opera or orchestra admins
+    if role == "admin":
+        if admin_role not in OPERA_ADMIN_ROLES:
+            return {"status": "fail", "message": "Please select a valid opera admin role."}
+    elif role == "orchestra_admin":
+        if admin_role not in ORCHESTRA_ADMIN_ROLES:
+            return {"status": "fail", "message": "Please select a valid orchestra admin role."}
+    else:
+        admin_role = None
 
     if not email or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
         return {"status": "fail", "message": "Please enter a valid email."}
@@ -1609,11 +1625,11 @@ def admin_invite(payload: dict, request: Request):
         cur.execute("""
             INSERT INTO invitations (token, email, role, org_id, invited_by,
                                      fullname_hint, specialty_hint, expires_at,
-                                     teacher_type, teacher_instruments, instrument)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                     teacher_type, teacher_instruments, instrument, admin_role)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (token, email, role, org_id, admin_user["id"],
               fullname_hint, specialty_hint, expires,
-              teacher_type, teacher_instruments, instrument))
+              teacher_type, teacher_instruments, instrument, admin_role))
 
     invite_url = f"{APP_URL}/accept-invite?token={token}"
 
@@ -1717,7 +1733,7 @@ def invite_info(token: str):
             SELECT i.email, i.role, i.fullname_hint, i.specialty_hint,
                    i.expires_at, i.accepted_at, i.teacher_type, i.teacher_instruments,
                    o.name AS org_name, i.org_id,
-                   COALESCE(o.org_type, 'opera') AS org_type, i.instrument
+                   COALESCE(o.org_type, 'opera') AS org_type, i.instrument, i.admin_role
             FROM invitations i
             LEFT JOIN organizations o ON o.id = i.org_id
             WHERE i.token = %s
@@ -1727,7 +1743,7 @@ def invite_info(token: str):
     if not row:
         return {"valid": False, "message": "Invalid invitation link."}
 
-    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id, org_type, inv_instrument = row
+    email, role, fname, spec, expires, accepted, t_type, t_instruments, org_name, org_id, org_type, inv_instrument, inv_admin_role = row
     if accepted:
         return {"valid": False, "message": "This invitation has already been used."}
     if expires < datetime.now(EST):
@@ -1745,6 +1761,7 @@ def invite_info(token: str):
         "org_id": org_id,
         "org_type": org_type,
         "instrument": inv_instrument or "",
+        "admin_role": inv_admin_role or "",
     }
 
 
@@ -1800,7 +1817,7 @@ def accept_invite(payload: dict):
     with db_cursor(commit=True) as cur:
         cur.execute("""
             SELECT email, role, org_id, expires_at, accepted_at,
-                   teacher_type, teacher_instruments, instrument
+                   teacher_type, teacher_instruments, instrument, admin_role
             FROM invitations
             WHERE token = %s
         """, (token,))
@@ -1809,7 +1826,7 @@ def accept_invite(payload: dict):
         if not row:
             return {"status": "fail", "message": "Invalid invitation link."}
 
-        email, role, org_id, expires, accepted, t_type, t_instruments, inv_instrument = row
+        email, role, org_id, expires, accepted, t_type, t_instruments, inv_instrument, inv_admin_role = row
         if accepted:
             return {"status": "fail", "message": "This invitation has already been used."}
         if expires < datetime.now(EST):
@@ -1825,14 +1842,14 @@ def accept_invite(payload: dict):
                     org_id, username, email, password_hash,
                     fullname, role, voice_type, specialty, pw_version,
                     email_verified, theme, teacher_type, teacher_instruments,
-                    section_id, instrument
+                    section_id, instrument, admin_role
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'bcrypt', TRUE, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'bcrypt', TRUE, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (
                 org_id, username, email, hash_password_bcrypt(password),
                 fullname, role, voice_type, specialty, theme, t_type, t_instruments,
-                section_id, inv_instrument
+                section_id, inv_instrument, inv_admin_role
             ))
             user_id = cur.fetchone()[0]
         except pg_errors.UniqueViolation:
@@ -3082,7 +3099,7 @@ def admin_remove_from_opera(payload: dict):
     return {"status": "success"}
 @app.get("/admin/opera-staff/{opera_id}")
 def admin_opera_staff(opera_id: int, request: Request):
-    """Returns staff for this opera + all teachers available to add."""
+    """Returns staff for this opera + all admins available to add."""
     user = require_user(request, role="admin")
     org_id = user["org_id"]
     with db_cursor() as cur:
@@ -3104,38 +3121,43 @@ def admin_opera_staff(opera_id: int, request: Request):
             for r in cur.fetchall()
         ]
 
-        # All teachers in org
+        # All opera/orchestra admins in org with a defined sub-role
         cur.execute("""
-            SELECT id, fullname
+            SELECT id, fullname, admin_role
             FROM users
-            WHERE org_id = %s AND role = 'teacher'
+            WHERE org_id = %s AND role IN ('admin', 'orchestra_admin') AND admin_role IS NOT NULL
             ORDER BY fullname
         """, (org_id,))
-        teachers = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+        teachers = [{"id": r[0], "name": r[1], "admin_role": r[2]} for r in cur.fetchall()]
 
     return {"staff": staff, "teachers": teachers}
 
 
 @app.post("/admin/assign-staff")
-def admin_assign_staff(payload: dict):
+def admin_assign_staff(payload: dict, request: Request):
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
     opera_id = payload.get("opera_id")
     teacher_id = payload.get("teacher_id")
-    staff_role = payload.get("staff_role")
 
-    if not (opera_id and teacher_id and staff_role):
+    if not (opera_id and teacher_id):
         return {"status": "fail", "message": "Missing fields"}
 
-    if staff_role not in ("director", "assistant_director", "conductor", "assistant_conductor"):
-        return {"status": "fail", "message": "Invalid staff role"}
-
     with db_cursor(commit=True) as cur:
-        cur.execute("SELECT 1 FROM operas WHERE id=%s", (opera_id,))
+        cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (opera_id, org_id))
         if not cur.fetchone():
             return {"status": "fail", "message": "Opera not found"}
 
-        cur.execute("SELECT 1 FROM users WHERE id=%s AND role='teacher'", (teacher_id,))
-        if not cur.fetchone():
-            return {"status": "fail", "message": "Teacher not found"}
+        cur.execute(
+            "SELECT admin_role FROM users WHERE id=%s AND org_id=%s AND role IN ('admin', 'orchestra_admin')",
+            (teacher_id, org_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Admin not found"}
+        staff_role = row[0]
+        if not staff_role:
+            return {"status": "fail", "message": "This admin does not have a production role assigned"}
 
         try:
             cur.execute("""
@@ -3143,13 +3165,14 @@ def admin_assign_staff(payload: dict):
                 VALUES (%s, %s, %s)
             """, (opera_id, teacher_id, staff_role))
         except pg_errors.UniqueViolation:
-            return {"status": "fail", "message": "This teacher already has that role on this opera"}
+            return {"status": "fail", "message": "This person is already assigned to this production"}
 
     return {"status": "success"}
 
 
 @app.post("/admin/remove-staff")
-def admin_remove_staff(payload: dict):
+def admin_remove_staff(payload: dict, request: Request):
+    require_user(request, role="admin")
     staff_id = payload.get("staff_id")
     if not staff_id:
         return {"status": "fail", "message": "Missing staff_id"}
