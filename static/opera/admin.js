@@ -650,6 +650,108 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
                 });
             });
 
+            // --- Covers section ---
+            const coversSection = document.createElement("div");
+            coversSection.className = "covers-section";
+
+            const coversLabel = document.createElement("div");
+            coversLabel.className = "covers-label";
+            coversLabel.textContent = "Covers";
+            coversSection.appendChild(coversLabel);
+
+            const coverPills = document.createElement("div");
+            coverPills.className = "cover-pills";
+
+            const existingCovers = (castingData.covers || []).filter(
+                cv => cv.cast_id === cast.id && cv.role_name === role.name
+            );
+            existingCovers.forEach(cv => {
+                const pill = document.createElement("span");
+                pill.className = "cover-pill";
+                pill.textContent = cv.student_name;
+                const removeX = document.createElement("button");
+                removeX.type = "button";
+                removeX.className = "cover-pill-remove";
+                removeX.textContent = "×";
+                removeX.title = "Remove cover";
+                removeX.addEventListener("click", async () => {
+                    await removeCover(cv.id, castingData.opera.id);
+                });
+                pill.appendChild(removeX);
+                coverPills.appendChild(pill);
+            });
+            coversSection.appendChild(coverPills);
+
+            // Add cover button + inline search
+            const addCoverBtn = document.createElement("button");
+            addCoverBtn.type = "button";
+            addCoverBtn.className = "add-cover-btn";
+            addCoverBtn.textContent = "+ Add Cover";
+            coversSection.appendChild(addCoverBtn);
+
+            const coverSearchWrap = document.createElement("div");
+            coverSearchWrap.className = "cover-search-wrap hidden";
+            const coverSearchInput = document.createElement("input");
+            coverSearchInput.type = "text";
+            coverSearchInput.className = "cover-search-input";
+            coverSearchInput.placeholder = "Search singers…";
+            const coverSearchResults = document.createElement("div");
+            coverSearchResults.className = "cover-search-results";
+            const coverSearchClose = document.createElement("button");
+            coverSearchClose.type = "button";
+            coverSearchClose.className = "casting-search-close";
+            coverSearchClose.textContent = "✕";
+            const coverSearchTop = document.createElement("div");
+            coverSearchTop.className = "casting-search-top";
+            coverSearchTop.appendChild(coverSearchInput);
+            coverSearchTop.appendChild(coverSearchClose);
+            coverSearchWrap.appendChild(coverSearchTop);
+            coverSearchWrap.appendChild(coverSearchResults);
+            coversSection.appendChild(coverSearchWrap);
+
+            addCoverBtn.addEventListener("click", () => {
+                addCoverBtn.classList.add("hidden");
+                coverSearchWrap.classList.remove("hidden");
+                coverSearchInput.value = "";
+                coverSearchResults.innerHTML = "";
+                coverSearchInput.focus();
+            });
+
+            coverSearchClose.addEventListener("click", () => {
+                coverSearchWrap.classList.add("hidden");
+                addCoverBtn.classList.remove("hidden");
+            });
+
+            coverSearchInput.addEventListener("input", () => {
+                const q = coverSearchInput.value.toLowerCase().trim();
+                coverSearchResults.innerHTML = "";
+                if (!q) return;
+                const alreadyCoverIds = new Set(existingCovers.map(cv => cv.student_id));
+                const matches = castingData.all_students.filter(s =>
+                    s.name.toLowerCase().includes(q) && !alreadyCoverIds.has(s.id)
+                );
+                if (!matches.length) {
+                    const noR = document.createElement("div");
+                    noR.className = "casting-no-results";
+                    noR.textContent = "Singer not found";
+                    coverSearchResults.appendChild(noR);
+                    return;
+                }
+                matches.forEach(student => {
+                    const item = document.createElement("div");
+                    item.className = "casting-search-result-item";
+                    item.textContent = student.name + (student.voice_type ? ` (${student.voice_type})` : "");
+                    item.addEventListener("click", async () => {
+                        await addCover(castingData.opera.id, cast.id, role.name, student.id);
+                        coverSearchWrap.classList.add("hidden");
+                        addCoverBtn.classList.remove("hidden");
+                    });
+                    coverSearchResults.appendChild(item);
+                });
+            });
+
+            cell.appendChild(coversSection);
+
             row.appendChild(cell);
         });
 
@@ -678,6 +780,49 @@ async function doAssignPrincipal(operaId, castId, roleName, studentId) {
         console.error(err);
         alert("Server error.");
         return false;
+    }
+}
+
+async function addCover(operaId, castId, roleName, studentId) {
+    try {
+        const res = await fetch(`${API}/admin/covers`, {
+            credentials: "include",
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({opera_id: operaId, cast_id: castId, role_name: roleName, student_id: studentId}),
+        });
+        const data = await res.json();
+        if (data.status !== "success") {
+            alert(data.message || "Failed to add cover.");
+            return;
+        }
+        await loadCastingForOpera(operaId);
+        renderAssignRolesGrid();
+        renderAssignRolesGrid("edit-prod-roles-grid");
+    } catch (err) {
+        console.error(err);
+        alert("Server error.");
+    }
+}
+
+async function removeCover(coverId, operaId) {
+    if (!confirm("Remove this cover?")) return;
+    try {
+        const res = await fetch(`${API}/admin/covers/${coverId}`, {
+            credentials: "include",
+            method: "DELETE",
+        });
+        const data = await res.json();
+        if (data.status !== "success") {
+            alert(data.message || "Failed to remove cover.");
+            return;
+        }
+        await loadCastingForOpera(operaId);
+        renderAssignRolesGrid();
+        renderAssignRolesGrid("edit-prod-roles-grid");
+    } catch (err) {
+        console.error(err);
+        alert("Server error.");
     }
 }
 

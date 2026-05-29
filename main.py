@@ -58,6 +58,16 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS role_covers (
+                    id SERIAL PRIMARY KEY,
+                    opera_id INT NOT NULL REFERENCES operas(id) ON DELETE CASCADE,
+                    cast_id INT NOT NULL REFERENCES casts(id) ON DELETE CASCADE,
+                    role_name VARCHAR(200) NOT NULL,
+                    student_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE (cast_id, role_name, student_id)
+                );
+            """)
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS staff_messages (
                     id SERIAL PRIMARY KEY,
                     org_id INT NOT NULL,
@@ -2959,6 +2969,17 @@ def admin_opera_casting(opera_id: int, request: Request):
         """, (org_id,))
         all_students = cur.fetchall()
 
+        # Covers for this opera
+        cur.execute("""
+            SELECT rc.id, rc.cast_id, rc.role_name, rc.student_id,
+                   u.fullname, u.voice_type
+            FROM role_covers rc
+            JOIN users u ON u.id = rc.student_id
+            WHERE rc.opera_id = %s
+            ORDER BY rc.role_name, u.fullname
+        """, (opera_id,))
+        cover_rows = cur.fetchall()
+
     # Build assignments lookup: {(cast_id, role_name): student_info}
     assignments = {}
     for s_id, c_id, r_name, name, voice in assignment_rows:
@@ -3003,6 +3024,13 @@ def admin_opera_casting(opera_id: int, request: Request):
             for s in all_students
         ],
         "chorus_count": chorus_count,
+        "covers": [
+            {
+                "id": r[0], "cast_id": r[1], "role_name": r[2],
+                "student_id": r[3], "student_name": r[4], "student_voice": r[5],
+            }
+            for r in cover_rows
+        ],
     }
 @app.post("/admin/assign-principal")
 def admin_assign_principal(payload: dict):
@@ -3068,6 +3096,73 @@ def admin_assign_principal(payload: dict):
         """, (student_id, opera_id, cast_id, role_name))
 
     return {"status": "success"}
+
+
+@app.post("/admin/covers")
+def admin_add_cover(payload: dict, request: Request):
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    opera_id = payload.get("opera_id")
+    cast_id = payload.get("cast_id")
+    role_name = payload.get("role_name")
+    student_id = payload.get("student_id")
+
+    if not (opera_id and cast_id and role_name and student_id):
+        return {"status": "fail", "message": "Missing required fields"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (opera_id, org_id))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Opera not found"}
+
+        cur.execute("SELECT 1 FROM casts WHERE id=%s AND opera_id=%s", (cast_id, opera_id))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Cast not in this opera"}
+
+        cur.execute("SELECT 1 FROM users WHERE id=%s AND role='student' AND org_id=%s", (student_id, org_id))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Student not found"}
+
+        try:
+            cur.execute("""
+                INSERT INTO role_covers (opera_id, cast_id, role_name, student_id)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (opera_id, cast_id, role_name, student_id))
+            new_id = cur.fetchone()[0]
+            cur.execute("SELECT fullname, voice_type FROM users WHERE id=%s", (student_id,))
+            name_row = cur.fetchone()
+        except pg_errors.UniqueViolation:
+            return {"status": "fail", "message": "This singer is already a cover for this role"}
+
+    return {
+        "status": "success",
+        "cover": {
+            "id": new_id,
+            "cast_id": cast_id,
+            "role_name": role_name,
+            "student_id": student_id,
+            "student_name": name_row[0],
+            "student_voice": name_row[1],
+        },
+    }
+
+
+@app.delete("/admin/covers/{cover_id}")
+def admin_remove_cover(cover_id: int, request: Request):
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            DELETE FROM role_covers rc
+            USING operas o
+            WHERE rc.id = %s AND rc.opera_id = o.id AND o.org_id = %s
+        """, (cover_id, org_id))
+        if cur.rowcount == 0:
+            return {"status": "fail", "message": "Cover not found"}
+    return {"status": "success"}
+
+
 @app.post("/admin/add-to-opera")
 def admin_add_to_opera(payload: dict):
     """

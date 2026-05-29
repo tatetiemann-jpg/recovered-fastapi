@@ -1828,6 +1828,93 @@ tbody tr:hover td { background: var(--accent-soft); }
   font-style: italic;
 }
 
+/* Role covers */
+.covers-section {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+
+.covers-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: var(--space-1);
+}
+
+.cover-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.cover-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px 2px 10px;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.cover-pill-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.cover-pill-remove:hover {
+  color: var(--danger, #c0392b);
+}
+
+.add-cover-btn {
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.add-cover-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cover-search-wrap {
+  margin-top: var(--space-1);
+}
+
+.cover-search-input {
+  width: 100%;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--input-bg, var(--surface));
+  color: var(--text);
+}
+
+.cover-search-results {
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+  margin-top: 2px;
+}
+
 /* Inline staff add row inside edit modal */
 .edit-staff-add-row {
   display: flex;
