@@ -5657,7 +5657,7 @@ def choir_sections_roster(request: Request):
 
         cur.execute("""
             SELECT id, fullname, voice_type FROM users
-            WHERE org_id = %s AND role = 'student'
+            WHERE org_id = %s AND role IN ('student', 'choir_member')
             ORDER BY fullname
         """, (org_id,))
         singers = cur.fetchall()
@@ -6159,7 +6159,7 @@ def choir_get_singers(request: Request):
             SELECT u.id, u.fullname, u.email, u.username, u.section_id, cs.name
             FROM users u
             LEFT JOIN choir_sections cs ON cs.id = u.section_id
-            WHERE u.org_id=%s AND u.role='student'
+            WHERE u.org_id=%s AND u.role IN ('student', 'choir_member')
             ORDER BY cs.sort_order NULLS LAST, u.fullname
         """, (user["org_id"],))
         return [{"id": r[0], "fullname": r[1], "email": r[2], "username": r[3],
