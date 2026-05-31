@@ -5816,7 +5816,19 @@ def choir_get_rehearsals(request: Request):
                 "choir_type": ctype,
                 "individual_members": indiv,
                 "materials_url": mat_url or "",
+                "absence_count": 0,
             })
+
+        if result:
+            reh_ids = [r["id"] for r in result]
+            cur.execute(
+                "SELECT rehearsal_id, COUNT(*) FROM absence_requests WHERE rehearsal_id = ANY(%s) GROUP BY rehearsal_id",
+                (reh_ids,),
+            )
+            absence_counts = {row[0]: row[1] for row in cur.fetchall()}
+            for r in result:
+                r["absence_count"] = absence_counts.get(r["id"], 0)
+
         return result
 
 @app.post("/choir/rehearsals")

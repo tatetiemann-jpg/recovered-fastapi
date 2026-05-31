@@ -394,8 +394,8 @@ async function loadUpcoming() {
                         <div class="rehearsal-row-actions">
                             <button class="subtle-btn reh-notes-btn" data-id="${r.id}">Rehearsal Notes</button>
                             <button class="subtle-btn edit-reh-btn" data-id="${r.id}">Edit</button>
-                            <button class="subtle-btn view-absences-btn" data-id="${r.id}" data-date="${r.date}">
-                                Absences &amp; Subs
+                            <button class="subtle-btn view-absences-btn${r.absence_count > 0 ? " absence-count-btn" : ""}" data-id="${r.id}" data-date="${r.date}">
+                                ${r.absence_count > 0 ? r.absence_count + " Absence" + (r.absence_count !== 1 ? "s" : "") + " &amp; Subs" : "Absences &amp; Subs"}
                             </button>
                             <button class="subtle-btn danger-btn delete-reh-btn" data-id="${r.id}">
                                 Delete
