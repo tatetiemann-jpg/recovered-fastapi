@@ -673,22 +673,38 @@ function buildFindSubRow(sub) {
         <button class="subtle-btn email-sub-btn">Email</button>
     `;
     const btn = row.querySelector(".email-sub-btn");
-    btn.addEventListener("click", () => contactOneSub(sub.id, btn));
+    btn.addEventListener("click", () => openCustomSubMsgModal(sub.id, sub.fullname, btn));
     return row;
 }
 
-async function contactOneSub(subId, btn) {
+let _customSubMsgPendingId = null;
+let _customSubMsgPendingBtn = null;
+
+function openCustomSubMsgModal(subId, subName, btn) {
+    _customSubMsgPendingId = subId;
+    _customSubMsgPendingBtn = btn;
+    document.getElementById("custom-sub-msg-name").textContent = subName;
+    document.getElementById("custom-sub-msg-compose").classList.add("hidden");
+    document.getElementById("custom-sub-msg-choice").classList.remove("hidden");
+    document.getElementById("custom-sub-msg-text").value = "";
+    document.getElementById("custom-sub-msg-status").textContent = "";
+    document.getElementById("custom-sub-msg-modal").classList.remove("hidden");
+}
+
+async function contactOneSub(subId, btn, customMessage) {
     btn.disabled = true;
     btn.textContent = "Sending…";
     try {
+        const body = {
+            rehearsal_id: Number(findSubRehearsalId),
+            section_id: Number(findSubSectionId),
+            sub_id: subId,
+        };
+        if (customMessage) body.custom_message = customMessage;
         const res = await fetch(`${API}/choir/contact-sub`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                rehearsal_id: Number(findSubRehearsalId),
-                section_id: Number(findSubSectionId),
-                sub_id: subId,
-            }),
+            body: JSON.stringify(body),
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -1135,6 +1151,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("find-sub-modal").addEventListener("click", e => {
         if (e.target.id === "find-sub-modal") document.getElementById("find-sub-modal").classList.add("hidden");
+    });
+
+    // Custom sub message modal
+    document.getElementById("custom-sub-no-btn").addEventListener("click", () => {
+        document.getElementById("custom-sub-msg-modal").classList.add("hidden");
+        contactOneSub(_customSubMsgPendingId, _customSubMsgPendingBtn, null);
+    });
+    document.getElementById("custom-sub-yes-btn").addEventListener("click", () => {
+        document.getElementById("custom-sub-msg-choice").classList.add("hidden");
+        document.getElementById("custom-sub-msg-compose").classList.remove("hidden");
+        document.getElementById("custom-sub-msg-text").focus();
+    });
+    document.getElementById("custom-sub-back-btn").addEventListener("click", () => {
+        document.getElementById("custom-sub-msg-compose").classList.add("hidden");
+        document.getElementById("custom-sub-msg-choice").classList.remove("hidden");
+    });
+    document.getElementById("custom-sub-send-btn").addEventListener("click", async () => {
+        const msg = document.getElementById("custom-sub-msg-text").value.trim();
+        if (!msg) {
+            document.getElementById("custom-sub-msg-status").textContent = "Please enter a message.";
+            return;
+        }
+        document.getElementById("custom-sub-msg-modal").classList.add("hidden");
+        await contactOneSub(_customSubMsgPendingId, _customSubMsgPendingBtn, msg);
+    });
+    document.getElementById("custom-sub-msg-modal").addEventListener("click", e => {
+        if (e.target.id === "custom-sub-msg-modal") document.getElementById("custom-sub-msg-modal").classList.add("hidden");
     });
 
     // Subs tab

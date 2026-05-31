@@ -292,6 +292,27 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir/choir_admin.js?v=15"></script>
+<!-- CUSTOM SUB MESSAGE MODAL -->
+<div id="custom-sub-msg-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Contact Sub</h3>
+    <p id="custom-sub-msg-name" style="margin:0 0 var(--space-3);font-weight:600;"></p>
+    <p style="margin:0 0 var(--space-2);">Would you like to send a custom message?</p>
+    <div id="custom-sub-msg-choice" class="modal-actions" style="margin-bottom:0;">
+      <button type="button" id="custom-sub-yes-btn">Yes, write a message</button>
+      <button type="button" id="custom-sub-no-btn">No, send standard email</button>
+    </div>
+    <div id="custom-sub-msg-compose" class="hidden" style="margin-top:var(--space-3);">
+      <textarea id="custom-sub-msg-text" rows="6" placeholder="Type your message to the sub…" style="width:100%;box-sizing:border-box;"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="custom-sub-send-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Message</button>
+        <button type="button" id="custom-sub-back-btn">Back</button>
+      </div>
+      <p id="custom-sub-msg-status"></p>
+    </div>
+  </div>
+</div>
+
+<script src="/static/choir/choir_admin.js?v=16"></script>
 </body>
 </html>

@@ -6346,7 +6346,8 @@ def choir_my_sub_status(request: Request):
 
 def _render_sub_email(sub_name: str, section_name: str, org_name: str,
                       rdate: str, rstart: str, location: str, notes: str,
-                      token: str, admin_name: str = None, admin_email: str = None) -> tuple:
+                      token: str, admin_name: str = None, admin_email: str = None,
+                      custom_message: str = None) -> tuple:
     accept_url = f"{APP_URL}/choir/sub-response/{token}?r=accepted"
     decline_url = f"{APP_URL}/choir/sub-response/{token}?r=declined"
     loc_line = f"<br><em>{location}</em>" if location else ""
@@ -6360,6 +6361,46 @@ def _render_sub_email(sub_name: str, section_name: str, org_name: str,
     else:
         footer_html = f"Sent on behalf of {org_name}."
         footer_text = footer_html
+
+    if custom_message:
+        import html as html_lib
+        safe_msg = html_lib.escape(custom_message).replace("\n", "<br>")
+        html = f"""
+<div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;color:#1a1a1a;">
+  <h2 style="color:#8b6914;margin-bottom:4px;">{org_name}</h2>
+  <p style="color:#666;margin-top:0;font-style:italic;">Sub needed &mdash; {section_name}</p>
+  <p>Hi {sub_name},</p>
+  <div style="padding:12px 16px;background:#faf7f0;border-left:3px solid #c9a227;
+              border-radius:4px;margin:12px 0;">
+    <strong>{rdate}</strong> at <strong>{rstart}</strong>{loc_line}
+  </div>
+  <p>{safe_msg}</p>
+  <p>Can you make it?</p>
+  <table cellpadding="0" cellspacing="0"><tr>
+    <td style="padding-right:12px;">
+      <a href="{accept_url}" style="display:inline-block;padding:11px 22px;
+         background:#2f8f6a;color:#fff;text-decoration:none;border-radius:4px;
+         font-weight:600;font-family:sans-serif;">Yes, I can make it</a>
+    </td>
+    <td>
+      <a href="{decline_url}" style="display:inline-block;padding:11px 22px;
+         background:#b23a3a;color:#fff;text-decoration:none;border-radius:4px;
+         font-weight:600;font-family:sans-serif;">No, I cannot make it</a>
+    </td>
+  </tr></table>
+  <p style="font-size:0.82rem;color:#888;margin-top:28px;border-top:1px solid #e8e3d8;
+            padding-top:12px;">
+    {footer_html}
+  </p>
+</div>"""
+        text = (f"{org_name} - Sub needed ({section_name})\n\n"
+                f"Hi {sub_name},\n\n"
+                f"{rdate} at {rstart}{(' at ' + location) if location else ''}\n\n"
+                f"{custom_message}\n\n"
+                f"Accept: {accept_url}\nDecline: {decline_url}\n\n"
+                f"{footer_text}")
+        return html, text
+
     html = f"""
 <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;color:#1a1a1a;">
   <h2 style="color:#8b6914;margin-bottom:4px;">{org_name}</h2>
@@ -6398,7 +6439,7 @@ def _render_sub_email(sub_name: str, section_name: str, org_name: str,
 
 
 def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
-                     section_id: int, tier: str) -> int:
+                     section_id: int, tier: str, custom_message: str = None) -> int:
     with db_cursor() as cur:
         cur.execute("""
             SELECT r.start_time, r.location, r.notes,
@@ -6441,7 +6482,7 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
                 continue
         html, text = _render_sub_email(sub["fullname"], section_name, org_name,
                                        rdate, rstart, reh[1] or "", reh[2] or "", token,
-                                       admin_name, admin_email)
+                                       admin_name, admin_email, custom_message)
         if send_email(sub["email"],
                       f"Sub needed - {section_name} | {org_name}", html, text):
             sent += 1
@@ -6974,6 +7015,7 @@ def choir_contact_one_sub(payload: dict, request: Request):
     rehearsal_id = payload.get("rehearsal_id")
     section_id = payload.get("section_id")
     sub_id = payload.get("sub_id")
+    custom_message = (payload.get("custom_message") or "").strip() or None
     org_id = user["org_id"]
     if not all([rehearsal_id, section_id, sub_id]):
         return {"status": "fail", "message": "Missing required fields"}
@@ -7017,7 +7059,7 @@ def choir_contact_one_sub(payload: dict, request: Request):
 
     sub = {"id": row[0], "fullname": row[1], "email": row[2]}
     tier = "preferred" if row[3] else "regular"
-    sent = _send_sub_emails([sub], sub_request_id, rehearsal_id, section_id, tier)
+    sent = _send_sub_emails([sub], sub_request_id, rehearsal_id, section_id, tier, custom_message)
     if sent == 0:
         with db_cursor() as cur:
             cur.execute(
