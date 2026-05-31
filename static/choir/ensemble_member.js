@@ -242,7 +242,7 @@ function renderDmView() {
     const msgs = dmView === "inbox" ? dmInbox.filter(m => !m.read_at)
                : dmView === "read"  ? dmInbox.filter(m => !!m.read_at)
                : dmSent;
-    if (!msgs.length) { list.innerHTML = `<em class="empty-note">No messages yet.</em>`; return; }
+    if (!msgs.length) { list.innerHTML = `<em class="empty-note">${dmView === "inbox" ? "All caught up!" : "No messages yet."}</em>`; return; }
     list.innerHTML = "";
     msgs.forEach(m => {
         const isUnread = dmView === "inbox" && !m.read_at;
