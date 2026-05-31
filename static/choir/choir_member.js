@@ -7,6 +7,9 @@ const VALID_CHOIR_MEMBER_TABS = ["upcoming", "subs", "messages"];
 let myAbsences = new Set();
 let mySubStatus = {};       // rehearsal_id -> { status, filled_by_name }
 let activeFindSubRehearsalId = null;
+let absenceTargetRehearsalId = null;
+let absenceTargetDate = null;
+let selectedAbsenceReason = null;
 
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -148,19 +151,12 @@ function buildRehearsalCard(r, container) {
     if (absent) {
         if (sub && sub.status === "filled") {
             subLine = `<p style="color:var(--success);font-size:.88rem;margin-top:var(--space-2);">Sub confirmed: ${escapeHtml(sub.filled_by_name)}</p>`;
-            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
         } else if (sub && sub.all_declined) {
-            subLine = `<p style="color:var(--danger,#b23a3a);font-size:.88rem;margin-top:var(--space-2);">All contacted subs declined. Reach out to another sub.</p>`;
-            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>
-                             <button class="slot-pill-btn find-sub-btn" data-id="${r.id}" style="font-size:.82rem;padding:6px 12px;">Find a sub</button>`;
+            subLine = `<p style="color:var(--danger,#b23a3a);font-size:.88rem;margin-top:var(--space-2);">All subs declined. Your admin has been notified.</p>`;
         } else if (sub) {
-            subLine = `<p style="color:var(--text-muted);font-size:.88rem;margin-top:var(--space-2);">Sub search in progress...</p>`;
-            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>
-                             <button class="slot-pill-btn find-sub-btn" data-id="${r.id}" style="font-size:.82rem;padding:6px 12px;">Find a sub</button>`;
-        } else {
-            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>
-                             <button class="slot-pill-btn find-sub-btn" data-id="${r.id}" style="font-size:.82rem;padding:6px 12px;">Find a sub</button>`;
+            subLine = `<p style="color:var(--text-muted);font-size:.88rem;margin-top:var(--space-2);">Sub search in progress&#8230;</p>`;
         }
+        actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
     } else {
         actionButtons = `<button class="cancel-lesson-btn cant-make-btn" data-id="${r.id}">I can't make it</button>`;
     }
@@ -180,23 +176,49 @@ function buildRehearsalCard(r, container) {
         ${subLine}
     `;
 
-    card.querySelector(".cant-make-btn")?.addEventListener("click", () => markAbsent(r.id));
+    card.querySelector(".cant-make-btn")?.addEventListener("click", () => markAbsent(r.id, r.date));
     card.querySelector(".undo-absent-btn")?.addEventListener("click", () => undoAbsent(r.id));
-    card.querySelector(".find-sub-btn")?.addEventListener("click", () => openFindSubModal(r.id, r.date));
     container.appendChild(card);
 }
 
-async function markAbsent(rehearsalId) {
-    if (!confirm("Mark yourself as absent for this rehearsal?")) return;
+function markAbsent(rehearsalId, dateISO) {
+    absenceTargetRehearsalId = rehearsalId;
+    absenceTargetDate = dateISO;
+    selectedAbsenceReason = null;
+    document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+    document.getElementById("absence-note").value = "";
+    document.getElementById("absence-modal-msg").textContent = "";
+    document.getElementById("absence-modal").classList.remove("hidden");
+}
+
+async function submitChoirAbsence(findSub) {
+    if (!selectedAbsenceReason) {
+        document.getElementById("absence-modal-msg").textContent = "Please select a reason.";
+        return;
+    }
+    const note = (document.getElementById("absence-note").value || "").trim();
+    const submitBtn = document.getElementById("absence-submit-btn");
+    const submitSubBtn = document.getElementById("absence-submit-sub-btn");
+    if (submitBtn) submitBtn.disabled = true;
+    if (submitSubBtn) submitSubBtn.disabled = true;
     try {
         await fetch(`${API}/choir/absence-request`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rehearsal_id: rehearsalId, reason: null }),
+            body: JSON.stringify({ rehearsal_id: absenceTargetRehearsalId, reason: selectedAbsenceReason, note: note || null }),
         });
-        myAbsences.add(rehearsalId);
-        refreshRehearsalCard(rehearsalId);
-    } catch (e) { alert("Server error."); }
+        myAbsences.add(absenceTargetRehearsalId);
+        document.getElementById("absence-modal").classList.add("hidden");
+        const rid = absenceTargetRehearsalId;
+        const dateISO = absenceTargetDate;
+        refreshRehearsalCard(rid);
+        if (findSub) openFindSubModal(rid, dateISO);
+    } catch (e) {
+        document.getElementById("absence-modal-msg").textContent = "Server error. Try again.";
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+        if (submitSubBtn) submitSubBtn.disabled = false;
+    }
 }
 
 async function undoAbsent(rehearsalId) {
@@ -436,6 +458,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         btn.addEventListener("click", () => setActiveTab(btn.dataset.tab)));
     setActiveTab(getTabFromURL());
     window.addEventListener("hashchange", () => setActiveTab(getTabFromURL()));
+
+    // Absence reason modal
+    document.querySelectorAll(".absence-reason-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+            selectedAbsenceReason = btn.dataset.reason;
+        });
+    });
+    document.getElementById("absence-submit-btn")?.addEventListener("click", () => submitChoirAbsence(false));
+    document.getElementById("absence-submit-sub-btn")?.addEventListener("click", () => submitChoirAbsence(true));
+    document.getElementById("absence-cancel-btn")?.addEventListener("click", () =>
+        document.getElementById("absence-modal").classList.add("hidden"));
+    document.getElementById("absence-modal")?.addEventListener("click", e => {
+        if (e.target.id === "absence-modal") e.target.classList.add("hidden");
+    });
 
     // Find-sub modal
     document.getElementById("find-sub-modal").addEventListener("click", e => {

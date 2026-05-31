@@ -6268,14 +6268,15 @@ def choir_mark_absent(payload: dict, request: Request):
     user = require_choir_member(request)
     rehearsal_id = payload.get("rehearsal_id")
     reason = (payload.get("reason") or "").strip() or None
+    note = (payload.get("note") or "").strip() or None
     if not rehearsal_id:
         return {"status": "fail", "message": "rehearsal_id required"}
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO absence_requests (rehearsal_id, singer_id, reason)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE SET reason=EXCLUDED.reason
-        """, (rehearsal_id, user["id"], reason))
+            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE SET reason=EXCLUDED.reason, note=EXCLUDED.note
+        """, (rehearsal_id, user["id"], reason, note))
     return {"status": "success"}
 
 @app.delete("/choir/absence-request/{rehearsal_id}")
@@ -6338,7 +6339,7 @@ def choir_get_absences(rehearsal_id: int, request: Request):
     org_id = user["org_id"]
     with db_cursor() as cur:
         cur.execute("""
-            SELECT ar.singer_id, u.fullname, u.section_id, u.voice_type, ar.reason
+            SELECT ar.singer_id, u.fullname, u.section_id, u.voice_type, ar.reason, ar.note
             FROM absence_requests ar
             JOIN users u ON u.id = ar.singer_id
             WHERE ar.rehearsal_id = %s
@@ -6347,7 +6348,7 @@ def choir_get_absences(rehearsal_id: int, request: Request):
         rows = cur.fetchall()
 
         result = []
-        for singer_id, fullname, section_id, voice_type, reason in rows:
+        for singer_id, fullname, section_id, voice_type, reason, note in rows:
             resolved_id = section_id
             section_name = None
             if resolved_id:
@@ -6371,6 +6372,7 @@ def choir_get_absences(rehearsal_id: int, request: Request):
                 "section_id": resolved_id,
                 "section": section_name or "?",
                 "reason": reason or "",
+                "note": note or "",
             })
         return result
 

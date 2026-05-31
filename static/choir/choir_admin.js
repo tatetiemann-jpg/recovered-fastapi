@@ -618,6 +618,7 @@ function renderAbsenceList(absences, subReqs) {
                 <span>
                     ${escapeHtml(a.singer)}
                     ${a.reason ? `<em style="color:var(--text-muted);font-size:.88rem;"> — ${escapeHtml(a.reason)}</em>` : ""}
+                    ${a.note ? `<div style="font-size:.82rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(a.note)}</div>` : ""}
                     ${filled ? `<span style="color:var(--success);font-size:.88rem;margin-left:6px;">Sub confirmed: ${escapeHtml(req.filled_by_name)}</span>` : ""}
                 </span>
                 ${!filled ? `<button class="subtle-btn find-sub-from-admin-btn"

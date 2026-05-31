@@ -30,19 +30,19 @@
     <div class="box">
       <h2>Upcoming Rehearsals</h2>
       <p id="upcoming-section-label" class="hint"></p>
-      <div id="upcoming-list"><em class="empty-note">Loading…</em></div>
+      <div id="upcoming-list"><em class="empty-note">Loading&#8230;</em></div>
     </div>
     <div class="box" id="calendar-subscribe-box" style="margin-top:var(--space-4);">
       <h2>Subscribe to Your Rehearsal Calendar</h2>
-      <p class="hint">Your calendar stays up to date automatically — rehearsals you opt out of will disappear on the next sync.</p>
+      <p class="hint">Your calendar stays up to date automatically &mdash; rehearsals you opt out of will disappear on the next sync.</p>
       <div style="display:flex;gap:var(--space-2);align-items:center;margin:var(--space-3) 0;">
         <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" style="flex:1;font-size:0.85rem;">
         <button id="copy-calendar-url-btn" type="button">Copy</button>
       </div>
       <div class="hint" style="margin-top:var(--space-3);line-height:1.7;">
-        <strong>Google Calendar:</strong> Other calendars + → From URL → paste above<br>
-        <strong>Apple Calendar:</strong> File → New Calendar Subscription → paste above<br>
-        <strong>Outlook:</strong> Add calendar → Subscribe from web → paste above
+        <strong>Google Calendar:</strong> Other calendars + &rarr; From URL &rarr; paste above<br>
+        <strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste above<br>
+        <strong>Outlook:</strong> Add calendar &rarr; Subscribe from web &rarr; paste above
       </div>
     </div>
   </section>
@@ -52,7 +52,7 @@
     <div class="box">
       <h2>My Section's Sub List</h2>
       <p class="hint">These are the substitutes for your section. You can contact them directly when you need to find coverage.</p>
-      <div id="my-subs-list"><em class="empty-note">Loading…</em></div>
+      <div id="my-subs-list"><em class="empty-note">Loading&#8230;</em></div>
     </div>
   </section>
 
@@ -70,19 +70,19 @@
         <button class="dm-view-btn" data-dm-view="sent">Sent</button>
       </div>
 
-      <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+      <div id="dm-list" class="dm-list"><em class="empty-note">Loading&#8230;</em></div>
 
       <div class="dm-compose">
         <h3>New Message</h3>
         <div class="dm-recipient-row">
           <label>To</label>
           <div class="dm-recipient-picker">
-            <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+            <input id="dm-recipient-search" type="text" placeholder="Filter contacts&#8230;" class="dm-recipient-search hidden">
             <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
           </div>
         </div>
         <label for="dm-body">Message</label>
-        <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+        <textarea id="dm-body" rows="4" placeholder="Write your message&#8230;"></textarea>
         <div style="margin-top:var(--space-3);">
           <button id="dm-send-btn">Send Message</button>
         </div>
@@ -93,7 +93,31 @@
 
 </div><!-- /.app-container -->
 
-<!-- FIND A SUB MODAL (shown after marking absent) -->
+<!-- ABSENCE REASON MODAL -->
+<div id="absence-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Reason for Absence</h3>
+        <p class="hint">Select a reason (required). Your admin will be notified.</p>
+        <div class="absence-reasons">
+            <button class="absence-reason-btn" type="button" data-reason="Illness">Illness</button>
+            <button class="absence-reason-btn" type="button" data-reason="Injury">Injury</button>
+            <button class="absence-reason-btn" type="button" data-reason="Work conflict">Work conflict</button>
+            <button class="absence-reason-btn" type="button" data-reason="Family emergency">Family emergency</button>
+            <button class="absence-reason-btn" type="button" data-reason="Travel">Travel</button>
+            <button class="absence-reason-btn" type="button" data-reason="Other">Other</button>
+        </div>
+        <label for="absence-note">Additional notes (optional)</label>
+        <textarea id="absence-note" rows="3" placeholder="Any additional details..."></textarea>
+        <div class="modal-actions">
+            <button id="absence-submit-btn" type="button">Submit</button>
+            <button id="absence-submit-sub-btn" type="button">Submit &amp; Find a Sub</button>
+            <button id="absence-cancel-btn" type="button">Cancel</button>
+        </div>
+        <p id="absence-modal-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- FIND A SUB MODAL -->
 <div id="find-sub-modal" class="modal-overlay hidden">
   <div class="modal-card modal-large">
     <h3 id="find-sub-title">Find a Sub</h3>
@@ -110,6 +134,6 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir/choir_member.js?v=18"></script>
+<script src="/static/choir/choir_member.js?v=19"></script>
 </body>
 </html>
