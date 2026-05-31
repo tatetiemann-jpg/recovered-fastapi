@@ -4369,8 +4369,12 @@ def student_absences(request: Request):
 def student_mark_absence(payload: dict, request: Request):
     student = require_user(request, role="student")
     rehearsal_id = payload.get("rehearsal_id")
+    reason = (payload.get("reason") or "").strip()
+    note = (payload.get("note") or "").strip()
     if not rehearsal_id:
         return {"status": "fail", "message": "rehearsal_id required"}
+    if not reason:
+        return {"status": "fail", "message": "reason required"}
 
     with db_cursor(commit=True) as cur:
         cur.execute(
@@ -4403,14 +4407,18 @@ def student_mark_absence(payload: dict, request: Request):
         org_tz = get_org_tz(student)
         local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
         date_str = local_dt.strftime("%A, %B %-d, %Y")
+        note_html = f"<p><strong>Notes:</strong> {note}</p>" if note else ""
+        note_text = f"\nNotes: {note}" if note else ""
         subject = f"Absence Notice – {student['fullname']} – {opera_name}"
         html_body = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
 <h2 style="color:#333;">Absence Notice</h2>
 <p><strong>{student['fullname']}</strong> has marked themselves absent for the
 <strong>{opera_name}</strong> rehearsal on <strong>{date_str}</strong>.</p>
+<p><strong>Reason:</strong> {reason}</p>
+{note_html}
 </body></html>"""
-        text_body = f"Absence Notice\n{student['fullname']} has marked themselves absent for the {opera_name} rehearsal on {date_str}."
+        text_body = f"Absence Notice\n{student['fullname']} has marked themselves absent for the {opera_name} rehearsal on {date_str}.\nReason: {reason}{note_text}"
         for _, email in admins:
             send_email(to=email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -4813,8 +4821,12 @@ def orchestra_member_absences(request: Request):
 def orchestra_member_mark_absence(payload: dict, request: Request):
     member = require_user(request, role="orchestra_member")
     rehearsal_id = payload.get("rehearsal_id")
+    reason = (payload.get("reason") or "").strip()
+    note = (payload.get("note") or "").strip()
     if not rehearsal_id:
         return {"status": "fail", "message": "rehearsal_id required"}
+    if not reason:
+        return {"status": "fail", "message": "reason required"}
 
     with db_cursor(commit=True) as cur:
         cur.execute(
@@ -4847,14 +4859,17 @@ def orchestra_member_mark_absence(payload: dict, request: Request):
         org_tz = get_org_tz(member)
         local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
         date_str = local_dt.strftime("%A, %B %-d, %Y")
-        subject = f"Absence Notice – {member['fullname']} – {opera_name}"
+        note_html = f"<p><strong>Notes:</strong> {note}</p>" if note else ""
+        note_text = f"\nNotes: {note}" if note else ""
+        subject = f"Absence Notice - {member['fullname']} - {opera_name}"
         html_body = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
 <h2 style="color:#333;">Absence Notice</h2>
 <p><strong>{member['fullname']}</strong> has marked themselves absent for the
 <strong>{opera_name}</strong> orchestra rehearsal on <strong>{date_str}</strong>.</p>
+<p><strong>Reason:</strong> {reason}</p>{note_html}
 </body></html>"""
-        text_body = f"Absence Notice\n{member['fullname']} has marked themselves absent for the {opera_name} orchestra rehearsal on {date_str}."
+        text_body = f"Absence Notice\n{member['fullname']} has marked themselves absent for the {opera_name} orchestra rehearsal on {date_str}.\nReason: {reason}{note_text}"
         for email in admin_emails:
             send_email(to=email, subject=subject, html_body=html_body, text_body=text_body)
 

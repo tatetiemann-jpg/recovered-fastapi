@@ -183,6 +183,8 @@ async function handleCancelLesson(lessonId) {
 
 let allStudentRehearsals = [];
 let myAbsences = new Set();
+let absenceTargetRehearsalId = null;
+let selectedAbsenceReason = null;
 
 function openStudentViewNotes(rehearsalId) {
     const r = allStudentRehearsals.find(x => x.id === rehearsalId);
@@ -301,17 +303,37 @@ async function loadRehearsalTimeline() {
     }
 }
 
-async function markStudentAbsent(rehearsalId) {
-    if (!confirm("Mark yourself absent for this rehearsal? The admin will be notified.")) return;
+function markStudentAbsent(rehearsalId) {
+    absenceTargetRehearsalId = rehearsalId;
+    selectedAbsenceReason = null;
+    document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+    document.getElementById("absence-note").value = "";
+    document.getElementById("absence-modal-msg").textContent = "";
+    document.getElementById("absence-modal").classList.remove("hidden");
+}
+
+async function submitStudentAbsence() {
+    if (!selectedAbsenceReason) {
+        document.getElementById("absence-modal-msg").textContent = "Please select a reason.";
+        return;
+    }
+    const note = (document.getElementById("absence-note").value || "").trim();
+    const btn = document.getElementById("absence-submit-btn");
+    btn.disabled = true;
     try {
         await fetch(`${API}/student/absence`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rehearsal_id: rehearsalId }),
+            body: JSON.stringify({ rehearsal_id: absenceTargetRehearsalId, reason: selectedAbsenceReason, note: note || null }),
         });
-        myAbsences.add(rehearsalId);
+        myAbsences.add(absenceTargetRehearsalId);
+        document.getElementById("absence-modal").classList.add("hidden");
         renderRehearsalTimeline(document.getElementById("rehearsals"), allStudentRehearsals, myAbsences, buildStudentRehearsalCard);
-    } catch (e) { alert("Server error."); }
+    } catch (e) {
+        document.getElementById("absence-modal-msg").textContent = "Server error. Try again.";
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function undoStudentAbsent(rehearsalId) {
@@ -589,6 +611,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("reh-view-notes-modal")?.classList.add("hidden"));
     document.getElementById("reh-view-notes-modal")?.addEventListener("click", e => {
         if (e.target.id === "reh-view-notes-modal") e.target.classList.add("hidden");
+    });
+
+    // Absence reason modal
+    document.querySelectorAll(".absence-reason-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+            selectedAbsenceReason = btn.dataset.reason;
+        });
+    });
+    document.getElementById("absence-submit-btn")?.addEventListener("click", submitStudentAbsence);
+    document.getElementById("absence-cancel-btn")?.addEventListener("click", () =>
+        document.getElementById("absence-modal").classList.add("hidden"));
+    document.getElementById("absence-modal")?.addEventListener("click", e => {
+        if (e.target.id === "absence-modal") e.target.classList.add("hidden");
     });
 
     // Calendar subscription URL

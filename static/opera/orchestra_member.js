@@ -196,6 +196,8 @@ function renderSeats(data) {
 
 let allOrchestraRehearsals = [];
 let myOrchestraAbsences = new Set();
+let absenceTargetRehearsalId = null;
+let selectedAbsenceReason = null;
 
 function openOrchestraViewNotes(rehearsalId) {
     const r = allOrchestraRehearsals.find(x => x.id === rehearsalId);
@@ -314,17 +316,37 @@ async function loadOrchestraRehearsalTimeline() {
     }
 }
 
-async function markOrchestraAbsent(rehearsalId) {
-    if (!confirm("Mark yourself absent for this rehearsal? The admin will be notified.")) return;
+function markOrchestraAbsent(rehearsalId) {
+    absenceTargetRehearsalId = rehearsalId;
+    selectedAbsenceReason = null;
+    document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+    document.getElementById("absence-note").value = "";
+    document.getElementById("absence-modal-msg").textContent = "";
+    document.getElementById("absence-modal").classList.remove("hidden");
+}
+
+async function submitOrchestraAbsence() {
+    if (!selectedAbsenceReason) {
+        document.getElementById("absence-modal-msg").textContent = "Please select a reason.";
+        return;
+    }
+    const note = (document.getElementById("absence-note").value || "").trim();
+    const btn = document.getElementById("absence-submit-btn");
+    btn.disabled = true;
     try {
         await fetch(`${API}/orchestra-member/absence`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ rehearsal_id: rehearsalId }),
+            body: JSON.stringify({ rehearsal_id: absenceTargetRehearsalId, reason: selectedAbsenceReason, note: note || null }),
         });
-        myOrchestraAbsences.add(rehearsalId);
+        myOrchestraAbsences.add(absenceTargetRehearsalId);
+        document.getElementById("absence-modal").classList.add("hidden");
         renderRehearsalTimeline(document.getElementById("rehearsals"), allOrchestraRehearsals, myOrchestraAbsences, buildOrchestraRehearsalCard);
-    } catch (e) { alert("Server error."); }
+    } catch (e) {
+        document.getElementById("absence-modal-msg").textContent = "Server error. Try again.";
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function undoOrchestraAbsent(rehearsalId) {
@@ -575,6 +597,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("reh-view-notes-modal")?.classList.add("hidden"));
     document.getElementById("reh-view-notes-modal")?.addEventListener("click", e => {
         if (e.target.id === "reh-view-notes-modal") e.target.classList.add("hidden");
+    });
+
+    // Absence reason modal
+    document.querySelectorAll(".absence-reason-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
+            btn.classList.add("selected");
+            selectedAbsenceReason = btn.dataset.reason;
+        });
+    });
+    document.getElementById("absence-submit-btn")?.addEventListener("click", submitOrchestraAbsence);
+    document.getElementById("absence-cancel-btn")?.addEventListener("click", () =>
+        document.getElementById("absence-modal").classList.add("hidden"));
+    document.getElementById("absence-modal")?.addEventListener("click", e => {
+        if (e.target.id === "absence-modal") e.target.classList.add("hidden");
     });
 
     // Calendar subscription URL

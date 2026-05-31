@@ -159,6 +159,29 @@
     </div>
 </div>
 
+<!-- ABSENCE REASON MODAL -->
+<div id="absence-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Reason for Absence</h3>
+        <p class="hint">Select a reason (required). Your admin will be notified.</p>
+        <div class="absence-reasons">
+            <button class="absence-reason-btn" type="button" data-reason="Illness">Illness</button>
+            <button class="absence-reason-btn" type="button" data-reason="Injury">Injury</button>
+            <button class="absence-reason-btn" type="button" data-reason="Work conflict">Work conflict</button>
+            <button class="absence-reason-btn" type="button" data-reason="Family emergency">Family emergency</button>
+            <button class="absence-reason-btn" type="button" data-reason="Travel">Travel</button>
+            <button class="absence-reason-btn" type="button" data-reason="Other">Other</button>
+        </div>
+        <label for="absence-note">Additional notes (optional)</label>
+        <textarea id="absence-note" rows="3" placeholder="Any additional details..."></textarea>
+        <div class="modal-actions">
+            <button id="absence-submit-btn" type="button">Submit</button>
+            <button id="absence-cancel-btn" type="button">Cancel</button>
+        </div>
+        <p id="absence-modal-msg" class="hint"></p>
+    </div>
+</div>
+
 <!-- ================= -->
 <!-- EDIT ACCOUNT MODAL -->
 <!-- ================= -->

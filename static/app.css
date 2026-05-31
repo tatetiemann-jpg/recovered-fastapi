@@ -3494,3 +3494,34 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
   border-top: 1px solid var(--border);
 }
 
+/* Absence reason modal */
+.absence-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.absence-reason-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: var(--text);
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.absence-reason-btn:hover {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
+}
+
+.absence-reason-btn.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
