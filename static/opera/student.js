@@ -200,7 +200,7 @@ function renderRehearsalTimeline(container, rehearsals, absences, buildCard) {
     const todayStr = today.toLocaleDateString("en-CA");
 
     const endOfWeek = new Date(today);
-    endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
+    endOfWeek.setDate(today.getDate() + 7);
     const endOfWeekStr = endOfWeek.toLocaleDateString("en-CA");
 
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
