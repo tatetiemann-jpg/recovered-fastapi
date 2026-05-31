@@ -662,7 +662,9 @@ async function loadDmContactList() {
 function renderDmView() {
     const list = document.getElementById("dm-list");
     if (!list) return;
-    const msgs = dmView === "inbox" ? dmInbox : dmSent;
+    const msgs = dmView === "inbox" ? dmInbox.filter(m => !m.read_at)
+               : dmView === "read"  ? dmInbox.filter(m => !!m.read_at)
+               : dmSent;
     if (!msgs.length) { list.innerHTML = `<em class="empty-note">No messages yet.</em>`; return; }
     list.innerHTML = "";
     msgs.forEach(m => {
@@ -672,7 +674,7 @@ function renderDmView() {
         const ts = m.created_at ? new Date(m.created_at).toLocaleString(undefined,
             { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
         let metaLabel = "";
-        if (dmView === "inbox") {
+        if (dmView !== "sent") {
             metaLabel = `<span class="dm-sender">${escapeHtml(m.sender_name)}</span>`;
         } else {
             const rnames = (m.recipients || []).slice(0, 3).map(escapeHtml).join(", ");
@@ -686,9 +688,9 @@ function renderDmView() {
                 <span class="dm-time">${ts}</span>
             </div>
             <div class="dm-body">${escapeHtml(m.body)}</div>
-            ${dmView === "inbox" ? `<div class="dm-reply-row"><button class="dm-reply-btn" type="button">Reply</button></div>` : ""}
+            ${dmView !== "sent" ? `<div class="dm-reply-row"><button class="dm-reply-btn" type="button">Reply</button></div>` : ""}
         `;
-        if (dmView === "inbox") {
+        if (dmView !== "sent") {
             card.querySelector(".dm-reply-btn")?.addEventListener("click", (e) => {
                 e.stopPropagation();
                 if (isUnread) markDmRead(m.id, card);
