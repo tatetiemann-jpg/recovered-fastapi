@@ -3016,6 +3016,97 @@ tbody tr:hover td { background: var(--accent-soft); }
     gap: var(--space-2);
 }
 .orchestra-top-controls { display: flex; gap: var(--space-2); }
+
+/* Orchestra inline expansion — new design */
+.orch-prod-inline { border-top: 1px solid var(--border); }
+.orch-prod-inline.hidden { display: none; }
+
+.orch-section-col-header {
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.orch-section-col-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.orch-section-col-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.orch-section-col-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.orch-chair-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+  font-size: 0.85rem;
+}
+
+.orch-chair-label {
+  width: 3.5rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.orch-chair-member {
+  flex: 1;
+  font-weight: 500;
+}
+
+.orch-chair-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.orch-staff-panel {
+  border-top: 1px solid var(--border);
+  padding: var(--space-3);
+  grid-column: 1 / -1;
+}
+
+.orch-staff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.orch-staff-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.orch-staff-list { margin-bottom: var(--space-2); }
+
+.orch-staff-add-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.orch-staff-add-row select { flex: 1; min-width: 180px; }
+
+/* Legacy card styles (kept for backward compat) */
 .orchestra-section-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); margin-top: var(--space-3); }
 .orchestra-section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); flex-wrap: wrap; gap: var(--space-2); }
 .orchestra-section-header h3 { margin: 0; }

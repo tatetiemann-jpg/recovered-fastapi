@@ -2263,6 +2263,7 @@ let orchestraSelectedOperaId = null;
 
 async function loadOrchestra() {
     await Promise.all([loadOrchestraSections(), loadOrchestraOperas(), loadOrchestraMembers()]);
+    renderOrchestraProductionList();
 }
 
 async function loadOrchestraSections() {
@@ -2305,7 +2306,9 @@ async function adjustChairCount(sectionId, delta) {
         if (data.status === "success") {
             const sec = orchestraSections.find(s => s.id === sectionId);
             if (sec) sec.chair_count = data.chair_count;
-            if (orchestraSelectedOperaId) loadSeatingForOpera(orchestraSelectedOperaId);
+            if (orchestraExpandedOperaId && orchestraExpandedContainer) {
+                await reloadOrchInline(orchestraExpandedOperaId, orchestraExpandedContainer);
+            }
         }
     } catch (e) {
         console.error(e);
@@ -2322,39 +2325,244 @@ async function loadOrchestraMembers() {
 }
 
 async function loadOrchestraOperas() {
-    const nav = document.getElementById("orchestra-opera-tabs");
-    if (!nav) return;
     try {
         const res = await fetch(`${API}/operas`, { credentials: "include" });
-        const operas = await res.json();
-        orchestraOperas = operas;
-        if (!operas.length) {
-            nav.innerHTML = `<em class="empty-note">No productions yet.</em>`;
-            return;
-        }
-        nav.innerHTML = "";
-        operas.forEach((op, i) => {
-            const btn = document.createElement("button");
-            btn.className = "sub-tab-btn" + (i === 0 ? " active" : "");
-            btn.textContent = op.name;
-            btn.dataset.operaId = op.id;
-            btn.addEventListener("click", () => {
-                nav.querySelectorAll(".sub-tab-btn").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-                orchestraSelectedOperaId = op.id;
-                loadSeatingForOpera(op.id);
-                loadProductionStaff(op.id);
-            });
-            nav.appendChild(btn);
-        });
-        // Auto-select first
-        orchestraSelectedOperaId = operas[0].id;
-        loadSeatingForOpera(operas[0].id);
-        loadProductionStaff(operas[0].id);
+        orchestraOperas = await res.json();
     } catch (e) {
         console.error(e);
-        nav.innerHTML = `<em class="empty-note">Failed to load productions.</em>`;
     }
+}
+
+let orchestraExpandedOperaId = null;
+let orchestraExpandedContainer = null;
+
+function renderOrchestraProductionList() {
+    const list = document.getElementById("orchestra-productions-list");
+    if (!list) return;
+    if (!orchestraOperas.length) {
+        list.innerHTML = `<em class="empty-note">No productions yet.</em>`;
+        return;
+    }
+    list.innerHTML = "";
+    orchestraOperas.forEach(op => {
+        const row = document.createElement("div");
+        row.className = "production-row orch-prod-row";
+        row.dataset.id = op.id;
+        row.innerHTML = `
+            <div class="prod-header">
+                <div class="prod-toggle" data-id="${op.id}">
+                    <span class="prod-chevron">&#9658;</span>
+                    <div class="prod-info">
+                        <strong>${escapeHtml(op.name)}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="orch-prod-inline hidden" data-opera-id="${op.id}"></div>
+        `;
+        row.querySelector(".prod-toggle").addEventListener("click", () => toggleOrchProd(op.id, row));
+        list.appendChild(row);
+    });
+}
+
+async function toggleOrchProd(operaId, row) {
+    const inlineEl = row.querySelector(".orch-prod-inline");
+    const isExpanded = !inlineEl.classList.contains("hidden");
+
+    document.querySelectorAll(".orch-prod-row").forEach(r => {
+        r.querySelector(".orch-prod-inline")?.classList.add("hidden");
+        r.querySelector(".prod-chevron")?.classList.remove("prod-chevron--open");
+        r.classList.remove("prod-expanded");
+    });
+    orchestraExpandedOperaId = null;
+    orchestraExpandedContainer = null;
+
+    if (isExpanded) return;
+
+    row.classList.add("prod-expanded");
+    inlineEl.classList.remove("hidden");
+    row.querySelector(".prod-chevron").classList.add("prod-chevron--open");
+    orchestraExpandedOperaId = operaId;
+    orchestraExpandedContainer = inlineEl;
+    await reloadOrchInline(operaId, inlineEl);
+}
+
+async function reloadOrchInline(operaId, container) {
+    if (!container) return;
+    container.innerHTML = `<em class="empty-note" style="padding:var(--space-3);display:block;">Loading...</em>`;
+    try {
+        const [seatsRes, staffRes] = await Promise.all([
+            fetch(`${API}/admin/orchestra-seats/${operaId}`, { credentials: "include" }),
+            fetch(`${API}/admin/opera-staff/${operaId}`, { credentials: "include" }),
+        ]);
+        const seats = await seatsRes.json();
+        const staffPayload = await staffRes.json();
+        renderOrchInlineContent(operaId, container, seats, staffPayload);
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<em class="empty-note">Failed to load.</em>`;
+    }
+}
+
+function renderOrchInlineContent(operaId, container, seats, staffPayload) {
+    container.innerHTML = "";
+
+    // ── Sections grid ─────────────────────────────────────────
+    const grid = document.createElement("div");
+    grid.className = "prod-inline-casting";
+
+    if (!orchestraSections.length) {
+        const empty = document.createElement("em");
+        empty.className = "empty-note";
+        empty.textContent = "No sections yet. Use \"+ Add Section\" above.";
+        grid.appendChild(empty);
+    } else {
+        const seatsBySec = {};
+        (Array.isArray(seats) ? seats : []).forEach(s => {
+            if (!seatsBySec[s.section_id]) seatsBySec[s.section_id] = {};
+            seatsBySec[s.section_id][s.chair_number] = s;
+        });
+
+        orchestraSections.forEach(sec => {
+            const col = document.createElement("div");
+            col.className = "cast-column";
+
+            const chairCount = sec.chair_count || 5;
+            const sectionSeats = seatsBySec[sec.id] || {};
+
+            const colHeader = document.createElement("div");
+            colHeader.className = "orch-section-col-header";
+            colHeader.innerHTML = `
+                <div class="orch-section-col-name">
+                    <span class="orch-section-col-title">${escapeHtml(sec.name)}</span>
+                    <em class="hint">${escapeHtml(sec.instrument)}</em>
+                </div>
+                <div class="orch-section-col-actions">
+                    <span class="hint">${chairCount} chair${chairCount !== 1 ? "s" : ""}</span>
+                    <button type="button" class="subtle-btn add-chair-btn" data-id="${sec.id}">+</button>
+                    <button type="button" class="subtle-btn remove-chair-btn" data-id="${sec.id}">&#8722;</button>
+                    <button type="button" class="subtle-btn delete-section-btn" data-id="${sec.id}">Remove</button>
+                </div>
+            `;
+            col.appendChild(colHeader);
+
+            for (let chair = 1; chair <= chairCount; chair++) {
+                const seat = sectionSeats[chair];
+                const chairRow = document.createElement("div");
+                chairRow.className = "orch-chair-row";
+                chairRow.innerHTML = `
+                    <span class="orch-chair-label">Chair ${chair}</span>
+                    <span class="orch-chair-member ${seat?.member_id ? "" : "orch-chair-empty"}">${escapeHtml(seat?.member_name || "Unassigned")}</span>
+                    <button type="button" class="subtle-btn assign-seat-btn"
+                        data-opera-id="${operaId}"
+                        data-section-id="${sec.id}"
+                        data-chair="${chair}"
+                        data-current-member="${seat?.member_id || ""}">${seat?.member_id ? "Change" : "Assign"}</button>
+                `;
+                col.appendChild(chairRow);
+            }
+            grid.appendChild(col);
+        });
+
+        grid.querySelectorAll(".add-chair-btn").forEach(btn =>
+            btn.addEventListener("click", () => adjustChairCount(Number(btn.dataset.id), 1)));
+        grid.querySelectorAll(".remove-chair-btn").forEach(btn =>
+            btn.addEventListener("click", () => adjustChairCount(Number(btn.dataset.id), -1)));
+        grid.querySelectorAll(".delete-section-btn").forEach(btn =>
+            btn.addEventListener("click", () => deleteOrchestraSection(Number(btn.dataset.id))));
+        grid.querySelectorAll(".assign-seat-btn").forEach(btn =>
+            btn.addEventListener("click", () => openAssignSeatModal(
+                Number(btn.dataset.operaId),
+                Number(btn.dataset.sectionId),
+                Number(btn.dataset.chair),
+                btn.dataset.currentMember || null
+            )));
+    }
+    container.appendChild(grid);
+
+    // ── Production Staff ──────────────────────────────────────
+    const staffPanel = document.createElement("div");
+    staffPanel.className = "orch-staff-panel";
+
+    const staffHeaderDiv = document.createElement("div");
+    staffHeaderDiv.className = "orch-staff-header";
+    staffHeaderDiv.innerHTML = `<h4>Production Staff</h4>`;
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "subtle-btn";
+    copyBtn.textContent = "Copy Seating";
+    copyBtn.addEventListener("click", () => {
+        orchestraExpandedOperaId = operaId;
+        orchestraExpandedContainer = container;
+        openCopySeatingModal();
+    });
+    staffHeaderDiv.appendChild(copyBtn);
+    staffPanel.appendChild(staffHeaderDiv);
+
+    const staffListDiv = document.createElement("div");
+    staffListDiv.className = "orch-staff-list";
+    const currentStaff = Array.isArray(staffPayload?.staff) ? staffPayload.staff : [];
+    if (!currentStaff.length) {
+        staffListDiv.innerHTML = `<em class="empty-note">No staff assigned yet.</em>`;
+    } else {
+        currentStaff.forEach(s => {
+            const row = document.createElement("div");
+            row.className = "staff-row";
+            row.innerHTML = `
+                <span class="staff-row-name">${escapeHtml(s.name)}</span>
+                <span class="staff-row-role">${escapeHtml(STAFF_ROLE_LABELS[s.staff_role] || s.staff_role || "")}</span>
+                <button type="button" class="subtle-btn">Remove</button>
+            `;
+            row.querySelector("button").addEventListener("click", async () => {
+                await fetch(`${API}/admin/opera/${operaId}/staff/${s.id}`, { method: "DELETE", credentials: "include" });
+                await reloadOrchInline(operaId, container);
+            });
+            staffListDiv.appendChild(row);
+        });
+    }
+    staffPanel.appendChild(staffListDiv);
+
+    const availableAdmins = Array.isArray(staffPayload?.teachers) ? staffPayload.teachers : [];
+    if (availableAdmins.length) {
+        const addRow = document.createElement("div");
+        addRow.className = "orch-staff-add-row";
+        const sel = document.createElement("select");
+        sel.innerHTML = `<option value="">-- select admin --</option>`;
+        availableAdmins.forEach(t => {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.textContent = `${escapeHtml(t.name)} -- ${escapeHtml(STAFF_ROLE_LABELS[t.admin_role] || t.admin_role || "")}`;
+            sel.appendChild(opt);
+        });
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "subtle-btn";
+        addBtn.textContent = "Add";
+        const addMsg = document.createElement("p");
+        addMsg.className = "hint";
+        addBtn.addEventListener("click", async () => {
+            const teacherId = Number(sel.value);
+            if (!teacherId) { addMsg.textContent = "Select a staff member first."; return; }
+            addMsg.textContent = "";
+            try {
+                const res = await fetch(`${API}/admin/assign-staff`, {
+                    method: "POST", credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ opera_id: operaId, teacher_id: teacherId }),
+                });
+                const data = await res.json();
+                if (data.status === "success") {
+                    await reloadOrchInline(operaId, container);
+                } else {
+                    addMsg.textContent = data.message || "Failed.";
+                }
+            } catch (e) { addMsg.textContent = "Server error."; }
+        });
+        addRow.appendChild(sel);
+        addRow.appendChild(addBtn);
+        staffPanel.appendChild(addRow);
+        staffPanel.appendChild(addMsg);
+    }
+    container.appendChild(staffPanel);
 }
 
 // ── Production Staff ──────────────────────────────────────────────────────────
@@ -2564,7 +2772,7 @@ function openCopySeatingModal() {
     const select = document.getElementById("copy-from-opera");
     select.innerHTML = `<option value="" disabled selected>Select a production…</option>`;
     orchestraOperas.forEach(op => {
-        if (op.id === orchestraSelectedOperaId) return;
+        if (op.id === orchestraExpandedOperaId) return;
         const opt = document.createElement("option");
         opt.value = op.id;
         opt.textContent = op.name;
@@ -2588,12 +2796,12 @@ async function confirmCopySeating() {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ from_opera_id: fromOperaId, to_opera_id: orchestraSelectedOperaId }),
+            body: JSON.stringify({ from_opera_id: fromOperaId, to_opera_id: orchestraExpandedOperaId }),
         });
         const data = await res.json();
         if (data.status === "success") {
             closeCopySeatingModal();
-            loadSeatingForOpera(orchestraSelectedOperaId);
+            if (orchestraExpandedContainer) await reloadOrchInline(orchestraExpandedOperaId, orchestraExpandedContainer);
         } else {
             msg.textContent = data.message || "Failed to copy.";
         }
@@ -2657,7 +2865,7 @@ async function saveSeatAssignment() {
         const data = await res.json();
         if (data.status === "success") {
             closeAssignSeatModal();
-            loadSeatingForOpera(operaId);
+            if (orchestraExpandedContainer) await reloadOrchInline(operaId, orchestraExpandedContainer);
         } else {
             msg.textContent = data.message || "Failed to save.";
         }
@@ -2707,8 +2915,10 @@ async function addOrchestraSection() {
         const data = await res.json();
         if (data.status === "success") {
             closeAddSectionModal();
-            loadOrchestraSections();
-            if (orchestraSelectedOperaId) loadSeatingForOpera(orchestraSelectedOperaId);
+            await loadOrchestraSections();
+            if (orchestraExpandedOperaId && orchestraExpandedContainer) {
+                await reloadOrchInline(orchestraExpandedOperaId, orchestraExpandedContainer);
+            }
         } else {
             msg.textContent = data.message || "Failed to add section.";
         }
@@ -2725,8 +2935,10 @@ async function deleteOrchestraSection(sectionId) {
             method: "DELETE",
             credentials: "include",
         });
-        loadOrchestraSections();
-        if (orchestraSelectedOperaId) loadSeatingForOpera(orchestraSelectedOperaId);
+        await loadOrchestraSections();
+        if (orchestraExpandedOperaId && orchestraExpandedContainer) {
+            await reloadOrchInline(orchestraExpandedOperaId, orchestraExpandedContainer);
+        }
     } catch (e) {
         console.error(e);
         alert("Server error.");
@@ -3568,13 +3780,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelector('.tab-btn[data-tab="orchestra"]')
         ?.classList.toggle("tab-btn--hidden", !canSeeOrchestra);
 
-    // --- Production staff ---
-    document.getElementById("add-staff-btn")?.addEventListener("click", () => {
-        if (orchestraSelectedOperaId) addProductionStaff(orchestraSelectedOperaId);
-    });
-
     // --- Orchestra modals ---
-    document.getElementById("copy-seating-btn")?.addEventListener("click", openCopySeatingModal);
     document.getElementById("confirm-copy-seating-btn")?.addEventListener("click", confirmCopySeating);
     document.getElementById("cancel-copy-seating-btn")?.addEventListener("click", closeCopySeatingModal);
     document.getElementById("copy-seating-modal")?.addEventListener("click", e => {
