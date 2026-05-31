@@ -1090,11 +1090,37 @@ async function sendInvitation() {
 }
 
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function populateTimeSelect(el) {
+    const current = el.value;
+    el.innerHTML = '<option value="">-- time --</option>';
+    for (let h = 6; h <= 23; h++) {
+        for (let m = 0; m < 60; m += 30) {
+            const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+            const suffix = h >= 12 ? "PM" : "AM";
+            const h12 = ((h + 11) % 12) + 1;
+            const opt = document.createElement("option");
+            opt.value = hhmm;
+            opt.textContent = `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+            el.appendChild(opt);
+        }
+    }
+    if (current) el.value = current;
+}
+
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
     await ME_READY;
     if (!USERNAME) return;
+
+    // Populate time dropdowns (30-min intervals, 6 AM–11:30 PM)
+    ["reh-start", "reh-end", "edit-choir-reh-start", "edit-choir-reh-end"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) populateTimeSelect(el);
+    });
 
     // Tab wiring
     document.querySelectorAll(".tab-btn").forEach(btn =>
