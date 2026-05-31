@@ -4338,7 +4338,6 @@ def student_rehearsals(request: Request):
                 ON sa.student_id = %s
                 AND sa.opera_id = r.opera_id
                 AND (r.cast_id IS NULL OR r.cast_id = sa.cast_id)
-            WHERE r.end_time >= NOW()
             ORDER BY r.start_time
         """, (student["id"],))
         rows = cur.fetchall()
@@ -4787,7 +4786,6 @@ def orchestra_member_rehearsals(request: Request):
             JOIN operas o ON o.id = r.opera_id
             WHERE r.rehearsal_type = 'orchestra'
               AND o.org_id = %s
-              AND r.end_time >= NOW()
             ORDER BY r.start_time
             """,
             (org_id,),

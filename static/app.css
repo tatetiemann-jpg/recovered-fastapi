@@ -1534,6 +1534,16 @@ tbody tr:hover td { background: var(--accent-soft); }
   margin-bottom: var(--space-2);
   color: var(--text);
 }
+.timeline-toggle--past {
+  color: var(--muted);
+  margin-top: var(--space-4);
+}
+.timeline-toggle--past:hover {
+  color: var(--text);
+}
+.my-lesson-card--past {
+  opacity: 0.7;
+}
 
 /* ======================================================
    DESKTOP (min-width: 1024px) — richer, spacious layout

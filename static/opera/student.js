@@ -95,41 +95,70 @@ async function renderMyLessonToday(todayData) {
     const box = document.getElementById("my-lesson-today");
     const header = document.getElementById("today-lesson-header");
 
-    header.textContent = `My Lesson — ${formatTodayHeader(todayData.date)}`;
+    header.textContent = "My Lesson";
 
-    // Fetch student's active lessons and filter to the bookable date
     try {
         const res = await fetch(`${API}/student/lessons`, { credentials: "include" });
         const lessons = await res.json();
+        const allLessons = Array.isArray(lessons) ? lessons : [];
 
-        const lessonToday = (Array.isArray(lessons) ? lessons : []).find(l => l.date === todayData.date);
+        const lessonToday = allLessons.find(l => l.date === todayData.date);
+        const pastLessons = allLessons
+            .filter(l => l.date < todayData.date)
+            .sort((a, b) => b.date.localeCompare(a.date) || (b.time || "").localeCompare(a.time || ""));
+
+        box.innerHTML = "";
 
         if (!lessonToday) {
-            box.innerHTML = `<em class="empty-note">No lesson booked. Use the <strong>Book</strong> tab to reserve a coaching.</em>`;
-            return;
-        }
+            const empty = document.createElement("em");
+            empty.className = "empty-note";
+            empty.textContent = "No lesson booked. Use the Book tab to reserve a coaching.";
+            box.appendChild(empty);
+        } else {
+            const canCancel = canStudentCancelLesson(lessonToday, todayData.date);
+            const cancelBtn = canCancel
+                ? `<button class="cancel-lesson-btn" data-lesson-id="${lessonToday.id}">Cancel</button>`
+                : `<button class="cancel-lesson-btn" disabled title="Too close to lesson time to cancel">Cancel</button>`;
 
-        const canCancel = canStudentCancelLesson(lessonToday, todayData.date);
-        const cancelBtn = canCancel
-            ? `<button class="cancel-lesson-btn" data-lesson-id="${lessonToday.id}">Cancel</button>`
-            : `<button class="cancel-lesson-btn" disabled title="Too close to lesson time to cancel">Cancel</button>`;
-
-        box.innerHTML = `
-            <div class="my-lesson-card">
+            const card = document.createElement("div");
+            card.className = "my-lesson-card";
+            card.innerHTML = `
                 <div class="my-lesson-time">${formatSlotTime(lessonToday.time)}</div>
                 <div class="my-lesson-teacher">with <strong>${escapeHtml(lessonToday.teacher)}</strong></div>
                 <div class="my-lesson-actions">${cancelBtn}</div>
                 ${!canCancel
                     ? `<p class="hint">Cancellation closes 1 hour before the lesson.</p>`
                     : `<p class="hint">You can cancel up to 1 hour before the lesson.</p>`}
-            </div>
-        `;
+            `;
+            card.querySelector(".cancel-lesson-btn:not([disabled])")?.addEventListener("click", (e) => {
+                handleCancelLesson(e.currentTarget.dataset.lessonId);
+            });
+            box.appendChild(card);
+        }
 
-        // Wire up cancel button
-        box.querySelector(".cancel-lesson-btn:not([disabled])")?.addEventListener("click", (e) => {
-            const lessonId = e.currentTarget.dataset.lessonId;
-            handleCancelLesson(lessonId);
-        });
+        if (pastLessons.length) {
+            const toggle = document.createElement("button");
+            toggle.className = "timeline-toggle timeline-toggle--past";
+            toggle.innerHTML = `Past Lessons <span class="timeline-count">(${pastLessons.length})</span> <span class="timeline-chevron">▶</span>`;
+            const body = document.createElement("div");
+            body.className = "timeline-body hidden";
+            pastLessons.forEach(l => {
+                const div = document.createElement("div");
+                div.className = "my-lesson-card my-lesson-card--past";
+                div.innerHTML = `
+                    <div class="my-lesson-time">${formatSlotTime(l.time)}</div>
+                    <div class="my-lesson-teacher">with <strong>${escapeHtml(l.teacher)}</strong></div>
+                    <div class="hint">${formatShortDate(l.date)}</div>
+                `;
+                body.appendChild(div);
+            });
+            toggle.addEventListener("click", () => {
+                const collapsed = body.classList.toggle("hidden");
+                toggle.querySelector(".timeline-chevron").textContent = collapsed ? "▶" : "▼";
+            });
+            box.appendChild(toggle);
+            box.appendChild(body);
+        }
     } catch (e) {
         console.error(e);
         box.innerHTML = `<em class="empty-note">Failed to load lesson info.</em>`;
@@ -198,45 +227,48 @@ function openStudentViewNotes(rehearsalId) {
 }
 
 function renderRehearsalTimeline(container, rehearsals, absences, buildCard) {
-    const today = new Date();
-    const todayStr = today.toLocaleDateString("en-CA");
+    const now = new Date();
+    const upcomingCutoff = new Date(now.getTime() + 18 * 60 * 60 * 1000);
+    const upcomingCutoffStr = upcomingCutoff.toLocaleDateString("en-CA");
 
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(today.getDate() + 7);
+    const endOfWeek = new Date(now);
+    endOfWeek.setDate(now.getDate() + 7);
     const endOfWeekStr = endOfWeek.toLocaleDateString("en-CA");
 
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const endOfMonthStr = endOfMonth.toLocaleDateString("en-CA");
 
-    const windowStart = new Date(today);
-    windowStart.setDate(windowStart.getDate() - 1);
-    windowStart.setHours(21, 0, 0, 0);
-    const windowEnd = new Date(today);
-    windowEnd.setHours(18, 0, 0, 0);
-
-    const buckets = { today: [], week: [], month: [], year: [] };
+    const buckets = { past: [], upcoming: [], week: [], month: [], year: [] };
     rehearsals.forEach(r => {
         const rStart = new Date(r.start);
+        const rEnd = new Date(r.end);
         const rDate = rStart.toLocaleDateString("en-CA");
-        if (rStart >= windowStart && rStart <= windowEnd) buckets.today.push(r);
-        else if (rDate <= endOfWeekStr) buckets.week.push(r);
-        else if (rDate <= endOfMonthStr) buckets.month.push(r);
-        else buckets.year.push(r);
+        if (rEnd < now) {
+            buckets.past.push(r);
+        } else if (rStart <= upcomingCutoff) {
+            buckets.upcoming.push(r);
+        } else if (rDate <= endOfWeekStr) {
+            buckets.week.push(r);
+        } else if (rDate <= endOfMonthStr) {
+            buckets.month.push(r);
+        } else {
+            buckets.year.push(r);
+        }
     });
 
     container.innerHTML = "";
 
-    const todayHdr = document.createElement("div");
-    todayHdr.className = "timeline-today-header";
-    todayHdr.textContent = "Today";
-    container.appendChild(todayHdr);
+    const upcomingHdr = document.createElement("div");
+    upcomingHdr.className = "timeline-today-header";
+    upcomingHdr.textContent = "Upcoming";
+    container.appendChild(upcomingHdr);
 
-    if (buckets.today.length) {
-        buckets.today.forEach(r => container.appendChild(buildCard(r, absences)));
+    if (buckets.upcoming.length) {
+        buckets.upcoming.forEach(r => container.appendChild(buildCard(r, absences)));
     } else {
         const empty = document.createElement("em");
         empty.className = "empty-note";
-        empty.textContent = "No rehearsals today.";
+        empty.textContent = "No rehearsals in the next 18 hours.";
         container.appendChild(empty);
     }
 
@@ -256,6 +288,22 @@ function renderRehearsalTimeline(container, rehearsals, absences, buildCard) {
             container.appendChild(toggle);
             container.appendChild(body);
         });
+
+    if (buckets.past.length) {
+        const pastReversed = [...buckets.past].reverse();
+        const toggle = document.createElement("button");
+        toggle.className = "timeline-toggle timeline-toggle--past";
+        toggle.innerHTML = `Past Rehearsals <span class="timeline-count">(${pastReversed.length})</span> <span class="timeline-chevron">▶</span>`;
+        const body = document.createElement("div");
+        body.className = "timeline-body hidden";
+        pastReversed.forEach(r => body.appendChild(buildCard(r, absences)));
+        toggle.addEventListener("click", () => {
+            const collapsed = body.classList.toggle("hidden");
+            toggle.querySelector(".timeline-chevron").textContent = collapsed ? "▶" : "▼";
+        });
+        container.appendChild(toggle);
+        container.appendChild(body);
+    }
 }
 
 function buildStudentRehearsalCard(r, absences) {
