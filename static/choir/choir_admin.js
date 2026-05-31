@@ -98,11 +98,13 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
     const box = document.getElementById(containerId);
     if (!box) return;
 
-    if (!allChoirMembersCache) {
+    if (!Array.isArray(allChoirMembersCache)) {
         try {
             const res = await fetch(`${API}/choir/members/all`, { credentials: "include" });
-            allChoirMembersCache = await res.json();
+            const data = await res.json();
+            allChoirMembersCache = Array.isArray(data) ? data : [];
         } catch (e) {
+            allChoirMembersCache = null;
             box.innerHTML = `<em class="empty-note">Failed to load members.</em>`;
             return;
         }
