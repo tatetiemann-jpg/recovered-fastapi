@@ -467,7 +467,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             selectedAbsenceReason = btn.dataset.reason;
         });
     });
-    document.getElementById("absence-submit-btn")?.addEventListener("click", () => submitChoirAbsence(false));
     document.getElementById("absence-submit-sub-btn")?.addEventListener("click", () => submitChoirAbsence(true));
     document.getElementById("absence-cancel-btn")?.addEventListener("click", () =>
         document.getElementById("absence-modal").classList.add("hidden"));
