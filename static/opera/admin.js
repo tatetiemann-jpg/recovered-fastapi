@@ -3401,6 +3401,7 @@ async function loadMessagesTab() {
     await Promise.all([loadMsgScopeNav(), loadMsgStaff()]);
     loadMsgBoard(msgCurrentScope);
     refreshMsgBadge();
+    loadDmTab();
 }
 
 async function loadMsgScopeNav() {
@@ -3749,8 +3750,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("msg-recipient-section")?.classList.toggle("hidden", !e.target.checked);
     });
 
-    // Load unread badge on init
+    // --- Direct Messages ---
+    document.querySelectorAll(".dm-view-btn").forEach(btn =>
+        btn.addEventListener("click", () => {
+            dmView = btn.dataset.dmView;
+            document.querySelectorAll(".dm-view-btn").forEach(b => b.classList.toggle("active", b === btn));
+            renderDmView();
+        })
+    );
+    document.getElementById("dm-send-btn")?.addEventListener("click", sendDm);
+
+    // Load unread badges on init
     refreshMsgBadge();
+    refreshDmBadge();
 
     // system_admin only needs Invitations — hide everything else
     if (USER_ROLE === "system_admin") {
@@ -3816,3 +3828,146 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 });
+
+
+// ======================================================
+// DIRECT MESSAGES MODULE
+// ======================================================
+
+let dmInbox = [];
+let dmSent = [];
+let dmContacts = [];
+let dmView = "inbox";
+
+async function loadDmTab() {
+    await Promise.all([loadDmMessages(), loadDmContactList()]);
+    renderDmView();
+    renderDmContactPicker();
+}
+
+async function loadDmMessages() {
+    try {
+        const res = await fetch(`${API}/dm`, { credentials: "include" });
+        const data = await res.json();
+        dmInbox = data.inbox || [];
+        dmSent = data.sent || [];
+    } catch (e) { dmInbox = []; dmSent = []; }
+}
+
+async function loadDmContactList() {
+    try {
+        const res = await fetch(`${API}/dm/contacts`, { credentials: "include" });
+        const data = await res.json();
+        dmContacts = Array.isArray(data) ? data : [];
+    } catch (e) { dmContacts = []; }
+}
+
+function renderDmView() {
+    const list = document.getElementById("dm-list");
+    if (!list) return;
+    const msgs = dmView === "inbox" ? dmInbox : dmSent;
+    if (!msgs.length) { list.innerHTML = `<em class="empty-note">No direct messages yet.</em>`; return; }
+    list.innerHTML = "";
+    msgs.forEach(m => {
+        const isUnread = dmView === "inbox" && !m.read_at;
+        const card = document.createElement("div");
+        card.className = "dm-card" + (isUnread ? " dm-card--unread" : "");
+        const ts = m.created_at ? new Date(m.created_at).toLocaleString(undefined,
+            { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+        let metaLabel = "";
+        if (dmView === "inbox") {
+            metaLabel = `<span class="dm-sender">${escapeHtml(m.sender_name)}</span>`;
+        } else {
+            const rnames = (m.recipients || []).slice(0, 3).map(escapeHtml).join(", ");
+            const extra = (m.recipients || []).length > 3 ? ` +${(m.recipients || []).length - 3} more` : "";
+            metaLabel = `<span class="dm-recipients-label">To: ${rnames}${extra}</span>`;
+        }
+        card.innerHTML = `
+            <div class="dm-meta">
+                ${isUnread ? '<span class="dm-unread-dot"></span>' : ""}
+                ${metaLabel}
+                <span class="dm-time">${ts}</span>
+            </div>
+            <div class="dm-body">${escapeHtml(m.body)}</div>
+        `;
+        if (isUnread) card.addEventListener("click", () => markDmRead(m.id, card));
+        list.appendChild(card);
+    });
+}
+
+async function markDmRead(msgId, card) {
+    await fetch(`${API}/dm/${msgId}/read`, { method: "POST", credentials: "include" });
+    const msg = dmInbox.find(m => m.id === msgId);
+    if (msg) msg.read_at = new Date().toISOString();
+    card.classList.remove("dm-card--unread");
+    card.querySelector(".dm-unread-dot")?.remove();
+    refreshDmBadge();
+}
+
+async function refreshDmBadge() {
+    try {
+        const res = await fetch(`${API}/dm/unread`, { credentials: "include" });
+        const data = await res.json();
+        const badge = document.getElementById("dm-badge");
+        if (!badge) return;
+        const count = data.count || 0;
+        badge.textContent = count;
+        badge.classList.toggle("hidden", count === 0);
+    } catch (e) {}
+}
+
+function renderDmContactPicker() {
+    const sel = document.getElementById("dm-recipient-select");
+    if (!sel) return;
+    sel.innerHTML = "";
+    const byGroup = {};
+    dmContacts.forEach(c => {
+        const g = c.group || "Members";
+        if (!byGroup[g]) byGroup[g] = [];
+        byGroup[g].push(c);
+    });
+    Object.entries(byGroup).forEach(([group, members]) => {
+        const og = document.createElement("optgroup");
+        og.label = group;
+        members.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.fullname;
+            og.appendChild(opt);
+        });
+        sel.appendChild(og);
+    });
+}
+
+async function sendDm() {
+    const body = (document.getElementById("dm-body")?.value || "").trim();
+    const status = document.getElementById("dm-send-status");
+    if (!body) { status.textContent = "Message cannot be empty."; return; }
+    const sel = document.getElementById("dm-recipient-select");
+    const recipient_ids = sel ? [...sel.selectedOptions].map(o => Number(o.value)) : [];
+    if (!recipient_ids.length) { status.textContent = "Select at least one recipient."; return; }
+    const btn = document.getElementById("dm-send-btn");
+    btn.disabled = true;
+    status.textContent = "Sending…";
+    try {
+        const res = await fetch(`${API}/dm`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scope: "direct", body, recipient_ids }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            status.textContent = "Message sent.";
+            document.getElementById("dm-body").value = "";
+            if (sel) sel.selectedIndex = -1;
+            await loadDmMessages();
+            renderDmView();
+        } else {
+            status.textContent = data.message || "Failed to send.";
+        }
+    } catch (e) {
+        status.textContent = "Error sending message.";
+    } finally {
+        btn.disabled = false;
+    }
+}

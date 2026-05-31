@@ -22,6 +22,7 @@
 
   <nav class="tab-nav">
     <button class="tab-btn" data-tab="upcoming">Upcoming</button>
+    <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
   </nav>
 
   <!-- UPCOMING TAB -->
@@ -32,12 +33,43 @@
     </div>
   </section>
 
+  <!-- MESSAGES TAB -->
+  <section class="tab-panel" data-tab-panel="messages">
+    <div class="box">
+      <div class="section-header">
+        <h2>Messages</h2>
+      </div>
+      <p class="hint">Messages from your ensemble admin. Reply directly via email.</p>
+
+      <div class="dm-view-toggle">
+        <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+        <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+      </div>
+
+      <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+
+      <div class="dm-compose">
+        <h3>New Message</h3>
+        <div class="dm-recipient-row">
+          <label for="dm-recipient-select">To</label>
+          <select id="dm-recipient-select" multiple size="4"></select>
+        </div>
+        <label for="dm-body">Message</label>
+        <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+        <div style="margin-top:var(--space-3);">
+          <button id="dm-send-btn">Send Message</button>
+        </div>
+        <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+      </div>
+    </div>
+  </section>
+
 </div><!-- /.app-container -->
 
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
-<script src="/static/choir/ensemble_member.js?v=2"></script>
+<script src="/static/choir/ensemble_member.js?v=3"></script>
 </body>
 </html>

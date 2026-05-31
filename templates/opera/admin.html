@@ -23,7 +23,7 @@
         <button class="tab-btn" data-tab="rehearsals">Rehearsals</button>
         <button class="tab-btn" data-tab="casting">Productions</button>
         <button class="tab-btn tab-btn--hidden" data-tab="orchestra">Orchestra</button>
-        <button class="tab-btn" data-tab="messages">Messages <span id="msg-badge" class="msg-badge hidden">0</span></button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="msg-badge" class="msg-badge hidden">0</span><span id="dm-badge" class="msg-badge hidden">0</span></button>
         <button class="tab-btn" data-tab="invitations">Invitations</button>
     </nav>
 
@@ -237,6 +237,35 @@
                     </div>
                     <p id="msg-send-status" class="hint"></p>
                 </div>
+            </div>
+        </div>
+
+        <!-- Direct Messages sub-section -->
+        <div class="box" style="margin-top:var(--space-4);">
+            <div class="section-header">
+                <h2>Direct Messages</h2>
+            </div>
+            <p class="hint">Private messages between you and other members. Not visible on the board.</p>
+
+            <div class="dm-view-toggle">
+                <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+                <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+            </div>
+
+            <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+
+            <div class="dm-compose">
+                <h3>New Direct Message</h3>
+                <div class="dm-recipient-row">
+                    <label for="dm-recipient-select">To <span class="hint">(hold Ctrl/Cmd for multiple)</span></label>
+                    <select id="dm-recipient-select" multiple size="5"></select>
+                </div>
+                <label for="dm-body">Message</label>
+                <textarea id="dm-body" rows="3" placeholder="Write your message…"></textarea>
+                <div style="margin-top:var(--space-3);">
+                    <button id="dm-send-btn">Send Message</button>
+                </div>
+                <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
             </div>
         </div>
 

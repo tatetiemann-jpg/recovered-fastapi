@@ -92,6 +92,25 @@ async def lifespan(app: FastAPI):
                     PRIMARY KEY (user_id, scope)
                 );
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    org_id INT NOT NULL,
+                    sender_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    body TEXT NOT NULL,
+                    scope TEXT NOT NULL DEFAULT 'direct',
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS message_recipients (
+                    id SERIAL PRIMARY KEY,
+                    message_id INT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    read_at TIMESTAMPTZ,
+                    UNIQUE (message_id, user_id)
+                );
+            """)
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
             cur.execute("""
@@ -7539,5 +7558,302 @@ def get_message_unread(request: Request):
 
     total = org_unread + sum(prod_unread.values())
     return {"org": org_unread, "productions": prod_unread, "total": total}
+
+
+# ========================================================
+# DIRECT MESSAGES (DM) — all roles
+# ========================================================
+
+def _render_dm_email(sender_name: str, body: str, recipient_name: str, app_url: str):
+    safe_body = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+    html = f"""<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+<p style="margin:0 0 16px;font-size:15px;color:#222;">Hi {recipient_name},</p>
+<p style="margin:0 0 16px;font-size:15px;color:#222;">
+  <strong>{sender_name}</strong> sent you a message via CountrPnt:
+</p>
+<div style="background:#f5f5f0;border-left:4px solid #b8860b;padding:16px;margin:0 0 16px;border-radius:4px;">
+  <p style="margin:0;font-size:15px;color:#222;">{safe_body}</p>
+</div>
+<p style="margin:0;font-size:14px;color:#666;">
+  Reply to this email to respond, or
+  <a href="{app_url}" style="color:#b8860b;">log in to CountrPnt</a>.
+</p>
+</div>"""
+    text = f"Hi {recipient_name},\n\n{sender_name} sent you a message via CountrPnt:\n\n{body}\n\nReply to this email to respond.\n"
+    return html, text
+
+
+@app.get("/dm")
+def get_dm(request: Request):
+    """Return inbox and sent messages for the current user."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    uid = user["id"]
+    org_id = user["org_id"]
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT m.id, m.sender_id, u.fullname AS sender_name, m.body,
+                   m.scope, m.created_at, mr.read_at
+            FROM messages m
+            JOIN message_recipients mr ON mr.message_id = m.id AND mr.user_id = %s
+            JOIN users u ON u.id = m.sender_id
+            WHERE m.org_id = %s AND m.sender_id != %s
+            ORDER BY m.created_at DESC
+            LIMIT 100
+        """, (uid, org_id, uid))
+        inbox = [
+            {
+                "id": r[0], "sender_id": r[1], "sender_name": r[2],
+                "body": r[3], "scope": r[4],
+                "created_at": r[5].isoformat() if r[5] else None,
+                "read_at": r[6].isoformat() if r[6] else None,
+            }
+            for r in cur.fetchall()
+        ]
+
+        cur.execute("""
+            SELECT m.id, m.body, m.scope, m.created_at,
+                   ARRAY_AGG(u.fullname ORDER BY u.fullname) AS recipient_names
+            FROM messages m
+            JOIN message_recipients mr ON mr.message_id = m.id
+            JOIN users u ON u.id = mr.user_id
+            WHERE m.sender_id = %s
+            GROUP BY m.id
+            ORDER BY m.created_at DESC
+            LIMIT 50
+        """, (uid,))
+        sent = [
+            {
+                "id": r[0], "body": r[1], "scope": r[2],
+                "created_at": r[3].isoformat() if r[3] else None,
+                "recipients": r[4] or [],
+            }
+            for r in cur.fetchall()
+        ]
+
+    return {"inbox": inbox, "sent": sent}
+
+
+@app.post("/dm/{message_id}/read")
+def mark_dm_read(message_id: int, request: Request):
+    """Mark a received message as read."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE message_recipients SET read_at = NOW()
+            WHERE message_id = %s AND user_id = %s AND read_at IS NULL
+        """, (message_id, user["id"]))
+    return {"status": "ok"}
+
+
+@app.get("/dm/unread")
+def get_dm_unread(request: Request):
+    """Return count of unread DMs for current user."""
+    user = current_user(request)
+    if not user:
+        return {"count": 0}
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) FROM message_recipients mr
+            JOIN messages m ON m.id = mr.message_id
+            WHERE mr.user_id = %s AND mr.read_at IS NULL AND m.sender_id != %s
+        """, (user["id"], user["id"]))
+        count = cur.fetchone()[0]
+    return {"count": count}
+
+
+@app.get("/dm/contacts")
+def get_dm_contacts(request: Request):
+    """Return available message recipients for the current user's role."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    role = user["role"]
+    org_id = user["org_id"]
+    uid = user["id"]
+    org_type = user.get("org_type", "opera")
+
+    contacts = []
+    with db_cursor() as cur:
+        if role in ("head_admin", "system_admin", "admin", "orchestra_admin"):
+            if org_type == "choir":
+                cur.execute("""
+                    SELECT id, fullname, role FROM users
+                    WHERE org_id = %s AND id != %s
+                      AND role IN ('choir_member', 'ensemble_member', 'admin')
+                    ORDER BY role, fullname
+                """, (org_id, uid))
+            else:
+                cur.execute("""
+                    SELECT id, fullname, role FROM users
+                    WHERE org_id = %s AND id != %s AND role NOT IN ('system_admin')
+                    ORDER BY role, fullname
+                """, (org_id, uid))
+            contacts = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Members"} for r in cur.fetchall()]
+
+        elif role == "teacher":
+            cur.execute("""
+                SELECT DISTINCT u.id, u.fullname, u.role FROM users u
+                JOIN lessons l ON l.student_id = u.id
+                WHERE l.teacher_id = %s AND l.status = 'booked'
+                ORDER BY u.fullname
+            """, (uid,))
+            contacts = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Students"} for r in cur.fetchall()]
+
+        elif role in ("student", "orchestra_member"):
+            cur.execute("""
+                SELECT DISTINCT u.id, u.fullname, u.role FROM users u
+                JOIN lessons l ON l.teacher_id = u.id
+                WHERE l.student_id = %s AND l.status = 'booked'
+                ORDER BY u.fullname
+            """, (uid,))
+            teachers = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Teachers"} for r in cur.fetchall()]
+            cur.execute("""
+                SELECT id, fullname, role FROM users
+                WHERE org_id = %s AND role IN ('admin', 'orchestra_admin') AND id != %s
+                ORDER BY fullname
+            """, (org_id, uid))
+            admins = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Production Staff"} for r in cur.fetchall()]
+            contacts = teachers + admins
+
+        elif role in ("choir_member", "ensemble_member"):
+            cur.execute("""
+                SELECT id, fullname, role FROM users
+                WHERE org_id = %s AND role = 'admin' AND id != %s
+                ORDER BY fullname
+            """, (org_id, uid))
+            contacts = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Choir Admin"} for r in cur.fetchall()]
+
+    return contacts
+
+
+@app.post("/dm")
+def send_dm(payload: dict, request: Request):
+    """Send a message to one or more users."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+
+    body = (payload.get("body") or "").strip()
+    if not body:
+        return {"status": "fail", "message": "Message body is required"}
+
+    scope = (payload.get("scope") or "direct").strip()
+    recipient_ids_raw = payload.get("recipient_ids") or []
+    recipient_ids = [int(x) for x in recipient_ids_raw]
+    org_id = user["org_id"]
+    uid = user["id"]
+    role = user["role"]
+    org_type = user.get("org_type", "opera")
+
+    resolved = []
+    with db_cursor() as cur:
+        if scope == "direct":
+            if not recipient_ids:
+                return {"status": "fail", "message": "No recipients selected"}
+            cur.execute(
+                "SELECT id FROM users WHERE id = ANY(%s) AND org_id = %s AND id != %s",
+                (recipient_ids, org_id, uid)
+            )
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "org":
+            if role not in ("head_admin", "system_admin") and not (org_type == "choir" and role == "admin"):
+                return {"status": "fail", "message": "Not authorized for org-wide messages"}
+            cur.execute(
+                "SELECT id FROM users WHERE org_id = %s AND id != %s AND role NOT IN ('system_admin')",
+                (org_id, uid)
+            )
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "choir":
+            if not (org_type == "choir" and role == "admin"):
+                return {"status": "fail", "message": "Not authorized"}
+            cur.execute("SELECT id FROM users WHERE org_id = %s AND role = 'choir_member'", (org_id,))
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "ensemble":
+            if not (org_type == "choir" and role == "admin"):
+                return {"status": "fail", "message": "Not authorized"}
+            cur.execute("SELECT id FROM users WHERE org_id = %s AND role = 'ensemble_member'", (org_id,))
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "studio_today":
+            if role != "teacher":
+                return {"status": "fail", "message": "Not authorized"}
+            from datetime import date as _date
+            today = _date.today()
+            cur.execute(
+                "SELECT DISTINCT student_id FROM lessons WHERE teacher_id=%s AND lesson_date=%s AND status='booked'",
+                (uid, today)
+            )
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "studio_week":
+            if role != "teacher":
+                return {"status": "fail", "message": "Not authorized"}
+            from datetime import date as _date, timedelta
+            today = _date.today()
+            week_start = today - timedelta(days=today.weekday())
+            week_end = week_start + timedelta(days=6)
+            cur.execute("""
+                SELECT DISTINCT student_id FROM lessons
+                WHERE teacher_id=%s AND lesson_date BETWEEN %s AND %s AND status='booked'
+            """, (uid, week_start, week_end))
+            resolved = [r[0] for r in cur.fetchall()]
+
+        elif scope == "studio_all":
+            if role != "teacher":
+                return {"status": "fail", "message": "Not authorized"}
+            cur.execute(
+                "SELECT DISTINCT student_id FROM lessons WHERE teacher_id=%s AND status='booked'",
+                (uid,)
+            )
+            resolved = [r[0] for r in cur.fetchall()]
+
+        else:
+            return {"status": "fail", "message": "Invalid scope"}
+
+    if not resolved:
+        return {"status": "fail", "message": "No recipients found for this scope"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO messages (org_id, sender_id, body, scope)
+            VALUES (%s, %s, %s, %s) RETURNING id
+        """, (org_id, uid, body, scope))
+        message_id = cur.fetchone()[0]
+        for rid in resolved:
+            cur.execute("""
+                INSERT INTO message_recipients (message_id, user_id)
+                VALUES (%s, %s) ON CONFLICT DO NOTHING
+            """, (message_id, rid))
+
+    with db_cursor() as cur:
+        cur.execute("SELECT id, fullname, email FROM users WHERE id = ANY(%s)", (resolved,))
+        recipients_data = cur.fetchall()
+
+    sender_name = user.get("fullname") or user.get("username") or "CountrPnt"
+    sender_addr = _sender_from_username(user["username"])
+    reply_email = user.get("email")
+
+    for _, rname, remail in recipients_data:
+        if not remail:
+            continue
+        html, text = _render_dm_email(sender_name, body, rname, APP_URL)
+        send_email(
+            remail,
+            f"Message from {sender_name} — CountrPnt",
+            html, text,
+            from_name=sender_name,
+            from_address=sender_addr,
+            reply_to=reply_email,
+        )
+
+    return {"status": "success", "sent_to": len(resolved)}
 
 
