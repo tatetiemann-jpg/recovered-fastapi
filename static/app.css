@@ -763,30 +763,43 @@ tbody tr:hover td { background: var(--accent-soft); }
   user-select: none;
 }
 
+.section-chevron-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  transition: transform 0.15s, background 0.1s;
+  line-height: 1;
+}
+
+.section-chevron-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.unified-section-group.open .section-chevron-btn {
+  transform: rotate(90deg);
+}
+
 .section-name-area {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   flex: 1;
-  cursor: pointer;
-  padding: var(--space-1) 0;
-  border-radius: var(--radius);
-}
-
-.section-name-area:hover .section-name {
-  color: var(--accent);
 }
 
 .unified-section-header .section-name {
   font-weight: 500;
   font-size: 0.9rem;
-  transition: color 0.15s;
 }
 
 .unified-section-header .section-count {
   font-size: 0.8rem;
   color: var(--text-muted);
-  transition: color 0.15s;
 }
 
 .unified-section-group.some-selected .section-count,
@@ -795,16 +808,21 @@ tbody tr:hover td { background: var(--accent-soft); }
   font-weight: 600;
 }
 
-.unified-section-header .section-chevron {
-  font-size: 0.65rem;
-  color: var(--muted);
-  transition: transform 0.15s;
+.section-select-all-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
   cursor: pointer;
-  padding: var(--space-1);
+  transition: border-color 0.15s, color 0.15s;
 }
 
-.unified-section-group.open .section-chevron {
-  transform: rotate(90deg);
+.section-select-all-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .unified-section-inner {

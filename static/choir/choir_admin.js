@@ -117,8 +117,17 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             box.innerHTML = `<em class="empty-note">No choir members yet.</em>`;
             return;
         }
+
+        const SATB_ORDER = ["soprano", "alto", "tenor", "bass", "baritone", "mezzo", "mezzo-soprano", "countertenor"];
+        const satbKey = name => {
+            const n = name.toLowerCase();
+            const idx = SATB_ORDER.findIndex(v => n.includes(v));
+            return idx < 0 ? 99 : idx;
+        };
+        const sortedSections = [...choirSections].sort((a, b) => satbKey(a.name) - satbKey(b.name) || a.name.localeCompare(b.name));
+
         const bySection = new Map();
-        choirSections.forEach(s => bySection.set(s.name, { sectionId: s.id, members: [] }));
+        sortedSections.forEach(s => bySection.set(s.name, { sectionId: s.id, members: [] }));
         members.forEach(m => {
             const key = m.section_name || "Other";
             if (!bySection.has(key)) bySection.set(key, { sectionId: m.section_id, members: [] });
@@ -134,9 +143,15 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             group.className = "unified-section-group";
             if (sectionId) group.dataset.sectionId = sectionId;
 
-            // Header: name area (click = select/deselect all) + chevron (click = expand/collapse)
+            // Header: [chevron | name + count | Select All btn]
             const header = document.createElement("div");
             header.className = "unified-section-header";
+
+            const chevron = document.createElement("button");
+            chevron.type = "button";
+            chevron.className = "section-chevron-btn";
+            chevron.setAttribute("aria-label", "Expand section");
+            chevron.textContent = "▶";
 
             const nameArea = document.createElement("span");
             nameArea.className = "section-name-area";
@@ -152,12 +167,14 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             nameArea.appendChild(nameSpan);
             nameArea.appendChild(countSpan);
 
-            const chevron = document.createElement("span");
-            chevron.className = "section-chevron";
-            chevron.textContent = "▶";
+            const selectAllBtn = document.createElement("button");
+            selectAllBtn.type = "button";
+            selectAllBtn.className = "section-select-all-btn";
+            selectAllBtn.textContent = "Select all";
 
-            header.appendChild(nameArea);
             header.appendChild(chevron);
+            header.appendChild(nameArea);
+            header.appendChild(selectAllBtn);
             group.appendChild(header);
 
             const inner = document.createElement("div");
@@ -179,22 +196,24 @@ async function renderUnifiedCaller(containerId, preCheckedSectionIds = [], preCh
             });
             group.appendChild(inner);
 
-            // Name area click: toggle all members on/off
-            nameArea.addEventListener("click", () => {
+            // Chevron: expand/collapse only
+            chevron.addEventListener("click", () => {
+                const isOpen = group.classList.toggle("open");
+                inner.classList.toggle("hidden", !isOpen);
+                chevron.setAttribute("aria-label", isOpen ? "Collapse section" : "Expand section");
+            });
+
+            // Select All btn: toggle all members on/off
+            selectAllBtn.addEventListener("click", () => {
                 const pills = [...inner.querySelectorAll(".caller-pill")];
                 const allOn = pills.every(p => p.classList.contains("selected"));
                 pills.forEach(p => p.classList.toggle("selected", !allOn));
+                selectAllBtn.textContent = allOn ? "Select all" : "Deselect all";
                 updateSectionCount(header, inner, list.length);
                 if (!allOn) {
                     group.classList.add("open");
                     inner.classList.remove("hidden");
                 }
-            });
-
-            // Chevron click: expand/collapse
-            chevron.addEventListener("click", () => {
-                const isOpen = group.classList.toggle("open");
-                inner.classList.toggle("hidden", !isOpen);
             });
 
             // Initial count
