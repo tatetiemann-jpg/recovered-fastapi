@@ -3419,3 +3419,23 @@ tbody tr:hover td { background: var(--accent-soft); }
   padding-bottom: 2px;
 }
 
+.dm-reply-row {
+  margin-top: var(--space-2);
+  display: flex;
+  justify-content: flex-end;
+}
+.dm-reply-btn {
+  font-size: 0.8rem;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--muted);
+  font-family: inherit;
+}
+.dm-reply-btn:hover {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+

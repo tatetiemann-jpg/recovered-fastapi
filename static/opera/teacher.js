@@ -918,7 +918,15 @@ function renderDmView() {
                 <span class="dm-time">${ts}</span>
             </div>
             <div class="dm-body">${escapeHtml(m.body)}</div>
+            ${dmView === "inbox" ? `<div class="dm-reply-row"><button class="dm-reply-btn" type="button">Reply</button></div>` : ""}
         `;
+        if (dmView === "inbox") {
+            card.querySelector(".dm-reply-btn")?.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (isUnread) markDmRead(m.id, card);
+                replyToDm(m.sender_id, m.sender_name);
+            });
+        }
         if (isUnread) card.addEventListener("click", () => markDmRead(m.id, card));
         list.appendChild(card);
     });
@@ -931,6 +939,19 @@ async function markDmRead(msgId, card) {
     card.classList.remove("dm-card--unread");
     card.querySelector(".dm-unread-dot")?.remove();
     refreshDmBadge();
+}
+
+function replyToDm(senderId, senderName) {
+    const scopeEl = document.getElementById("dm-scope");
+    if (scopeEl) {
+        scopeEl.value = "direct";
+        document.getElementById("dm-recipient-row")?.classList.remove("hidden");
+    }
+    dmSelectedRecipients = new Set([senderId]);
+    renderFilteredPills();
+    const compose = document.querySelector(".dm-compose");
+    if (compose) compose.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => document.getElementById("dm-body")?.focus(), 300);
 }
 
 async function refreshDmBadge() {
