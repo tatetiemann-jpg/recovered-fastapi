@@ -1129,33 +1129,45 @@ APP_URL = os.environ.get("APP_URL", "https://countrpnt.com")
 PASSWORD_RESET_TOKEN_HOURS = 1
 
 
-def send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
+def _sender_from_username(username: str) -> str:
+    """Build a @countrpnt.com sender address from a username."""
+    domain = EMAIL_FROM.split("@")[-1] if "@" in EMAIL_FROM else "countrpnt.com"
+    safe = re.sub(r"[^a-zA-Z0-9._+-]", "", username)
+    return f"{safe}@{domain}"
+
+
+def send_email(to: str, subject: str, html_body: str, text_body: str,
+               from_name: str = None, from_address: str = None,
+               reply_to: str = None) -> bool:
     """
     Send an email via Resend. Returns True on success, False on failure.
-    Logs but does not raise — email failures should not break the API.
+    Pass from_name/from_address to send as a specific user; reply_to routes
+    replies to their real inbox. Logs but does not raise.
     """
     if not RESEND_API_KEY:
         print("[email] RESEND_API_KEY not configured; skipping send.")
         return False
 
-    # Test-domain safety: redirect all mail to the override address
-    real_to = to
+    sender_name = from_name or EMAIL_FROM_NAME
+    sender_addr = from_address or EMAIL_FROM
 
     resend.api_key = RESEND_API_KEY
+    payload = {
+        "from": f"{sender_name} <{sender_addr}>",
+        "to": [to],
+        "subject": subject,
+        "html": html_body,
+        "text": text_body,
+    }
+    if reply_to:
+        payload["reply_to"] = reply_to
+
     try:
-        resend.Emails.send({
-            "from": f"{EMAIL_FROM_NAME} <{EMAIL_FROM}>",
-            "to": [real_to],
-            "subject": subject,
-            "html": html_body,
-            "text": text_body,
-        })
-        print(f"[email debug] FROM: {EMAIL_FROM} <{EMAIL_FROM}>")
-        print(f"[email] Sent to {real_to}: {subject}"
-              )
+        resend.Emails.send(payload)
+        print(f"[email] Sent to {to} from {sender_addr}: {subject}")
         return True
     except Exception as e:
-        print(f"[email] Failed to send to {real_to}: {e}")
+        print(f"[email] Failed to send to {to}: {e}")
         return False
 
 
@@ -6439,7 +6451,9 @@ def _render_sub_email(sub_name: str, section_name: str, org_name: str,
 
 
 def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
-                     section_id: int, tier: str, custom_message: str = None) -> int:
+                     section_id: int, tier: str, custom_message: str = None,
+                     sender_name: str = None, sender_username: str = None,
+                     sender_email: str = None) -> int:
     with db_cursor() as cur:
         cur.execute("""
             SELECT r.start_time, r.location, r.notes,
@@ -6483,8 +6497,12 @@ def _send_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
         html, text = _render_sub_email(sub["fullname"], section_name, org_name,
                                        rdate, rstart, reh[1] or "", reh[2] or "", token,
                                        admin_name, admin_email, custom_message)
+        from_addr = _sender_from_username(sender_username) if sender_username else None
         if send_email(sub["email"],
-                      f"Sub needed - {section_name} | {org_name}", html, text):
+                      f"Sub needed - {section_name} | {org_name}", html, text,
+                      from_name=sender_name if sender_username else None,
+                      from_address=from_addr,
+                      reply_to=sender_email if sender_username else None):
             sent += 1
     return sent
 
@@ -7059,7 +7077,12 @@ def choir_contact_one_sub(payload: dict, request: Request):
 
     sub = {"id": row[0], "fullname": row[1], "email": row[2]}
     tier = "preferred" if row[3] else "regular"
-    sent = _send_sub_emails([sub], sub_request_id, rehearsal_id, section_id, tier, custom_message)
+    sent = _send_sub_emails(
+        [sub], sub_request_id, rehearsal_id, section_id, tier, custom_message,
+        sender_name=user.get("fullname") or user.get("username"),
+        sender_username=user.get("username"),
+        sender_email=user.get("email"),
+    )
     if sent == 0:
         with db_cursor() as cur:
             cur.execute(
@@ -7465,7 +7488,14 @@ def send_staff_message(payload: dict, request: Request):
             if not rec_email:
                 continue
             html, text = render_staff_message_email(sender_name, body, scope_label, reply_url, rec_name)
-            send_email(rec_email, f"New message from {sender_name} — CountrPnt", html, text)
+            send_email(
+                rec_email,
+                f"New message from {sender_name} — CountrPnt",
+                html, text,
+                from_name=sender_name,
+                from_address=_sender_from_username(user["username"]),
+                reply_to=user.get("email"),
+            )
 
     return {"status": "success", "message_id": message_id}
 
