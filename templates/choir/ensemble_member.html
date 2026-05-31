@@ -51,8 +51,11 @@
       <div class="dm-compose">
         <h3>New Message</h3>
         <div class="dm-recipient-row">
-          <label for="dm-recipient-select">To</label>
-          <select id="dm-recipient-select" multiple size="4"></select>
+          <label>To</label>
+          <div class="dm-recipient-picker">
+            <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+            <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+          </div>
         </div>
         <label for="dm-body">Message</label>
         <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>

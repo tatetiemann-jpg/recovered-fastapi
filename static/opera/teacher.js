@@ -864,6 +864,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 let dmInbox = [];
 let dmSent = [];
 let dmContacts = [];
+let dmSelectedRecipients = new Set();
 let dmView = "inbox";
 
 async function loadDmTab() {
@@ -945,26 +946,55 @@ async function refreshDmBadge() {
 }
 
 function renderDmContactPicker() {
-    const sel = document.getElementById("dm-recipient-select");
-    if (!sel) return;
-    sel.innerHTML = "";
+    const container = document.getElementById("dm-recipient-pills");
+    const search = document.getElementById("dm-recipient-search");
+    if (!container) return;
+    dmSelectedRecipients = new Set();
+    if (search) {
+        search.classList.remove("hidden");
+        search.value = "";
+        search.oninput = renderFilteredPills;
+    }
+    renderFilteredPills();
+}
+
+function renderFilteredPills() {
+    const container = document.getElementById("dm-recipient-pills");
+    if (!container) return;
+    const q = (document.getElementById("dm-recipient-search")?.value || "").toLowerCase();
     const byGroup = {};
     dmContacts.forEach(c => {
+        if (q && !c.fullname.toLowerCase().includes(q)) return;
         const g = c.group || "Contacts";
         if (!byGroup[g]) byGroup[g] = [];
         byGroup[g].push(c);
     });
+    container.innerHTML = "";
     Object.entries(byGroup).forEach(([group, members]) => {
-        const og = document.createElement("optgroup");
-        og.label = group;
+        const lbl = document.createElement("span");
+        lbl.className = "dm-pill-group-label";
+        lbl.textContent = group;
+        container.appendChild(lbl);
         members.forEach(c => {
-            const opt = document.createElement("option");
-            opt.value = c.id;
-            opt.textContent = c.fullname;
-            og.appendChild(opt);
+            const pill = document.createElement("span");
+            pill.className = "dm-pill" + (dmSelectedRecipients.has(c.id) ? " selected" : "");
+            pill.textContent = c.fullname;
+            pill.dataset.id = c.id;
+            pill.addEventListener("click", () => {
+                if (dmSelectedRecipients.has(c.id)) {
+                    dmSelectedRecipients.delete(c.id);
+                    pill.classList.remove("selected");
+                } else {
+                    dmSelectedRecipients.add(c.id);
+                    pill.classList.add("selected");
+                }
+            });
+            container.appendChild(pill);
         });
-        sel.appendChild(og);
     });
+    if (!container.children.length) {
+        container.innerHTML = "<em class='empty-note'>No contacts found.</em>";
+    }
 }
 
 async function sendDm() {
@@ -975,13 +1005,12 @@ async function sendDm() {
     const scope = scopeEl ? scopeEl.value : "direct";
     let recipient_ids = [];
     if (scope === "direct") {
-        const sel = document.getElementById("dm-recipient-select");
-        recipient_ids = sel ? [...sel.selectedOptions].map(o => Number(o.value)) : [];
+        recipient_ids = [...dmSelectedRecipients];
         if (!recipient_ids.length) { status.textContent = "Select at least one recipient."; return; }
     }
     const btn = document.getElementById("dm-send-btn");
     btn.disabled = true;
-    status.textContent = "Sending…";
+    status.textContent = "Sending...";
     try {
         const res = await fetch(`${API}/dm`, {
             method: "POST", credentials: "include",
@@ -994,6 +1023,8 @@ async function sendDm() {
             document.getElementById("dm-body").value = "";
             if (scopeEl) scopeEl.value = scopeEl.options[0]?.value || "direct";
             document.getElementById("dm-recipient-row")?.classList.add("hidden");
+            dmSelectedRecipients = new Set();
+            renderFilteredPills();
             await loadDmMessages();
             renderDmView();
         } else {
