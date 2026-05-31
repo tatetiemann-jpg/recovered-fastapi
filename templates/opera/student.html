@@ -32,36 +32,32 @@
     <!-- ============================ -->
     <section class="tab-panel" data-tab-panel="today">
 
-        <!-- My Lesson Today -->
-        <div class="box">
-            <h2 id="today-lesson-header">My Lesson</h2>
-            <div id="my-lesson-today">
-                <em class="empty-note">Loadingâ¦</em>
+        <div class="today-split">
+            <div class="box">
+                <h2 id="rehearsals-header">Rehearsals</h2>
+                <div id="rehearsals"><em class="empty-note">Loading&#8230;</em></div>
+            </div>
+            <div class="box">
+                <h2 id="today-lesson-header">My Lesson</h2>
+                <div id="my-lesson-today"><em class="empty-note">Loading&#8230;</em></div>
             </div>
         </div>
 
-        <!-- Calendar subscription -->
-        <div class="box" style="margin-top:var(--space-4);">
-          <h2>Subscribe to Your Calendar</h2>
-          <p class="hint">Lessons and rehearsals in one feed — updates automatically.</p>
-          <div style="display:flex;gap:var(--space-2);align-items:center;margin:var(--space-3) 0;">
-            <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" style="flex:1;font-size:0.85rem;">
-            <button id="copy-calendar-url-btn" type="button">Copy</button>
-          </div>
-          <div class="hint" style="margin-top:var(--space-3);line-height:1.7;">
-            <strong>Google Calendar:</strong> Other calendars + → From URL → paste above<br>
-            <strong>Apple Calendar:</strong> File → New Calendar Subscription → paste above<br>
-            <strong>Outlook:</strong> Add calendar → Subscribe from web → paste above
-          </div>
-        </div>
-
-        <!-- Rehearsals timeline -->
-        <div class="box">
-            <h2 id="rehearsals-header">Rehearsals</h2>
-            <div id="rehearsals">
-                <em class="empty-note">Loadingâ¦</em>
+        <details class="cal-subscribe-details">
+            <summary class="cal-subscribe-summary">Subscribe to Your Calendar</summary>
+            <div class="cal-subscribe-content">
+                <p class="hint">Lessons and rehearsals in one feed &mdash; updates automatically.</p>
+                <div style="display:flex;gap:var(--space-2);align-items:center;margin:var(--space-3) 0;">
+                    <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" style="flex:1;font-size:0.85rem;">
+                    <button id="copy-calendar-url-btn" type="button">Copy</button>
+                </div>
+                <div class="hint" style="margin-top:var(--space-3);line-height:1.7;">
+                    <strong>Google Calendar:</strong> Other calendars + &rarr; From URL &rarr; paste above<br>
+                    <strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste above<br>
+                    <strong>Outlook:</strong> Add calendar &rarr; Subscribe from web &rarr; paste above
+                </div>
             </div>
-        </div>
+        </details>
 
     </section>
 
@@ -74,7 +70,7 @@
             <h2>Book a Coaching</h2>
             <p id="booking-status" class="hint"></p>
             <div id="teachers-list">
-                <em class="empty-note">Loadingâ¦</em>
+                <em class="empty-note">Loading&#8230;</em>
             </div>
         </div>
 
@@ -89,7 +85,7 @@
             <h2>Lesson Notes</h2>
             <p class="hint">Notes from your past lessons, shared by your teachers.</p>
             <div id="shared-notes-list">
-                <em class="empty-note">Loadingâ¦</em>
+                <em class="empty-note">Loading&#8230;</em>
             </div>
         </div>
 
@@ -109,19 +105,19 @@
                 <button class="dm-view-btn" data-dm-view="sent">Sent</button>
             </div>
 
-            <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+            <div id="dm-list" class="dm-list"><em class="empty-note">Loading&#8230;</em></div>
 
             <div class="dm-compose">
                 <h3>New Message</h3>
                 <div class="dm-recipient-row">
                     <label>To</label>
                     <div class="dm-recipient-picker">
-                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts&#8230;" class="dm-recipient-search hidden">
                         <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
                     </div>
                 </div>
                 <label for="dm-body">Message</label>
-                <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+                <textarea id="dm-body" rows="4" placeholder="Write your message&#8230;"></textarea>
                 <div style="margin-top:var(--space-3);">
                     <button id="dm-send-btn">Send Message</button>
                 </div>
@@ -152,7 +148,7 @@
         <p id="slot-picker-subtitle" class="hint"></p>
 
         <div id="slot-picker-grid" class="slot-grid">
-            <em class="empty-note">Loading slotsâ¦</em>
+            <em class="empty-note">Loading slots&#8230;</em>
         </div>
 
         <div class="modal-actions">

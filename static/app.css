@@ -3439,3 +3439,58 @@ tbody tr:hover td { background: var(--accent-soft); }
   color: var(--text);
 }
 
+/* Today tab — two-column split */
+.today-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+  margin-bottom: var(--space-4);
+}
+
+.today-right-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Calendar subscribe collapsible */
+.cal-subscribe-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.cal-subscribe-summary {
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  -webkit-user-select: none;
+  user-select: none;
+  color: var(--text);
+}
+
+.cal-subscribe-summary::-webkit-details-marker { display: none; }
+.cal-subscribe-summary::marker { display: none; }
+
+.cal-subscribe-summary::before {
+  content: "\25B6";
+  font-size: 0.65rem;
+  color: var(--muted);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
+  transform: rotate(90deg);
+}
+
+.cal-subscribe-content {
+  padding: var(--space-1) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
