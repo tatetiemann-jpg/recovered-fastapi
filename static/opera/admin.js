@@ -1493,6 +1493,9 @@ function renderScheduledRehearsals() {
         box.querySelectorAll(".edit-rehearsal-btn").forEach(btn => {
             btn.addEventListener("click", () => openEditRehearsalModal(Number(btn.dataset.id)));
         });
+        box.querySelectorAll(".absence-count-btn").forEach(btn => {
+            btn.addEventListener("click", () => openAbsencesModal(Number(btn.dataset.id)));
+        });
     });
 }
 
@@ -1534,6 +1537,10 @@ function renderRehearsalRow(r) {
         ? `<button class="subtle-btn call-singers-btn" data-id="${r.id}">Call Singers</button>`
         : "";
 
+    const absenceBtn = r.absence_count > 0
+        ? `<button class="subtle-btn absence-count-btn" data-id="${r.id}">${r.absence_count} Absence${r.absence_count !== 1 ? "s" : ""}</button>`
+        : "";
+
     return `
         <div class="rehearsal-row">
             <div class="rehearsal-row-header">
@@ -1543,6 +1550,7 @@ function renderRehearsalRow(r) {
                     <span class="rehearsal-attendance">${attendanceLabel[r.attendance_type] || ""}</span>
                 </div>
                 <div class="rehearsal-row-actions">
+                    ${absenceBtn}
                     ${callSingersBtn}
                 </div>
             </div>
@@ -1565,6 +1573,45 @@ function renderRehearsalRow(r) {
             </div>
         </div>
     `;
+}
+
+
+// -----------------------------------------------------------
+// REHEARSAL ABSENCES
+// -----------------------------------------------------------
+
+async function openAbsencesModal(rehearsalId) {
+    const r = scheduledAllRehearsals.find(x => x.id === rehearsalId);
+    const title = document.getElementById("reh-absences-title");
+    const list = document.getElementById("reh-absences-list");
+    if (!title || !list) return;
+
+    const dateStr = r ? new Date(r.start_time).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : "";
+    title.textContent = `Absences${dateStr ? " — " + dateStr : ""}`;
+    list.innerHTML = `<em class="empty-note">Loading…</em>`;
+    document.getElementById("reh-absences-modal").classList.remove("hidden");
+
+    try {
+        const res = await fetch(`${API}/admin/rehearsals/${rehearsalId}/absences`, { credentials: "include" });
+        const data = await res.json();
+        if (!data.length) {
+            list.innerHTML = `<em class="empty-note">No absences recorded.</em>`;
+            return;
+        }
+        list.innerHTML = "";
+        data.forEach(a => {
+            const div = document.createElement("div");
+            div.className = "absence-entry";
+            div.innerHTML = `
+                <strong>${escapeHtml(a.name)}</strong>
+                ${a.reason ? `<span class="absence-reason-label">${escapeHtml(a.reason)}</span>` : ""}
+                ${a.note ? `<p class="hint" style="margin:4px 0 0;">${escapeHtml(a.note)}</p>` : ""}
+            `;
+            list.appendChild(div);
+        });
+    } catch (e) {
+        list.innerHTML = `<em class="empty-note">Failed to load absences.</em>`;
+    }
 }
 
 
@@ -3682,6 +3729,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("reh-edit-modal")?.classList.add("hidden"));
     document.getElementById("reh-edit-modal")?.addEventListener("click", e => {
         if (e.target.id === "reh-edit-modal") e.target.classList.add("hidden");
+    });
+
+    // --- Absences modal ---
+    document.getElementById("close-reh-absences-btn")?.addEventListener("click", () =>
+        document.getElementById("reh-absences-modal")?.classList.add("hidden"));
+    document.getElementById("reh-absences-modal")?.addEventListener("click", e => {
+        if (e.target.id === "reh-absences-modal") e.target.classList.add("hidden");
     });
 
     // --- View / Add Rehearsal Notes modals ---

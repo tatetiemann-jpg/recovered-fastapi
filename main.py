@@ -113,6 +113,7 @@ async def lifespan(app: FastAPI):
             """)
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
+            cur.execute("ALTER TABLE absence_requests ADD COLUMN IF NOT EXISTS note TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS rehearsal_members (
                     rehearsal_id INT REFERENCES rehearsals(id) ON DELETE CASCADE,
@@ -2815,6 +2816,16 @@ def admin_rehearsals(request: Request):
         for r_id, name in cur.fetchall():
             leaders_by_rehearsal.setdefault(r_id, []).append(name)
 
+        rehearsal_ids = [r[0] for r in base_rows]
+        absence_count_by_rehearsal = {}
+        if rehearsal_ids:
+            cur.execute(
+                "SELECT rehearsal_id, COUNT(*) FROM absence_requests WHERE rehearsal_id = ANY(%s) GROUP BY rehearsal_id",
+                (rehearsal_ids,),
+            )
+            for r_id, cnt in cur.fetchall():
+                absence_count_by_rehearsal[r_id] = cnt
+
     return [
         {
             "id": r[0],
@@ -2829,9 +2840,25 @@ def admin_rehearsals(request: Request):
             "leaders": leaders_by_rehearsal.get(r[0], []),
             "rehearsal_type": r[7] or "vocal",
             "opera_id": r[8],
+            "absence_count": absence_count_by_rehearsal.get(r[0], 0),
         }
         for r in base_rows
     ]
+
+
+@app.get("/admin/rehearsals/{rehearsal_id}/absences")
+def admin_rehearsal_absences(rehearsal_id: int, request: Request):
+    require_user(request, role="admin")
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT u.fullname, ar.reason, ar.note
+            FROM absence_requests ar
+            JOIN users u ON u.id = ar.singer_id
+            WHERE ar.rehearsal_id = %s
+            ORDER BY u.fullname
+        """, (rehearsal_id,))
+        rows = cur.fetchall()
+    return [{"name": r[0], "reason": r[1] or "", "note": r[2] or ""} for r in rows]
 
 # ── Production Staff ──────────────────────────────────────────────────────────
 
@@ -4378,10 +4405,11 @@ def student_mark_absence(payload: dict, request: Request):
     with db_cursor(commit=True) as cur:
         cur.execute(
             """
-            INSERT INTO absence_requests (rehearsal_id, singer_id)
-            VALUES (%s, %s) ON CONFLICT DO NOTHING
+            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE SET reason=EXCLUDED.reason, note=EXCLUDED.note
             """,
-            (rehearsal_id, student["id"]),
+            (rehearsal_id, student["id"], reason, note or None),
         )
         cur.execute(
             """
@@ -4829,10 +4857,11 @@ def orchestra_member_mark_absence(payload: dict, request: Request):
     with db_cursor(commit=True) as cur:
         cur.execute(
             """
-            INSERT INTO absence_requests (rehearsal_id, singer_id)
-            VALUES (%s, %s) ON CONFLICT DO NOTHING
+            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE SET reason=EXCLUDED.reason, note=EXCLUDED.note
             """,
-            (rehearsal_id, member["id"]),
+            (rehearsal_id, member["id"], reason, note or None),
         )
         cur.execute(
             """

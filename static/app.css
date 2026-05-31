@@ -3535,3 +3535,28 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
   font-weight: 600;
 }
 
+.absence-count-btn {
+  color: var(--warning, #b45309);
+  border-color: var(--warning, #b45309);
+  font-weight: 600;
+}
+
+.absence-entry {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.absence-entry:last-child {
+  border-bottom: none;
+}
+.absence-reason-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: var(--bg-sunken);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
