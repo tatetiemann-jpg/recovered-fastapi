@@ -219,10 +219,17 @@ function renderRehearsalTimeline(container, rehearsals, absences, buildCard) {
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const endOfMonthStr = endOfMonth.toLocaleDateString("en-CA");
 
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - 1);
+    windowStart.setHours(21, 0, 0, 0);
+    const windowEnd = new Date(today);
+    windowEnd.setHours(18, 0, 0, 0);
+
     const buckets = { today: [], week: [], month: [], year: [] };
     rehearsals.forEach(r => {
-        const rDate = new Date(r.start).toLocaleDateString("en-CA");
-        if (rDate === todayStr) buckets.today.push(r);
+        const rStart = new Date(r.start);
+        const rDate = rStart.toLocaleDateString("en-CA");
+        if (rStart >= windowStart && rStart <= windowEnd) buckets.today.push(r);
         else if (rDate <= endOfWeekStr) buckets.week.push(r);
         else if (rDate <= endOfMonthStr) buckets.month.push(r);
         else buckets.year.push(r);
