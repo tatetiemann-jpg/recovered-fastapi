@@ -876,6 +876,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   display: flex;
   gap: var(--space-1);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .rehearsal-row-footer {
