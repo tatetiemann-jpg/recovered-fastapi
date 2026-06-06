@@ -6784,7 +6784,7 @@ def choir_get_subs(request: Request, section_id: Optional[int] = None):
                 JOIN choir_sections cs ON cs.id = s.section_id
                 LEFT JOIN sub_contacts sc ON sc.sub_id = s.id
                 WHERE s.org_id=%s AND s.section_id=%s AND s.active=true
-                GROUP BY s.id, cs.name
+                GROUP BY s.id, cs.id
                 ORDER BY s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
             """, (org_id, section_id))
         else:
@@ -6797,7 +6797,7 @@ def choir_get_subs(request: Request, section_id: Optional[int] = None):
                 JOIN choir_sections cs ON cs.id = s.section_id
                 LEFT JOIN sub_contacts sc ON sc.sub_id = s.id
                 WHERE s.org_id=%s AND s.active=true
-                GROUP BY s.id, cs.name
+                GROUP BY s.id, cs.id
                 ORDER BY cs.sort_order, s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
             """, (org_id,))
         return [{"id": r[0], "fullname": r[1], "email": r[2], "phone": r[3] or "",
