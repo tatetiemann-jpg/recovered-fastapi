@@ -336,6 +336,27 @@
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
 <script src="/static/app.js?v=2"></script>
+<!-- EDIT SUB MODAL -->
+<div id="edit-sub-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Edit Sub</h3>
+    <input id="edit-sub-id" type="hidden">
+    <label for="edit-sub-name">Name <span class="required">*</span></label>
+    <input id="edit-sub-name" type="text">
+    <label for="edit-sub-email">Email <span class="required">*</span></label>
+    <input id="edit-sub-email" type="email">
+    <label for="edit-sub-phone">Phone</label>
+    <input id="edit-sub-phone" type="tel">
+    <label for="edit-sub-notes">Notes</label>
+    <textarea id="edit-sub-notes" rows="3" placeholder="e.g. very reliable, prefers Sundays…"></textarea>
+    <div class="modal-actions">
+      <button id="save-sub-edit-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save</button>
+      <button id="close-edit-sub-btn" type="button">Cancel</button>
+    </div>
+    <p id="edit-sub-msg" class="msg"></p>
+  </div>
+</div>
+
 <!-- CUSTOM SUB MESSAGE MODAL -->
 <div id="custom-sub-msg-modal" class="modal-overlay hidden">
   <div class="modal-card">

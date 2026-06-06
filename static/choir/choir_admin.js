@@ -847,21 +847,32 @@ function buildSubRow(s) {
            </label>`
         : "";
 
+    const metricsHtml = `
+        <div style="font-size:.8rem;margin-top:2px;">
+            <span style="color:var(--success,#2f8f6a);font-weight:600;">${s.accepted_count} accepted</span>
+            <span style="color:var(--text-muted);"> · </span>
+            <span style="color:var(--danger,#c0392b);font-weight:600;">${s.declined_count} declined</span>
+        </div>`;
+
     row.innerHTML = `
         <div style="flex:1;">
             <div style="font-weight:600;">${escapeHtml(s.fullname)}</div>
             <div style="font-size:.85rem;color:var(--text-muted);">
                 ${escapeHtml(s.email)}${s.phone ? " · " + escapeHtml(s.phone) : ""}
-                ${s.notes ? ` — <em>${escapeHtml(s.notes)}</em>` : ""}
             </div>
+            ${s.notes ? `<div style="font-size:.82rem;color:var(--text-muted);font-style:italic;">${escapeHtml(s.notes)}</div>` : ""}
+            ${metricsHtml}
         </div>
         ${rankHtml}
+        <button class="subtle-btn edit-sub-btn" data-id="${s.id}">Edit</button>
         <button class="subtle-btn toggle-preferred-btn"
             data-id="${s.id}" data-preferred="${s.is_preferred}">
             ${s.is_preferred ? "★ Preferred" : "☆ Make preferred"}
         </button>
         <button class="subtle-btn remove-sub-btn" data-id="${s.id}" style="color:var(--danger);">Remove</button>
     `;
+
+    row.querySelector(".edit-sub-btn").addEventListener("click", () => openEditSubModal(s));
 
     if (s.is_preferred) {
         const rankInput = row.querySelector(".rank-input");
@@ -897,6 +908,44 @@ function buildSubRow(s) {
         loadSubRoster();
     });
     return row;
+}
+
+function openEditSubModal(s) {
+    document.getElementById("edit-sub-id").value = s.id;
+    document.getElementById("edit-sub-name").value = s.fullname;
+    document.getElementById("edit-sub-email").value = s.email;
+    document.getElementById("edit-sub-phone").value = s.phone || "";
+    document.getElementById("edit-sub-notes").value = s.notes || "";
+    document.getElementById("edit-sub-msg").textContent = "";
+    document.getElementById("edit-sub-modal").classList.remove("hidden");
+}
+
+async function saveSubEdit() {
+    const id = document.getElementById("edit-sub-id").value;
+    const msg = document.getElementById("edit-sub-msg");
+    const payload = {
+        fullname: document.getElementById("edit-sub-name").value.trim(),
+        email: document.getElementById("edit-sub-email").value.trim(),
+        phone: document.getElementById("edit-sub-phone").value.trim(),
+        notes: document.getElementById("edit-sub-notes").value.trim(),
+    };
+    if (!payload.fullname || !payload.email) {
+        msg.textContent = "Name and email are required."; return;
+    }
+    try {
+        const res = await fetch(`${API}/choir/sub/${id}`, {
+            method: "PATCH", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            document.getElementById("edit-sub-modal").classList.add("hidden");
+            loadSubRoster();
+        } else {
+            msg.textContent = data.message || "Failed to save.";
+        }
+    } catch (e) { msg.textContent = "Server error."; }
 }
 
 async function addSub() {
@@ -1289,6 +1338,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("find-sub-modal").addEventListener("click", e => {
         if (e.target.id === "find-sub-modal") document.getElementById("find-sub-modal").classList.add("hidden");
+    });
+
+    // Edit sub modal
+    document.getElementById("save-sub-edit-btn").addEventListener("click", saveSubEdit);
+    document.getElementById("close-edit-sub-btn").addEventListener("click", () =>
+        document.getElementById("edit-sub-modal").classList.add("hidden"));
+    document.getElementById("edit-sub-modal").addEventListener("click", e => {
+        if (e.target.id === "edit-sub-modal") document.getElementById("edit-sub-modal").classList.add("hidden");
     });
 
     // Custom sub message modal

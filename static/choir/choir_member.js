@@ -380,7 +380,7 @@ async function memberContactAllPreferred(rehearsalId, btn) {
         });
         const data = await res.json();
         if (data.status === "success") {
-            btn.textContent = `Sent to ${data.sent} preferred sub${data.sent !== 1 ? "s" : ""}`;
+            btn.textContent = "Sent!";
             btn.style.background = "var(--success,#2f8f6a)";
         } else {
             btn.textContent = data.message || "Failed";

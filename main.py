@@ -6777,23 +6777,34 @@ def choir_get_subs(request: Request, section_id: Optional[int] = None):
         if section_id:
             cur.execute("""
                 SELECT s.id, s.fullname, s.email, s.phone, s.is_preferred, s.notes,
-                       cs.name, s.section_id, s.preferred_rank
-                FROM subs s JOIN choir_sections cs ON cs.id = s.section_id
+                       cs.name, s.section_id, s.preferred_rank,
+                       COUNT(CASE WHEN sc.response = 'accepted' THEN 1 END) AS accepted_count,
+                       COUNT(CASE WHEN sc.response = 'declined' THEN 1 END) AS declined_count
+                FROM subs s
+                JOIN choir_sections cs ON cs.id = s.section_id
+                LEFT JOIN sub_contacts sc ON sc.sub_id = s.id
                 WHERE s.org_id=%s AND s.section_id=%s AND s.active=true
+                GROUP BY s.id, cs.name
                 ORDER BY s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
             """, (org_id, section_id))
         else:
             cur.execute("""
                 SELECT s.id, s.fullname, s.email, s.phone, s.is_preferred, s.notes,
-                       cs.name, s.section_id, s.preferred_rank
-                FROM subs s JOIN choir_sections cs ON cs.id = s.section_id
+                       cs.name, s.section_id, s.preferred_rank,
+                       COUNT(CASE WHEN sc.response = 'accepted' THEN 1 END) AS accepted_count,
+                       COUNT(CASE WHEN sc.response = 'declined' THEN 1 END) AS declined_count
+                FROM subs s
+                JOIN choir_sections cs ON cs.id = s.section_id
+                LEFT JOIN sub_contacts sc ON sc.sub_id = s.id
                 WHERE s.org_id=%s AND s.active=true
+                GROUP BY s.id, cs.name
                 ORDER BY cs.sort_order, s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
             """, (org_id,))
         return [{"id": r[0], "fullname": r[1], "email": r[2], "phone": r[3] or "",
                  "is_preferred": r[4], "notes": r[5] or "",
                  "section_name": r[6], "section_id": r[7],
-                 "preferred_rank": r[8]} for r in cur.fetchall()]
+                 "preferred_rank": r[8],
+                 "accepted_count": r[9], "declined_count": r[10]} for r in cur.fetchall()]
 
 @app.post("/choir/subs")
 def choir_add_sub(payload: dict, request: Request):
