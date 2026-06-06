@@ -837,7 +837,7 @@ async function loadSubRoster() {
 function buildSubRow(s) {
     const row = document.createElement("div");
     row.className = "staff-row";
-    row.style.padding = "var(--space-2) 0";
+    row.style.cssText = "padding:var(--space-2) 0;flex-direction:column;align-items:flex-start;";
 
     const rankHtml = s.is_preferred
         ? `<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;color:var(--text-muted);white-space:nowrap;">
@@ -847,29 +847,28 @@ function buildSubRow(s) {
            </label>`
         : "";
 
-    const metricsHtml = `
-        <div style="font-size:.8rem;margin-top:2px;">
-            <span style="color:var(--success,#2f8f6a);font-weight:600;">${s.accepted_count} accepted</span>
-            <span style="color:var(--text-muted);"> · </span>
-            <span style="color:var(--danger,#c0392b);font-weight:600;">${s.declined_count} declined</span>
-        </div>`;
-
     row.innerHTML = `
-        <div style="flex:1;">
+        <div style="width:100%;">
             <div style="font-weight:600;">${escapeHtml(s.fullname)}</div>
             <div style="font-size:.85rem;color:var(--text-muted);">
                 ${escapeHtml(s.email)}${s.phone ? " · " + escapeHtml(s.phone) : ""}
             </div>
             ${s.notes ? `<div style="font-size:.82rem;color:var(--text-muted);font-style:italic;">${escapeHtml(s.notes)}</div>` : ""}
-            ${metricsHtml}
+            <div style="font-size:.8rem;margin-top:2px;">
+                <span style="color:var(--success,#2f8f6a);font-weight:600;">${s.accepted_count} accepted</span>
+                <span style="color:var(--text-muted);"> · </span>
+                <span style="color:var(--danger,#c0392b);font-weight:600;">${s.declined_count} declined</span>
+            </div>
         </div>
-        ${rankHtml}
-        <button class="subtle-btn edit-sub-btn" data-id="${s.id}">Edit</button>
-        <button class="subtle-btn toggle-preferred-btn"
-            data-id="${s.id}" data-preferred="${s.is_preferred}">
-            ${s.is_preferred ? "★ Preferred" : "☆ Make preferred"}
-        </button>
-        <button class="subtle-btn remove-sub-btn" data-id="${s.id}" style="color:var(--danger);">Remove</button>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-top:var(--space-2);">
+            ${rankHtml}
+            <button class="subtle-btn edit-sub-btn" data-id="${s.id}">Edit</button>
+            <button class="subtle-btn toggle-preferred-btn"
+                data-id="${s.id}" data-preferred="${s.is_preferred}">
+                ${s.is_preferred ? "★ Preferred" : "☆ Make preferred"}
+            </button>
+            <button class="subtle-btn remove-sub-btn" data-id="${s.id}" style="color:var(--danger);">Remove</button>
+        </div>
     `;
 
     row.querySelector(".edit-sub-btn").addEventListener("click", () => openEditSubModal(s));
