@@ -6204,6 +6204,9 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
         sc_id, req_id, existing_response, sub_id, req_status, rehearsal_id, section_id, sub_name, sub_email, sc_tier = row
 
         if existing_response != "pending":
+            if req_status == "filled" and existing_response == "declined":
+                return templates.TemplateResponse(request, "choir/choir_sub_response.html",
+                    {"message": "This position has already been filled. Thank you for your willingness!", "success": True})
             return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": "You have already responded - thank you!", "success": True})
 
