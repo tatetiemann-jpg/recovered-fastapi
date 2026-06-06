@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Choir Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css?v=1">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+  <div class="top-actions">
+    <button id="logout-btn">Logout</button>
+    <button id="open-edit-account-btn">Edit Account</button>
+  </div>
+
+  <h1 id="welcome">Choir Admin</h1>
+
+  <nav class="tab-nav">
+    <button class="tab-btn" data-tab="rehearsals">Rehearsals</button>
+    <button class="tab-btn" data-tab="sections">Choir</button>
+    <button class="tab-btn" data-tab="ensemble">Ensemble</button>
+    <button class="tab-btn" data-tab="subs">Subs</button>
+    <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
+  </nav>
+
+  <!-- REHEARSALS TAB -->
+  <section class="tab-panel" data-tab-panel="rehearsals">
+    <div class="box">
+      <div class="section-header">
+        <h2>Rehearsals</h2>
+        <button id="open-schedule-modal-btn" type="button" class="subtle-btn">+ Schedule Rehearsal</button>
+      </div>
+      <div id="upcoming-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- SUBS TAB -->
+  <section class="tab-panel" data-tab-panel="subs">
+    <div class="box">
+      <h2>Sub Roster</h2>
+      <p class="hint">Preferred subs are contacted in ranked order — rank 1 first (8 hrs to respond), then rank 2 (6 hrs), rank 3+ (4 hrs each). If the preferred list is exhausted or 24 hours pass, all remaining subs are contacted at once.</p>
+
+      <label for="sub-section-filter">Section</label>
+      <select id="sub-section-filter">
+        <option value="">— All sections —</option>
+      </select>
+
+      <div id="sub-roster-list" style="margin-top:var(--space-4);"><em class="empty-note">Loading…</em></div>
+
+      <hr>
+      <h3 style="margin-bottom:var(--space-3);">Add Sub</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+        <div>
+          <label for="new-sub-name">Name <span class="required">*</span></label>
+          <input id="new-sub-name" type="text" placeholder="Full name">
+        </div>
+        <div>
+          <label for="new-sub-email">Email <span class="required">*</span></label>
+          <input id="new-sub-email" type="email" placeholder="email@example.com">
+        </div>
+        <div>
+          <label for="new-sub-phone">Phone</label>
+          <input id="new-sub-phone" type="tel" placeholder="Optional">
+        </div>
+        <div>
+          <label for="new-sub-section">Section <span class="required">*</span></label>
+          <select id="new-sub-section">
+            <option value="">— select —</option>
+          </select>
+        </div>
+      </div>
+      <label for="new-sub-notes">Notes</label>
+      <input id="new-sub-notes" type="text" placeholder="Optional (e.g. very reliable, prefers Sunday)">
+      <label style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);">
+        <input id="new-sub-preferred" type="checkbox"> Preferred sub
+      </label>
+      <button id="add-sub-btn" style="margin-top:var(--space-3);">Add to Roster</button>
+      <p id="sub-add-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- SECTIONS TAB -->
+  <section class="tab-panel" data-tab-panel="sections">
+    <div class="box">
+      <div class="section-header">
+        <h2>Choir</h2>
+        <button id="add-choir-member-btn" type="button" class="subtle-btn">+ Add Member</button>
+      </div>
+      <p id="sections-reh-hint" class="hint"></p>
+      <div id="sections-roster"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- ENSEMBLE TAB -->
+  <section class="tab-panel" data-tab-panel="ensemble">
+    <div class="box">
+      <div class="section-header">
+        <h2>Ensemble Members</h2>
+        <button id="add-ensemble-member-btn" type="button" class="subtle-btn">+ Add Member</button>
+      </div>
+      <p class="hint">Members of the contemporary ensemble managed by this organization.</p>
+      <div id="ensemble-members-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- MESSAGES TAB -->
+  <section class="tab-panel" data-tab-panel="messages">
+    <div class="box">
+      <div class="section-header">
+        <h2>Messages</h2>
+      </div>
+      <p class="hint">Send messages to your members. Recipients receive an email notification.</p>
+
+      <div class="dm-view-toggle">
+        <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+        <button class="dm-view-btn" data-dm-view="read">Read</button>
+        <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+      </div>
+
+      <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+
+      <div class="dm-compose">
+        <h3>New Message</h3>
+        <div class="dm-scope-row">
+          <label for="dm-scope">Send to</label>
+          <select id="dm-scope">
+            <option value="org">Everyone (org-wide)</option>
+            <option value="choir">All Choir Members</option>
+            <option value="ensemble">All Ensemble Members</option>
+            <option value="direct">Individual</option>
+          </select>
+        </div>
+        <div id="dm-recipient-row" class="dm-recipient-row hidden">
+          <label>Recipients</label>
+          <div class="dm-recipient-picker">
+            <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+            <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+          </div>
+        </div>
+        <label for="dm-body">Message</label>
+        <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+        <div style="margin-top:var(--space-3);">
+          <button id="dm-send-btn">Send Message</button>
+        </div>
+        <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+      </div>
+    </div>
+  </section>
+
+
+</div><!-- /.app-container -->
+
+<!-- ADD MEMBER MODAL -->
+<div id="invite-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="invite-modal-title">Add a Member</h3>
+    <p class="hint">They'll receive an email with a link to create their account.</p>
+    <label for="invite-email">Email <span class="required">*</span></label>
+    <input id="invite-email" type="email" placeholder="member@example.com">
+    <label for="invite-name">Full name (optional)</label>
+    <input id="invite-name" type="text" placeholder="Jane Smith">
+    <label>Member type <span class="required">*</span></label>
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="invite-member-type" value="choir_member" checked> Choir Member</label>
+      <label class="inline-check"><input type="radio" name="invite-member-type" value="ensemble_member"> Ensemble Member</label>
+    </div>
+    <div id="invite-instrument-row" class="hidden">
+      <label for="invite-instrument">Instrument / Role <span class="required">*</span></label>
+      <input id="invite-instrument" type="text" placeholder="e.g. First Violin, Piano, Cello">
+    </div>
+    <div class="modal-actions">
+      <button id="send-invite-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Invitation</button>
+      <button id="close-invite-modal-btn" type="button">Cancel</button>
+    </div>
+    <p id="invite-msg" class="msg"></p>
+    <div id="invitations-list" style="margin-top:var(--space-4);"></div>
+  </div>
+</div>
+
+<!-- SCHEDULE REHEARSAL MODAL -->
+<div id="schedule-reh-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3>Schedule a Rehearsal</h3>
+
+    <label>Rehearsal type <span class="required">*</span></label>
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="reh-choir-type" value="choir" checked> Choir</label>
+      <label class="inline-check"><input type="radio" name="reh-choir-type" value="ensemble"> Contemporary Ensemble</label>
+    </div>
+
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="reh-mode" value="single" checked> Single date</label>
+      <label class="inline-check"><input type="radio" name="reh-mode" value="range"> Date range</label>
+    </div>
+
+    <div id="reh-single-fields">
+      <label for="reh-date">Date <span class="required">*</span></label>
+      <input id="reh-date" type="date">
+    </div>
+
+    <div id="reh-bulk-fields" class="hidden">
+      <p class="hint">Schedule the same rehearsal time on repeating days across a date range.</p>
+      <div class="time-pair">
+        <div>
+          <label for="bulk-start-date">From <span class="required">*</span></label>
+          <input id="bulk-start-date" type="date">
+        </div>
+        <div>
+          <label for="bulk-end-date">To <span class="required">*</span></label>
+          <input id="bulk-end-date" type="date">
+        </div>
+      </div>
+      <label>Days of week <span class="required">*</span></label>
+      <div class="checkbox-row" id="bulk-days">
+        <label class="checkbox-pill"><input type="checkbox" value="monday"> Mon</label>
+        <label class="checkbox-pill"><input type="checkbox" value="tuesday"> Tue</label>
+        <label class="checkbox-pill"><input type="checkbox" value="wednesday"> Wed</label>
+        <label class="checkbox-pill"><input type="checkbox" value="thursday"> Thu</label>
+        <label class="checkbox-pill"><input type="checkbox" value="friday"> Fri</label>
+        <label class="checkbox-pill"><input type="checkbox" value="saturday"> Sat</label>
+        <label class="checkbox-pill"><input type="checkbox" value="sunday"> Sun</label>
+      </div>
+      <p id="bulk-preview" class="hint"></p>
+    </div>
+
+    <div class="time-pair">
+      <div>
+        <label for="reh-start">Start time <span class="required">*</span></label>
+        <select id="reh-start"><option value="">-- time --</option></select>
+      </div>
+      <div>
+        <label for="reh-end">End time</label>
+        <select id="reh-end"><option value="">-- time --</option></select>
+      </div>
+    </div>
+
+    <label for="reh-location">Location</label>
+    <input id="reh-location" type="text" placeholder="e.g. Sanctuary">
+
+    <label>Partial call? <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
+    <div id="unified-caller"><em class="empty-note">Loading…</em></div>
+
+    <label for="reh-notes">Notes</label>
+    <textarea id="reh-notes" rows="3" placeholder="Bring your music, warm-up starts on time…"></textarea>
+
+    <label for="reh-materials-url">Materials Link</label>
+    <input id="reh-materials-url" type="url" placeholder="https://sharepoint.com/…">
+
+    <div class="modal-actions">
+      <button id="create-reh-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Schedule Rehearsal</button>
+      <button id="close-schedule-modal-btn" type="button">Cancel</button>
+    </div>
+    <p id="reh-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- ABSENCE + SUB MODAL -->
+<div id="absence-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="absence-modal-title">Rehearsal Details</h3>
+    <div id="absence-modal-list"><em class="empty-note">Loading…</em></div>
+    <div class="modal-actions">
+      <button type="button" id="absence-modal-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- FIND SUB MODAL -->
+<div id="find-sub-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="find-sub-title">Find a Sub</h3>
+    <p id="find-sub-hint" class="hint"></p>
+    <div id="find-sub-list"><em class="empty-note">Loading…</em></div>
+    <div class="modal-actions">
+      <button type="button" id="find-sub-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHOIR REHEARSAL NOTES -->
+<div id="choir-notes-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="choir-notes-modal-title">Rehearsal Notes</h3>
+    <div id="choir-notes-existing" class="notes-display" style="margin-bottom:var(--space-3);padding-bottom:var(--space-3);border-bottom:1px solid var(--border);"></div>
+    <textarea id="choir-notes-textarea" rows="6" placeholder="Enter notes to share with the choir…"></textarea>
+    <div class="modal-actions">
+      <button id="send-choir-notes-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Notes</button>
+      <button id="close-choir-notes-btn">Cancel</button>
+    </div>
+    <p id="choir-notes-msg"></p>
+  </div>
+</div>
+
+<!-- CHOIR REHEARSAL EDIT -->
+<div id="choir-reh-edit-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3>Edit Rehearsal</h3>
+    <input id="edit-choir-reh-id" type="hidden">
+    <label>Rehearsal type</label>
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="edit-reh-choir-type" value="choir" checked> Choir</label>
+      <label class="inline-check"><input type="radio" name="edit-reh-choir-type" value="ensemble"> Contemporary Ensemble</label>
+    </div>
+    <div class="time-pair">
+      <div>
+        <label for="edit-choir-reh-start">Start time <span class="required">*</span></label>
+        <select id="edit-choir-reh-start"><option value="">-- time --</option></select>
+      </div>
+      <div>
+        <label for="edit-choir-reh-end">End time</label>
+        <select id="edit-choir-reh-end"><option value="">-- time --</option></select>
+      </div>
+    </div>
+    <label for="edit-choir-reh-location">Location</label>
+    <input id="edit-choir-reh-location" type="text" placeholder="e.g. Sanctuary">
+    <label>Who's called <span class="hint" style="font-style:italic;">(leave all unchecked = full group)</span></label>
+    <div id="edit-unified-caller"></div>
+    <label for="edit-choir-reh-notes">Notes</label>
+    <textarea id="edit-choir-reh-notes" rows="3"></textarea>
+    <label for="edit-choir-reh-materials">Materials Link</label>
+    <input id="edit-choir-reh-materials" type="url" placeholder="https://sharepoint.com/…">
+    <div class="modal-actions">
+      <button id="save-choir-reh-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Changes</button>
+      <button id="close-choir-reh-edit-btn">Cancel</button>
+    </div>
+    <p id="choir-reh-edit-msg"></p>
+  </div>
+</div>
+
+
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js?v=2"></script>
+<script src="/static/themes.js?v=2"></script>
+<script src="/static/app.js?v=2"></script>
+<!-- CUSTOM SUB MESSAGE MODAL -->
+<div id="custom-sub-msg-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Contact Sub</h3>
+    <p id="custom-sub-msg-name" style="margin:0 0 var(--space-3);font-weight:600;"></p>
+    <p style="margin:0 0 var(--space-2);">Would you like to send a custom message?</p>
+    <div id="custom-sub-msg-choice" class="modal-actions" style="margin-bottom:0;">
+      <button type="button" id="custom-sub-yes-btn">Yes, write a message</button>
+      <button type="button" id="custom-sub-no-btn">No, send standard email</button>
+    </div>
+    <div id="custom-sub-msg-compose" class="hidden" style="margin-top:var(--space-3);">
+      <textarea id="custom-sub-msg-text" rows="6" placeholder="Type your message to the sub…" style="width:100%;box-sizing:border-box;"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="custom-sub-send-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Message</button>
+        <button type="button" id="custom-sub-back-btn">Back</button>
+      </div>
+      <p id="custom-sub-msg-status"></p>
+    </div>
+  </div>
+</div>
+
+<script src="/static/choir/choir_admin.js?v=26"></script>
+</body>
+</html>

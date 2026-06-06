@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Login</title>
+
+    <!-- â REQUIRED FOR MOBILE -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- â SHARED APP CSS -->
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css?v=3">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="login-page">
+
+<div class="card">
+    <h1 id ="loginTitle">Login</h1>
+    <div class = "field-row">
+        <input id="username" placeholder="Username">
+    </div>
+    <!-- â PASSWORD WITH SINGLE EYE TOGGLE -->
+    <div class="field-row">
+        <input id="password" type="password" placeholder="Password">
+        <button type="button" class="eye-btn" aria-label="Show/hide password"></button>
+    </div>
+
+    <button onclick="login()">Login</button>
+
+    <div id="msg" class="error"></div>
+
+    <div class="link">
+        <a href="/signup">Create Account</a>
+    </div>
+    <div class="link">
+        <a href="#" id="forgot-password-link">Forgot password?</a>
+    </div>
+</div>
+
+<!-- FORGOT PASSWORD MODAL -->
+<div id="forgot-password-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Reset Your Password</h3>
+        <p class="hint">Enter the email associated with your account. If we find a match, we'll send you a reset link.</p>
+
+        <label for="forgot-email">Email</label>
+        <div class="field-row">
+            <input id="forgot-email" type="email" placeholder="you@example.com">
+        </div>
+
+        <label for="forgot-org">Organization <span class="label-note">(optional — helps if you have accounts at multiple orgs)</span></label>
+        <div class="field-row">
+            <input id="forgot-org" type="text" placeholder="e.g. Seattle Opera Festival">
+        </div>
+
+        <div class="modal-actions">
+            <button id="submit-forgot-btn">Send reset link</button>
+            <button id="cancel-forgot-btn">Cancel</button>
+        </div>
+
+        <p id="forgot-msg"></p>
+    </div>
+</div>
+
+<script src="/static/public.js?v=3" defer></script>
+</body>
+</html>

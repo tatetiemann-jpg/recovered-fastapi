@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Instrumentalist Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css?v=3">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+    <div class="top-actions">
+        <button id="logout-btn">Logout</button>
+        <button id="open-edit-account-btn">Edit Account</button>
+    </div>
+
+    <h1 id="welcome">Welcome</h1>
+
+    <nav class="tab-nav">
+        <button class="tab-btn" data-tab="today">Today</button>
+        <button class="tab-btn" data-tab="book">Book</button>
+        <button class="tab-btn" data-tab="notes">Lesson Notes</button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
+    </nav>
+
+    <!-- ============================ -->
+    <!-- TODAY TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="today">
+
+        <div class="today-split">
+            <div class="box">
+                <h2 id="rehearsals-header">Rehearsals</h2>
+                <div id="rehearsals"><em class="empty-note">Loading&#8230;</em></div>
+            </div>
+            <div class="today-right-stack">
+                <div class="box">
+                    <h2 id="today-lesson-header">My Lesson</h2>
+                    <div id="my-lesson-today"><em class="empty-note">Loading&#8230;</em></div>
+                </div>
+                <div class="box">
+                    <h2 id="seats-header">My Seating</h2>
+                    <div id="my-seats"><em class="empty-note">Loading&#8230;</em></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="box calendar-subscribe-box">
+          <button id="calendar-subscribe-toggle" type="button" class="timeline-toggle">
+            Subscribe to Your Calendar <span id="calendar-subscribe-chevron" class="timeline-chevron">&#9654;</span>
+          </button>
+          <div id="calendar-subscribe-body" class="timeline-body hidden calendar-subscribe-body">
+            <p class="hint">Lessons and rehearsals in one feed &mdash; updates automatically.</p>
+            <div class="calendar-url-row">
+              <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" class="calendar-url-input">
+              <button id="copy-calendar-url-btn" type="button">Copy</button>
+            </div>
+            <div class="hint calendar-instructions">
+              <strong>Google Calendar:</strong> Other calendars + &rarr; From URL &rarr; paste above<br>
+              <strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste above<br>
+              <strong>Outlook:</strong> Add calendar &rarr; Subscribe from web &rarr; paste above
+            </div>
+          </div>
+        </div>
+
+    </section>
+
+    <!-- ============================ -->
+    <!-- BOOK TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="book">
+
+        <div class="box">
+            <h2>Book a Coaching</h2>
+            <p id="booking-status" class="hint"></p>
+            <div id="teachers-list">
+                <em class="empty-note">Loading&#8230;</em>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- ============================ -->
+    <!-- LESSON NOTES TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="notes">
+
+        <div class="box">
+            <h2>Lesson Notes</h2>
+            <p class="hint">Notes from your past lessons, shared by your teachers.</p>
+            <div id="shared-notes-list">
+                <em class="empty-note">Loading&#8230;</em>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- MESSAGES TAB -->
+    <section class="tab-panel" data-tab-panel="messages">
+        <div class="box">
+            <div class="section-header">
+                <h2>Messages</h2>
+            </div>
+            <p class="hint">Send messages to your teachers and production staff.</p>
+
+            <div class="dm-view-toggle">
+                <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+                <button class="dm-view-btn" data-dm-view="read">Read</button>
+                <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+            </div>
+
+            <div id="dm-list" class="dm-list"><em class="empty-note">Loading&#8230;</em></div>
+
+            <div class="dm-compose">
+                <h3>New Message</h3>
+                <div class="dm-recipient-row">
+                    <label>To</label>
+                    <div class="dm-recipient-picker">
+                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts&#8230;" class="dm-recipient-search hidden">
+                        <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+                    </div>
+                </div>
+                <label for="dm-body">Message</label>
+                <textarea id="dm-body" rows="4" placeholder="Write your message&#8230;"></textarea>
+                <div style="margin-top:var(--space-3);">
+                    <button id="dm-send-btn">Send Message</button>
+                </div>
+                <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<!-- VIEW REHEARSAL NOTES MODAL -->
+<div id="reh-view-notes-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="view-notes-title">Rehearsal Notes</h3>
+        <div id="view-notes-body" class="notes-display"></div>
+        <div class="modal-actions">
+            <button id="close-view-notes-btn" type="button">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- SLOT PICKER MODAL -->
+<div id="slot-picker-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="slot-picker-title">Pick a time</h3>
+        <p id="slot-picker-subtitle" class="hint"></p>
+
+        <div id="slot-picker-grid" class="slot-grid">
+            <em class="empty-note">Loading slots&#8230;</em>
+        </div>
+
+        <div class="modal-actions">
+            <button id="slot-picker-cancel">Cancel</button>
+        </div>
+
+        <p id="slot-picker-msg"></p>
+    </div>
+</div>
+
+<!-- ABSENCE REASON MODAL -->
+<div id="absence-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Reason for Absence</h3>
+        <p class="hint">Select a reason (required). Your admin will be notified.</p>
+        <div class="absence-reasons">
+            <button class="absence-reason-btn" type="button" data-reason="Illness">Illness</button>
+            <button class="absence-reason-btn" type="button" data-reason="Injury">Injury</button>
+            <button class="absence-reason-btn" type="button" data-reason="Work conflict">Work conflict</button>
+            <button class="absence-reason-btn" type="button" data-reason="Family emergency">Family emergency</button>
+            <button class="absence-reason-btn" type="button" data-reason="Travel">Travel</button>
+            <button class="absence-reason-btn" type="button" data-reason="Other">Other</button>
+        </div>
+        <label for="absence-note">Additional notes (optional)</label>
+        <textarea id="absence-note" rows="3" placeholder="Any additional details..."></textarea>
+        <div class="modal-actions">
+            <button id="absence-submit-btn" type="button">Submit</button>
+            <button id="absence-cancel-btn" type="button">Cancel</button>
+        </div>
+        <p id="absence-modal-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- EDIT ACCOUNT MODAL -->
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js?v=3"></script>
+<script src="/static/themes.js"></script>
+<script src="/static/app.js?v=3"></script>
+<script src="/static/opera/orchestra_member.js"></script>
+</body>
+</html>

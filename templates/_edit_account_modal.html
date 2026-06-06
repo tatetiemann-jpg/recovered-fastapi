@@ -1,0 +1,74 @@
+
+<div id="edit-account-modal" class="modal-overlay hidden">
+    <div class="modal-card edit-account-modal">
+
+        <h3>Edit Account</h3>
+
+        <div class="edit-account-grid">
+
+            <!-- LEFT COLUMN — account changes -->
+            <div class="edit-account-col edit-account-account-col">
+                <div class="edit-account-section-label">Account</div>
+
+                <label for="new-username">New username (optional)</label>
+                <div class="field-row">
+                    <input id="new-username" placeholder="Leave blank to keep current">
+                </div>
+
+                <label for="new-password">New password (optional)</label>
+                <div class="field-row">
+                    <input id="new-password" type="password" placeholder="Leave blank to keep current">
+                </div>
+
+                <hr>
+
+                <label for="current-password">Current password</label>
+                <p class="hint">Required to change username or password.</p>
+                <div class="field-row">
+                    <input id="current-password" type="password" placeholder="Confirm with your current password">
+                </div>
+
+                <label class="inline-check">
+                    <input type="checkbox" id="logout-other-devices" checked>
+                    Log me out of other devices
+                </label>
+            </div>
+
+            <!-- RIGHT COLUMN — theme picker -->
+            <div class="edit-account-col edit-account-theme-col">
+                <div class="edit-account-section-label">Theme</div>
+                <div id="edit-account-theme-picker"></div>
+            </div>
+
+        </div>
+
+        <!-- ORG TRANSFER (students only) -->
+        <div id="org-transfer-section" class="edit-account-section hidden">
+            <hr>
+            <div class="edit-account-section-label">Organization Transfer</div>
+            <p class="hint">Request to move to a different organization. The destination org's head admin must approve.</p>
+
+            <div id="org-transfer-status"></div>
+
+            <div id="org-transfer-form">
+                <label for="transfer-org">Destination organization</label>
+                <select id="transfer-org">
+                    <option value="" disabled selected>Select organization…</option>
+                </select>
+
+                <label for="transfer-message">Message (optional)</label>
+                <input type="text" id="transfer-message" placeholder="Why are you requesting this transfer?">
+
+                <button type="button" id="submit-transfer-btn" class="subtle-btn">Request Transfer</button>
+                <p id="transfer-msg"></p>
+            </div>
+        </div>
+
+        <div class="modal-actions edit-account-actions">
+            <button id="save-account-btn">Save Changes</button>
+            <button id="cancel-edit-account-btn">Cancel</button>
+        </div>
+
+        <p id="edit-msg"></p>
+    </div>
+</div>

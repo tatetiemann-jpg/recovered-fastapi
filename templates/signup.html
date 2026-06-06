@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sign Up</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css?v=4">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="signup-page">
+
+<div class="card" id="signup-card">
+
+  <!-- STEP 1: Choose organization type -->
+  <div id="step-type" class="signup-step">
+    <h1>Create Account</h1>
+    <p class="hint signup-type-hint">What type of organization are you joining?</p>
+    <div class="org-type-grid">
+      <button type="button" class="org-type-card" onclick="selectOrgType('opera')">
+        <div class="org-type-card-title">Opera Festival</div>
+        <div class="org-type-card-desc">Singers, instrumentalists &amp; festival staff</div>
+      </button>
+      <button type="button" class="org-type-card" onclick="selectOrgType('choir')">
+        <div class="org-type-card-title">Choir</div>
+        <div class="org-type-card-desc">Choir members &amp; ensemble singers</div>
+      </button>
+      <button type="button" class="org-type-card" onclick="selectOrgType('studio')">
+        <div class="org-type-card-title">Private Studio</div>
+        <div class="org-type-card-desc">Students working with a private teacher</div>
+      </button>
+    </div>
+    <div class="link"><a href="/login">Back to login</a></div>
+  </div>
+
+  <!-- STEP 2a: Choose your festival (opera path) -->
+  <div id="step-org" class="signup-step hidden">
+    <button type="button" class="signup-back-btn" onclick="goToStep('type')">&#8592; Back</button>
+    <h1>Select Your Festival</h1>
+    <input type="search" id="org-search" class="org-search-input" placeholder="Search organizations&#8230;" oninput="filterOrgs(this.value)" autocomplete="off">
+    <div id="org-picker-list" class="org-picker-list"><em class="empty-note">Loading&#8230;</em></div>
+
+    <div class="org-contact-links">
+      <button type="button" class="org-contact-link" onclick="showContactForm('not-found')">Org not found?</button>
+      <span class="org-contact-sep">&middot;</span>
+      <button type="button" class="org-contact-link" onclick="showContactForm('interest')">Interested in having your organization here?</button>
+    </div>
+
+    <div id="org-contact-form" class="org-contact-form hidden">
+      <p id="org-contact-form-title" class="org-contact-form-title"></p>
+      <label for="contact-name">Your name</label>
+      <input type="text" id="contact-name" placeholder="First Last" autocomplete="name">
+      <label for="contact-email">Your email</label>
+      <input type="email" id="contact-email" placeholder="you@example.com" autocomplete="email">
+      <label for="contact-message">Message</label>
+      <textarea id="contact-message" rows="3" placeholder="Tell us more&#8230;"></textarea>
+      <div class="org-contact-actions">
+        <button type="button" id="contact-submit-btn" onclick="submitContactForm()">Send</button>
+        <button type="button" class="org-contact-cancel" onclick="hideContactForm()">Cancel</button>
+      </div>
+      <p id="contact-form-status" class="hint"></p>
+    </div>
+  </div>
+
+  <!-- STEP 2b: Choir invite notice -->
+  <div id="step-choir" class="signup-step hidden">
+    <button type="button" class="signup-back-btn" onclick="goToStep('type')">&#8592; Back</button>
+    <h1>Choir Accounts Are Invite-Only</h1>
+    <p>Choir accounts are created by invitation from your director. Contact your choir director and ask them to send you an invitation from their admin dashboard &mdash; it only takes a moment.</p>
+    <div class="link"><a href="/login">Back to login</a></div>
+  </div>
+
+  <!-- STEP 2c: Choose your teacher (studio path) -->
+  <div id="step-studio" class="signup-step hidden">
+    <button type="button" class="signup-back-btn" onclick="goToStep('type')">&#8592; Back</button>
+    <h1>Select Your Teacher</h1>
+    <input type="search" id="studio-search" class="org-search-input" placeholder="Search teachers&#8230;" oninput="filterStudioOrgs(this.value)" autocomplete="off">
+    <div id="studio-picker-list" class="org-picker-list"><em class="empty-note">Loading&#8230;</em></div>
+
+    <div class="org-contact-links">
+      <button type="button" class="org-contact-link" onclick="showStudioContactForm('studio-not-found')">Don't see your teacher?</button>
+      <span class="org-contact-sep">&middot;</span>
+      <button type="button" class="org-contact-link" onclick="showStudioContactForm('studio-interest')">Interested in being on CountrPnt?</button>
+    </div>
+
+    <div id="studio-contact-form" class="org-contact-form hidden">
+      <p id="studio-contact-form-title" class="org-contact-form-title"></p>
+      <label for="studio-contact-name">Your name</label>
+      <input type="text" id="studio-contact-name" placeholder="First Last" autocomplete="name">
+      <label for="studio-contact-email">Your email</label>
+      <input type="email" id="studio-contact-email" placeholder="you@example.com" autocomplete="email">
+      <label for="studio-contact-message">Message</label>
+      <textarea id="studio-contact-message" rows="3" placeholder="Tell us more&#8230;"></textarea>
+      <div class="org-contact-actions">
+        <button type="button" id="studio-contact-submit-btn" onclick="submitStudioContactForm()">Send</button>
+        <button type="button" class="org-contact-cancel" onclick="hideStudioContactForm()">Cancel</button>
+      </div>
+      <p id="studio-contact-form-status" class="hint"></p>
+    </div>
+  </div>
+
+  <!-- STEP 3: Signup form -->
+  <div id="step-form" class="signup-step hidden">
+    <button type="button" class="signup-back-btn" onclick="goBackFromForm()">&#8592; Back</button>
+    <h1>Create Account</h1>
+    <p id="selected-org-label" class="selected-org-label"></p>
+
+    <label for="role">I am a&hellip;</label>
+    <select id="role" onchange="updateFields()">
+      <option value="student">Singer / Vocalist</option>
+      <option value="orchestra_member">Orchestra Member / Instrumentalist</option>
+    </select>
+
+    <label for="fullname">Full name</label>
+    <div class="field-row">
+      <input id="fullname" placeholder="First Last">
+    </div>
+
+    <label for="email">Email</label>
+    <div class="field-row">
+      <input id="email" type="email" placeholder="you@example.com">
+    </div>
+
+    <label for="username">Username</label>
+    <div class="field-row">
+      <input id="username" placeholder="Pick a username">
+    </div>
+
+    <label for="password">Password</label>
+    <div class="field-row">
+      <input id="password" type="password" placeholder="At least 8 characters">
+      <button type="button" class="eye-btn" aria-label="Show/hide password"></button>
+    </div>
+
+    <label for="password-confirm">Confirm password</label>
+    <div class="field-row">
+      <input id="password-confirm" type="password" placeholder="Type it again">
+      <button type="button" class="eye-btn" aria-label="Show/hide password"></button>
+    </div>
+
+    <div id="student-fields">
+      <label for="voice_type">Voice type</label>
+      <select id="voice_type">
+        <option value="" disabled selected>Select voice type</option>
+        <option value="soprano">Soprano</option>
+        <option value="mezzo-soprano">Mezzo-soprano</option>
+        <option value="tenor">Tenor</option>
+        <option value="baritone">Baritone</option>
+        <option value="bass-baritone">Bass-baritone</option>
+        <option value="bass">Bass</option>
+      </select>
+    </div>
+
+    <div id="orchestra-fields" class="field-initially-hidden">
+      <label for="instrument">Instrument</label>
+      <select id="instrument">
+        <option value="" disabled selected>Select instrument&hellip;</option>
+      </select>
+      <div id="instrument-other-row" class="hidden">
+        <label for="instrument-other">Instrument name</label>
+        <input id="instrument-other" placeholder="Enter your instrument">
+      </div>
+    </div>
+
+    <div id="teacher-fields" class="field-initially-hidden">
+      <input id="specialty" type="hidden" value="">
+    </div>
+    <div id="code-fields" class="field-initially-hidden">
+      <input id="code" type="hidden" value="">
+      <p id="code-hint"></p>
+    </div>
+
+    <label>Theme</label>
+    <p class="hint">Pick the look you prefer. You can change this later in account settings.</p>
+    <div id="signup-theme-picker"></div>
+
+    <button type="button" onclick="signup()">Create Account</button>
+    <div id="msg" class="msg"></div>
+  </div>
+
+</div><!-- /.card -->
+
+<script src="/static/themes.js"></script>
+<script src="/static/public.js?v=3"></script>
+<script>
+  window.selectedOrgSlug = "";
+  window.selectedOrgName = "";
+  var orgsLoaded = false;
+  var allOrgs = [];
+  var studioOrgsLoaded = false;
+  var allStudioOrgs = [];
+  var sourceStep = "org";
+
+  function goToStep(step) {
+    document.querySelectorAll(".signup-step").forEach(function(el) {
+      el.classList.add("hidden");
+    });
+    document.getElementById("step-" + step).classList.remove("hidden");
+    if (step === "org") {
+      var search = document.getElementById("org-search");
+      if (search) { search.value = ""; filterOrgs(""); search.focus(); }
+    }
+    if (step === "studio") {
+      var search = document.getElementById("studio-search");
+      if (search) { search.value = ""; filterStudioOrgs(""); search.focus(); }
+    }
+  }
+
+  function goBackFromForm() {
+    goToStep(sourceStep);
+  }
+
+  function selectOrgType(type) {
+    if (type === "choir") { goToStep("choir"); return; }
+    if (type === "studio") {
+      sourceStep = "studio";
+      goToStep("studio");
+      if (!studioOrgsLoaded) loadStudioPicker();
+      return;
+    }
+    sourceStep = "org";
+    goToStep("org");
+    if (!orgsLoaded) loadOrgPicker();
+  }
+
+  // Opera org picker
+  function renderOrgCards(orgs) {
+    var list = document.getElementById("org-picker-list");
+    list.innerHTML = "";
+    if (!orgs.length) {
+      list.innerHTML = "<em class='empty-note'>No matches found.</em>";
+      return;
+    }
+    orgs.forEach(function(o) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "org-picker-card";
+      btn.textContent = o.name;
+      btn.addEventListener("click", function() {
+        window.selectedOrgSlug = o.slug;
+        window.selectedOrgName = o.name;
+        document.getElementById("selected-org-label").textContent = o.name;
+        goToStep("form");
+        updateFields();
+      });
+      list.appendChild(btn);
+    });
+  }
+
+  function filterOrgs(q) {
+    var term = q.trim().toLowerCase();
+    var filtered = term ? allOrgs.filter(function(o) {
+      return o.name.toLowerCase().includes(term);
+    }) : allOrgs;
+    renderOrgCards(filtered);
+  }
+
+  async function loadOrgPicker() {
+    orgsLoaded = true;
+    var list = document.getElementById("org-picker-list");
+    list.innerHTML = "<em class='empty-note'>Loading&#8230;</em>";
+    try {
+      var res = await fetch(API + "/orgs");
+      allOrgs = await res.json();
+      if (!allOrgs.length) {
+        list.innerHTML = "<em class='empty-note'>No festivals found. Contact your administrator.</em>";
+        return;
+      }
+      renderOrgCards(allOrgs);
+    } catch (e) {
+      list.innerHTML = "<em class='empty-note'>Failed to load. Please refresh and try again.</em>";
+    }
+  }
+
+  // Studio org picker
+  function renderStudioCards(orgs) {
+    var list = document.getElementById("studio-picker-list");
+    list.innerHTML = "";
+    if (!orgs.length) {
+      list.innerHTML = "<em class='empty-note'>No matches found.</em>";
+      return;
+    }
+    orgs.forEach(function(o) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "org-picker-card";
+      btn.textContent = o.name;
+      btn.addEventListener("click", function() {
+        window.selectedOrgSlug = o.slug;
+        window.selectedOrgName = o.name;
+        document.getElementById("selected-org-label").textContent = o.name;
+        goToStep("form");
+        updateFields();
+      });
+      list.appendChild(btn);
+    });
+  }
+
+  function filterStudioOrgs(q) {
+    var term = q.trim().toLowerCase();
+    var filtered = term ? allStudioOrgs.filter(function(o) {
+      return o.name.toLowerCase().includes(term);
+    }) : allStudioOrgs;
+    renderStudioCards(filtered);
+  }
+
+  async function loadStudioPicker() {
+    studioOrgsLoaded = true;
+    var list = document.getElementById("studio-picker-list");
+    list.innerHTML = "<em class='empty-note'>Loading&#8230;</em>";
+    try {
+      var res = await fetch(API + "/studio-orgs");
+      allStudioOrgs = await res.json();
+      if (!allStudioOrgs.length) {
+        list.innerHTML = "<em class='empty-note'>No studios found. Use the links below to get in touch.</em>";
+        return;
+      }
+      renderStudioCards(allStudioOrgs);
+    } catch (e) {
+      list.innerHTML = "<em class='empty-note'>Failed to load. Please refresh and try again.</em>";
+    }
+  }
+
+  // Opera contact form
+  var contactTopic = "";
+  var contactDefaults = {
+    "not-found": {
+      title: "Can't find your organization?",
+      message: "Hi, I'm trying to sign up but can't find my organization in the list."
+    },
+    "interest": {
+      title: "Interested in joining CountrPnt?",
+      message: "Hi, I'm interested in having my organization on CountrPnt."
+    }
+  };
+
+  function showContactForm(topic) {
+    contactTopic = topic;
+    var cfg = contactDefaults[topic];
+    document.getElementById("org-contact-form-title").textContent = cfg.title;
+    document.getElementById("contact-message").value = cfg.message;
+    document.getElementById("contact-form-status").textContent = "";
+    var submitBtn = document.getElementById("contact-submit-btn");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Send";
+    document.getElementById("org-contact-form").classList.remove("hidden");
+    document.getElementById("contact-name").focus();
+  }
+
+  function hideContactForm() {
+    document.getElementById("org-contact-form").classList.add("hidden");
+  }
+
+  async function submitContactForm() {
+    var name    = (document.getElementById("contact-name").value || "").trim();
+    var email   = (document.getElementById("contact-email").value || "").trim();
+    var message = (document.getElementById("contact-message").value || "").trim();
+    var status  = document.getElementById("contact-form-status");
+    var btn     = document.getElementById("contact-submit-btn");
+
+    if (!name || !email || !message) {
+      status.textContent = "Please fill in all fields.";
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    status.textContent = "";
+    try {
+      var res = await fetch(API + "/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, email: email, message: message, topic: contactTopic })
+      });
+      var data = await res.json();
+      if (data.status === "success") {
+        status.textContent = "Message sent - we'll be in touch! Returning to login...";
+        btn.textContent = "Sent";
+        setTimeout(function() { location.href = "/login"; }, 1800);
+      } else {
+        status.textContent = data.message || "Something went wrong. Please try again.";
+        btn.disabled = false;
+        btn.textContent = "Send";
+      }
+    } catch (e) {
+      status.textContent = "Network error. Please try again.";
+      btn.disabled = false;
+      btn.textContent = "Send";
+    }
+  }
+
+  // Studio contact form
+  var studioContactTopic = "";
+  var studioContactDefaults = {
+    "studio-not-found": {
+      title: "Don't see your teacher?",
+      message: "Hi, I'm trying to sign up but can't find my teacher in the list."
+    },
+    "studio-interest": {
+      title: "Interested in being on CountrPnt?",
+      message: "Hi, I'm a private studio teacher interested in being on CountrPnt."
+    }
+  };
+
+  function showStudioContactForm(topic) {
+    studioContactTopic = topic;
+    var cfg = studioContactDefaults[topic];
+    document.getElementById("studio-contact-form-title").textContent = cfg.title;
+    document.getElementById("studio-contact-message").value = cfg.message;
+    document.getElementById("studio-contact-form-status").textContent = "";
+    var submitBtn = document.getElementById("studio-contact-submit-btn");
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Send";
+    document.getElementById("studio-contact-form").classList.remove("hidden");
+    document.getElementById("studio-contact-name").focus();
+  }
+
+  function hideStudioContactForm() {
+    document.getElementById("studio-contact-form").classList.add("hidden");
+  }
+
+  async function submitStudioContactForm() {
+    var name    = (document.getElementById("studio-contact-name").value || "").trim();
+    var email   = (document.getElementById("studio-contact-email").value || "").trim();
+    var message = (document.getElementById("studio-contact-message").value || "").trim();
+    var status  = document.getElementById("studio-contact-form-status");
+    var btn     = document.getElementById("studio-contact-submit-btn");
+
+    if (!name || !email || !message) {
+      status.textContent = "Please fill in all fields.";
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    status.textContent = "";
+    try {
+      var res = await fetch(API + "/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, email: email, message: message, topic: studioContactTopic })
+      });
+      var data = await res.json();
+      if (data.status === "success") {
+        status.textContent = "Message sent - we'll be in touch! Returning to login...";
+        btn.textContent = "Sent";
+        setTimeout(function() { location.href = "/login"; }, 1800);
+      } else {
+        status.textContent = data.message || "Something went wrong. Please try again.";
+        btn.disabled = false;
+        btn.textContent = "Send";
+      }
+    } catch (e) {
+      status.textContent = "Network error. Please try again.";
+      btn.disabled = false;
+      btn.textContent = "Send";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    var box = document.getElementById("signup-theme-picker");
+    if (box && typeof renderThemePicker === "function") {
+      renderThemePicker(box, "queen-of-the-night", function(newId) {
+        if (typeof window.setCharacterTheme === "function") {
+          window.setCharacterTheme(newId);
+        }
+      });
+    }
+  });
+</script>
+</body>
+</html>

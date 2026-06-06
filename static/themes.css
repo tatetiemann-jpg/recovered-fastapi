@@ -1,0 +1,410 @@
+/* ======================================================
+   CHARACTER THEMES
+   Six color schemes, each with light + dark variants.
+   The active theme is set via data-character-theme on <html>.
+   The active light/dark is set via data-theme on <html>.
+   Defaults: queen-of-the-night + system-preferred light/dark.
+====================================================== */
+
+
+/* ======================================================
+   THEME 1 â QUEEN OF THE NIGHT (default)
+   Black + gold + cream â current scheme
+====================================================== */
+
+[data-character-theme="queen-of-the-night"][data-theme="light"],
+[data-character-theme="queen-of-the-night"]:not([data-theme="dark"]),
+:root:not([data-character-theme]) {
+  --accent:           #c9a227;
+  --accent-hover:     #b8931e;
+  --accent-soft:      rgba(201, 162, 39, 0.12);
+  --accent-text:      #1f1b15;
+
+  --bg:               #faf6ef;
+  --bg-elevated:      #ffffff;
+  --bg-sunken:        #f2ebdd;
+
+  --border:           #e3d9c5;
+  --border-strong:    #c9bb9e;
+
+  --text:             #1f1b15;
+  --text-muted:       #6b6357;
+  --text-faint:       #958b7b;
+
+  --success:          #2f8f6a;
+  --danger:           #b23a3a;
+  --warning:          #c68b1e;
+
+  --shadow-sm: 0 1px 2px rgba(60, 45, 20, 0.06);
+  --shadow-md: 0 4px 16px rgba(60, 45, 20, 0.08);
+  --shadow-lg: 0 12px 32px rgba(60, 45, 20, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(201, 162, 39, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(201, 162, 39, 0.03), transparent 60%);
+}
+
+[data-character-theme="queen-of-the-night"][data-theme="dark"] {
+  --accent:           #d9b340;
+  --accent-hover:     #e6c258;
+  --accent-soft:      rgba(217, 179, 64, 0.16);
+  --accent-text:      #15120e;
+
+  --bg:               #15120e;
+  --bg-elevated:      #1e1a14;
+  --bg-sunken:        #110e0a;
+
+  --border:           #2f281e;
+  --border-strong:    #4a3f2e;
+
+  --text:             #f5ecd7;
+  --text-muted:       #a89b80;
+  --text-faint:       #6f6655;
+
+  --success:          #4ab38a;
+  --danger:           #d96b6b;
+  --warning:          #e0a64a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(217, 179, 64, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(217, 179, 64, 0.04), transparent 60%);
+}
+
+
+/* ======================================================
+   THEME 2 â MIMÃ (Sage & Slate)
+   Calm green accent on warm off-white
+====================================================== */
+
+[data-character-theme="mimi"][data-theme="light"],
+[data-character-theme="mimi"]:not([data-theme="dark"]) {
+  --accent:           #7a9b76;
+  --accent-hover:     #67876a;
+  --accent-soft:      rgba(122, 155, 118, 0.14);
+  --accent-text:      #ffffff;
+
+  --bg:               #fafaf9;
+  --bg-elevated:      #ffffff;
+  --bg-sunken:        #f0efed;
+
+  --border:           #e0ddd5;
+  --border-strong:    #b8b4a8;
+
+  --text:             #1c1c1a;
+  --text-muted:       #5a5a55;
+  --text-faint:       #888780;
+
+  --success:          #5d8c66;
+  --danger:           #c54f3d;
+  --warning:          #c08a3e;
+
+  --shadow-sm: 0 1px 2px rgba(40, 50, 40, 0.05);
+  --shadow-md: 0 4px 16px rgba(40, 50, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(40, 50, 40, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(122, 155, 118, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(122, 155, 118, 0.03), transparent 60%);
+}
+
+[data-character-theme="mimi"][data-theme="dark"] {
+  --accent:           #9bbc97;
+  --accent-hover:     #b1cdaf;
+  --accent-soft:      rgba(155, 188, 151, 0.16);
+  --accent-text:      #1f2421;
+
+  --bg:               #1f2421;
+  --bg-elevated:      #2a302d;
+  --bg-sunken:        #181d1b;
+
+  --border:           #3a4039;
+  --border-strong:    #4f5750;
+
+  --text:             #e8e6e0;
+  --text-muted:       #9b9893;
+  --text-faint:       #6c6a66;
+
+  --success:          #7fbb8a;
+  --danger:           #e88575;
+  --warning:          #e0aa5c;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(155, 188, 151, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(155, 188, 151, 0.04), transparent 60%);
+}
+
+
+/* ======================================================
+   THEME 3 â DON GIOVANNI (Indigo & Cream)
+   Deep blue-violet aristocratic accent
+====================================================== */
+
+[data-character-theme="don-giovanni"][data-theme="light"],
+[data-character-theme="don-giovanni"]:not([data-theme="dark"]) {
+  --accent:           #4a3d8c;
+  --accent-hover:     #3d3275;
+  --accent-soft:      rgba(74, 61, 140, 0.12);
+  --accent-text:      #ffffff;
+
+  --bg:               #faf6f0;
+  --bg-elevated:      #ffffff;
+  --bg-sunken:        #f0eadc;
+
+  --border:           #e8e0d2;
+  --border-strong:    #c4b9a3;
+
+  --text:             #2a2520;
+  --text-muted:       #5a5550;
+  --text-faint:       #8a857c;
+
+  --success:          #2f8f6a;
+  --danger:           #b54836;
+  --warning:          #c68b1e;
+
+  --shadow-sm: 0 1px 2px rgba(40, 30, 60, 0.06);
+  --shadow-md: 0 4px 16px rgba(40, 30, 60, 0.08);
+  --shadow-lg: 0 12px 32px rgba(40, 30, 60, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(74, 61, 140, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(74, 61, 140, 0.03), transparent 60%);
+}
+
+[data-character-theme="don-giovanni"][data-theme="dark"] {
+  --accent:           #9b8fd9;
+  --accent-hover:     #b1a5e3;
+  --accent-soft:      rgba(155, 143, 217, 0.16);
+  --accent-text:      #1a1825;
+
+  --bg:               #1a1825;
+  --bg-elevated:      #262232;
+  --bg-sunken:        #131120;
+
+  --border:           #353042;
+  --border-strong:    #4a4458;
+
+  --text:             #e8e6ec;
+  --text-muted:       #9b97a2;
+  --text-faint:       #6c6976;
+
+  --success:          #4ab38a;
+  --danger:           #e8867a;
+  --warning:          #e0a64a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(155, 143, 217, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(155, 143, 217, 0.04), transparent 60%);
+}
+
+
+/* ======================================================
+   THEME 4 â TOSCA (Terracotta & Stone)
+   Warm Italian palette â burnt orange on warm grays
+====================================================== */
+
+[data-character-theme="tosca"][data-theme="light"],
+[data-character-theme="tosca"]:not([data-theme="dark"]) {
+  --accent:           #c25f3d;
+  --accent-hover:     #a64d2f;
+  --accent-soft:      rgba(194, 95, 61, 0.12);
+  --accent-text:      #ffffff;
+
+  --bg:               #f8f5f0;
+  --bg-elevated:      #ffffff;
+  --bg-sunken:        #ede8de;
+
+  --border:           #e5dfd5;
+  --border-strong:    #c2bbac;
+
+  --text:             #2c2724;
+  --text-muted:       #5e5853;
+  --text-faint:       #8a8278;
+
+  --success:          #2f8f6a;
+  --danger:           #8c2e1f;
+  --warning:          #c68b1e;
+
+  --shadow-sm: 0 1px 2px rgba(60, 40, 20, 0.06);
+  --shadow-md: 0 4px 16px rgba(60, 40, 20, 0.08);
+  --shadow-lg: 0 12px 32px rgba(60, 40, 20, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(194, 95, 61, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(194, 95, 61, 0.03), transparent 60%);
+}
+
+[data-character-theme="tosca"][data-theme="dark"] {
+  --accent:           #e08566;
+  --accent-hover:     #e89a7e;
+  --accent-soft:      rgba(224, 133, 102, 0.16);
+  --accent-text:      #1f1c19;
+
+  --bg:               #1f1c19;
+  --bg-elevated:      #2a2622;
+  --bg-sunken:        #181612;
+
+  --border:           #3a352f;
+  --border-strong:    #4f4942;
+
+  --text:             #ebe6df;
+  --text-muted:       #9b958c;
+  --text-faint:       #6c6760;
+
+  --success:          #4ab38a;
+  --danger:           #d65a48;
+  --warning:          #e0a64a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(224, 133, 102, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(224, 133, 102, 0.04), transparent 60%);
+}
+
+
+/* ======================================================
+   THEME 5 â CARMEN (Teal & Graphite)
+   Modern, knife-edge teal on cool grays
+====================================================== */
+
+[data-character-theme="carmen"][data-theme="light"],
+[data-character-theme="carmen"]:not([data-theme="dark"]) {
+  --accent:           #0f7c7c;
+  --accent-hover:     #0a6363;
+  --accent-soft:      rgba(15, 124, 124, 0.12);
+  --accent-text:      #ffffff;
+
+  --bg:               #f7f7f8;
+  --bg-elevated:      #ffffff;
+  --bg-sunken:        #ececee;
+
+  --border:           #e0e1e3;
+  --border-strong:    #b8babe;
+
+  --text:             #1a1a1d;
+  --text-muted:       #52555a;
+  --text-faint:       #82858b;
+
+  --success:          #2f8f6a;
+  --danger:           #c14848;
+  --warning:          #c68b1e;
+
+  --shadow-sm: 0 1px 2px rgba(20, 25, 30, 0.05);
+  --shadow-md: 0 4px 16px rgba(20, 25, 30, 0.08);
+  --shadow-lg: 0 12px 32px rgba(20, 25, 30, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(15, 124, 124, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(15, 124, 124, 0.03), transparent 60%);
+}
+
+[data-character-theme="carmen"][data-theme="dark"] {
+  --accent:           #3fbfb8;
+  --accent-hover:     #5cd0c9;
+  --accent-soft:      rgba(63, 191, 184, 0.16);
+  --accent-text:      #16181c;
+
+  --bg:               #16181c;
+  --bg-elevated:      #22252b;
+  --bg-sunken:        #101216;
+
+  --border:           #2f333a;
+  --border-strong:    #444a52;
+
+  --text:             #e6e7e9;
+  --text-muted:       #9499a0;
+  --text-faint:       #686d74;
+
+  --success:          #4ab38a;
+  --danger:           #e87878;
+  --warning:          #e0a64a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(63, 191, 184, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(63, 191, 184, 0.04), transparent 60%);
+}
+
+
+/* ======================================================
+   THEME 6 â VIOLETTA (Burgundy & Parchment)
+   Velvet-curtain red on warm parchment
+====================================================== */
+
+[data-character-theme="violetta"][data-theme="light"],
+[data-character-theme="violetta"]:not([data-theme="dark"]) {
+  --accent:           #7a2230;
+  --accent-hover:     #631a25;
+  --accent-soft:      rgba(122, 34, 48, 0.12);
+  --accent-text:      #ffffff;
+
+  --bg:               #f8f4ec;
+  --bg-elevated:      #fefcf6;
+  --bg-sunken:        #ede5d2;
+
+  --border:           #e8dec8;
+  --border-strong:    #c4b89e;
+
+  --text:             #2a2520;
+  --text-muted:       #5e554d;
+  --text-faint:       #8a8276;
+
+  --success:          #2f8f6a;
+  --danger:           #b54836;
+  --warning:          #c25e1a;
+
+  --shadow-sm: 0 1px 2px rgba(60, 30, 20, 0.06);
+  --shadow-md: 0 4px 16px rgba(60, 30, 20, 0.08);
+  --shadow-lg: 0 12px 32px rgba(60, 30, 20, 0.12);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(122, 34, 48, 0.04), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(122, 34, 48, 0.03), transparent 60%);
+}
+
+[data-character-theme="violetta"][data-theme="dark"] {
+  --accent:           #c75568;
+  --accent-hover:     #d46b7d;
+  --accent-soft:      rgba(199, 85, 104, 0.16);
+  --accent-text:      #1c1614;
+
+  --bg:               #1c1614;
+  --bg-elevated:      #2a221d;
+  --bg-sunken:        #15110f;
+
+  --border:           #3a322a;
+  --border-strong:    #4f463c;
+
+  --text:             #ebe5d8;
+  --text-muted:       #988d7d;
+  --text-faint:       #6a6258;
+
+  --success:          #4ab38a;
+  --danger:           #e89060;
+  --warning:          #e0a64a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  --page-texture:
+    radial-gradient(ellipse at top left, rgba(199, 85, 104, 0.05), transparent 60%),
+    radial-gradient(ellipse at bottom right, rgba(199, 85, 104, 0.04), transparent 60%);
+}

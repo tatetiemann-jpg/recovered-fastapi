@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>My Ensemble</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css?v=3">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+  <div class="top-actions">
+    <button id="logout-btn">Logout</button>
+    <button id="open-edit-account-btn">Edit Account</button>
+  </div>
+
+  <h1 id="welcome">Welcome</h1>
+  <p id="instrument-display" class="hint"></p>
+
+  <nav class="tab-nav">
+    <button class="tab-btn" data-tab="upcoming">Upcoming</button>
+    <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
+  </nav>
+
+  <!-- UPCOMING TAB -->
+  <section class="tab-panel" data-tab-panel="upcoming">
+    <div class="box">
+      <h2>Upcoming Rehearsals</h2>
+      <div id="rehearsal-timeline"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- MESSAGES TAB -->
+  <section class="tab-panel" data-tab-panel="messages">
+    <div class="box">
+      <div class="section-header">
+        <h2>Messages</h2>
+      </div>
+      <p class="hint">Messages from your ensemble admin. Reply directly via email.</p>
+
+      <div class="dm-view-toggle">
+        <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+        <button class="dm-view-btn" data-dm-view="read">Read</button>
+        <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+      </div>
+
+      <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+
+      <div class="dm-compose">
+        <h3>New Message</h3>
+        <div class="dm-recipient-row">
+          <label>To</label>
+          <div class="dm-recipient-picker">
+            <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+            <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+          </div>
+        </div>
+        <label for="dm-body">Message</label>
+        <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+        <div style="margin-top:var(--space-3);">
+          <button id="dm-send-btn">Send Message</button>
+        </div>
+        <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+      </div>
+    </div>
+  </section>
+
+</div><!-- /.app-container -->
+
+<!-- ABSENCE REASON MODAL -->
+<div id="absence-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Reason for Absence</h3>
+    <p class="hint">Select a reason (required). Your admin will be notified.</p>
+    <div class="absence-reasons">
+      <button class="absence-reason-btn" type="button" data-reason="Illness">Illness</button>
+      <button class="absence-reason-btn" type="button" data-reason="Injury">Injury</button>
+      <button class="absence-reason-btn" type="button" data-reason="Work conflict">Work conflict</button>
+      <button class="absence-reason-btn" type="button" data-reason="Family emergency">Family emergency</button>
+      <button class="absence-reason-btn" type="button" data-reason="Travel">Travel</button>
+      <button class="absence-reason-btn" type="button" data-reason="Other">Other</button>
+    </div>
+    <label for="absence-note">Additional notes (optional)</label>
+    <textarea id="absence-note" rows="3" placeholder="Any additional details..."></textarea>
+    <div class="modal-actions">
+      <button id="absence-submit-btn" type="button">Submit</button>
+      <button id="absence-cancel-btn" type="button">Cancel</button>
+    </div>
+    <p id="absence-modal-msg" class="hint"></p>
+  </div>
+</div>
+
+{% include "_edit_account_modal.html" %}
+<script src="/static/public.js?v=3"></script>
+<script src="/static/themes.js?v=2"></script>
+<script src="/static/app.js?v=3"></script>
+<script src="/static/choir/ensemble_member.js?v=9"></script>
+</body>
+</html>
