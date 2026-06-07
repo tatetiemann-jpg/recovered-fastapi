@@ -6241,17 +6241,32 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
             """, (section_id,))
             admin_row = cur.fetchone()
 
-            if reh and admin_row:
+            cur.execute("""
+                SELECT u.fullname, u.email FROM users u
+                JOIN sub_requests sr ON sr.created_by = u.id
+                WHERE sr.id = %s
+            """, (req_id,))
+            member_row = cur.fetchone()
+
+            if reh:
                 rdate = reh[0].strftime("%A, %B %-d") if hasattr(reh[0], "strftime") else str(reh[0])
                 html_body = (f"<p><strong>{sub_name}</strong> accepted the sub for "
                              f"<strong>{reh[1]}</strong> on {rdate}.</p>")
                 text_body = f"{sub_name} accepted the sub for {reh[1]} on {rdate}."
-                send_email(admin_row[0], f"Sub confirmed - {reh[1]}", html_body, text_body)
+                if admin_row:
+                    send_email(admin_row[0], f"Sub confirmed - {reh[1]}", html_body, text_body)
+                if member_row:
+                    mbr_html = (f"<p>Hi {member_row[0]},</p>"
+                                f"<p><strong>{sub_name}</strong> has accepted the sub for "
+                                f"<strong>{reh[1]}</strong> on {rdate}. You're all set!</p>")
+                    mbr_text = (f"Hi {member_row[0]},\n\n"
+                                f"{sub_name} has accepted the sub for {reh[1]} on {rdate}. You're all set!")
+                    send_email(member_row[1], f"Sub confirmed - {reh[1]}", mbr_html, mbr_text)
 
             return templates.TemplateResponse(request, "choir/choir_sub_response.html",
                 {"message": f"You are confirmed! Thank you, {sub_name}. See you at rehearsal.", "success": True, "sub_token": token})
 
-        # r == "declined": notify the choir member who created the request
+        # r == "declined": notify the choir member and admin
         cur.execute("""
             SELECT r.start_time, cs.name, u.fullname, u.email
             FROM sub_requests sr
@@ -6276,6 +6291,20 @@ def choir_sub_response_page(token: str, r: Optional[str] = None, request: Reques
                 f"You may want to reach out to another sub."
             )
             send_email(mbr_email, f"Sub declined - {sec_nm} on {rdate_d}", dec_html, dec_text)
+
+            cur.execute("""
+                SELECT u.email FROM users u
+                WHERE u.org_id = (SELECT org_id FROM choir_sections WHERE id=%s)
+                  AND u.role='admin' LIMIT 1
+            """, (section_id,))
+            dec_admin_row = cur.fetchone()
+            if dec_admin_row:
+                adm_html = (f"<p><strong>{sub_name}</strong> has declined the sub request for "
+                            f"<strong>{sec_nm}</strong> on {rdate_d} "
+                            f"(requested by {mbr_name}).</p>")
+                adm_text = (f"{sub_name} has declined the sub request for {sec_nm} on {rdate_d} "
+                            f"(requested by {mbr_name}).")
+                send_email(dec_admin_row[0], f"Sub declined - {sec_nm} on {rdate_d}", adm_html, adm_text)
 
     # If a preferred sub declined, immediately contact the next ranked preferred sub
     if sc_tier == "preferred":
