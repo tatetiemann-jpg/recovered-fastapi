@@ -156,12 +156,16 @@ function buildRehearsalCard(r, container) {
     } else if (absent) {
         if (sub && sub.status === "filled") {
             subLine = `<p style="color:var(--success);font-size:.88rem;margin-top:var(--space-2);">Sub confirmed: ${escapeHtml(sub.filled_by_name)}</p>`;
+            // Don't show "I can attend" once a sub has committed
         } else if (sub && sub.all_declined) {
             subLine = `<p style="color:var(--danger,#b23a3a);font-size:.88rem;margin-top:var(--space-2);">All subs declined. Your admin has been notified.</p>`;
+            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
         } else if (sub) {
             subLine = `<p style="color:var(--text-muted);font-size:.88rem;margin-top:var(--space-2);">Sub search in progress…</p>`;
+            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
+        } else {
+            actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
         }
-        actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">I can attend</button>`;
     } else {
         actionButtons = `<button class="cancel-lesson-btn cant-make-btn" data-id="${r.id}">I can't make it</button>`;
     }
