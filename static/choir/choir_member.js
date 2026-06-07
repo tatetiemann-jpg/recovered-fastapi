@@ -4,7 +4,7 @@
 
 const VALID_CHOIR_MEMBER_TABS = ["upcoming", "book", "subs", "messages"];
 
-let myAbsences = new Set();
+let myAbsences = new Map(); // rehearsal_id -> status ('pending' | 'approved')
 let mySubStatus = {};       // rehearsal_id -> { status, filled_by_name }
 let activeFindSubRehearsalId = null;
 let absenceTargetRehearsalId = null;
@@ -70,9 +70,9 @@ async function loadUpcoming() {
             fetch(`${API}/choir/my-sub-status`, { credentials: "include" }),
         ]);
         const rehearsals = await rehRes.json();
-        const absentIds = await absRes.json();
+        const absenceData = await absRes.json();
         const subStatuses = await subRes.json();
-        myAbsences = new Set(absentIds);
+        myAbsences = new Map((Array.isArray(absenceData) ? absenceData : []).map(a => [a.rehearsal_id, a.status]));
         mySubStatus = {};
         (Array.isArray(subStatuses) ? subStatuses : []).forEach(s => {
             mySubStatus[s.rehearsal_id] = s;
@@ -138,12 +138,15 @@ async function loadUpcoming() {
 function buildRehearsalCard(r, container) {
     const rEnd = r.end_time ? new Date(r.date + "T" + r.end_time) : new Date(r.date + "T23:59");
     const isPast = rEnd < new Date();
-    const absent = myAbsences.has(r.id);
+    const absenceStatus = myAbsences.get(r.id); // 'pending' | 'approved' | undefined
+    const absent = absenceStatus !== undefined;
+    const isPending = absenceStatus === "pending";
     const sub = absent ? (mySubStatus[r.id] || null) : null;
     const card = document.createElement("div");
     let cardClass = "rehearsal-card";
     if (isPast) cardClass += " rehearsal-card--passed";
-    else if (absent) cardClass += " teacher-card-cancelled";
+    else if (absent && !isPending) cardClass += " teacher-card-cancelled";
+    else if (isPending) cardClass += " teacher-card-cancelled";
     card.className = cardClass;
     card.dataset.rehearsalId = r.id;
 
@@ -153,6 +156,10 @@ function buildRehearsalCard(r, container) {
     let actionButtons = "";
     if (isPast) {
         actionButtons = `<span class="lesson-status-tag lesson-status-tag--passed">Passed</span>`;
+    } else if (isPending) {
+        subLine = `<p style="color:var(--warning,#b45309);font-size:.88rem;margin-top:var(--space-2);">Absence pending admin approval</p>`;
+        actionButtons = `<button class="subtle-btn undo-absent-btn" data-id="${r.id}">Cancel request</button>
+            <button class="cancel-lesson-btn find-sub-btn" data-id="${r.id}" data-date="${r.date}">Find a Sub</button>`;
     } else if (absent) {
         if (sub && sub.status === "filled") {
             subLine = `<p style="color:var(--success);font-size:.88rem;margin-top:var(--space-2);">Sub confirmed: ${escapeHtml(sub.filled_by_name)}</p>`;
@@ -181,13 +188,14 @@ function buildRehearsalCard(r, container) {
             </div>
             <div class="rehearsal-row-actions">${actionButtons}</div>
         </div>
-        ${!isPast && absent ? `<p class="hint cancelled-badge" style="display:inline-block;margin-top:var(--space-2);">Marked absent</p>` : ""}
+        ${!isPast && absent && !isPending ? `<p class="hint cancelled-badge" style="display:inline-block;margin-top:var(--space-2);">Marked absent</p>` : ""}
         ${subLine}
     `;
 
     if (!isPast) {
         card.querySelector(".cant-make-btn")?.addEventListener("click", () => markAbsent(r.id, r.date));
         card.querySelector(".undo-absent-btn")?.addEventListener("click", () => undoAbsent(r.id));
+        card.querySelector(".find-sub-btn")?.addEventListener("click", () => openFindSubModal(r.id, r.date));
     }
     container.appendChild(card);
 }
@@ -218,7 +226,7 @@ async function submitChoirAbsence(findSub) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ rehearsal_id: absenceTargetRehearsalId, reason: selectedAbsenceReason, note: note || null }),
         });
-        myAbsences.add(absenceTargetRehearsalId);
+        myAbsences.set(absenceTargetRehearsalId, "pending");
         document.getElementById("absence-modal").classList.add("hidden");
         const rid = absenceTargetRehearsalId;
         const dateISO = absenceTargetDate;
@@ -244,7 +252,7 @@ async function undoAbsent(rehearsalId) {
         await fetch(`${API}/choir/absence-request/${rehearsalId}`, {
             method: "DELETE", credentials: "include",
         });
-        myAbsences.delete(rehearsalId);
+        myAbsences.delete(rehearsalId); // Map.delete works fine
         delete mySubStatus[rehearsalId];
         refreshRehearsalCard(rehearsalId);
     } catch (e) { alert("Server error."); }
@@ -384,8 +392,13 @@ async function memberContactAllPreferred(rehearsalId, btn) {
         });
         const data = await res.json();
         if (data.status === "success") {
-            btn.textContent = "Sent!";
-            btn.style.background = "var(--success,#2f8f6a)";
+            if (data.pending_approval) {
+                btn.textContent = "Queued — pending approval";
+                btn.style.background = "var(--warning,#b45309)";
+            } else {
+                btn.textContent = "Sent!";
+                btn.style.background = "var(--success,#2f8f6a)";
+            }
         } else {
             btn.textContent = data.message || "Failed";
             btn.disabled = false;

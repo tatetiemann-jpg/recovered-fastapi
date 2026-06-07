@@ -401,6 +401,9 @@ async function loadUpcoming() {
                             <button class="subtle-btn view-absences-btn${r.absence_count > 0 ? " absence-count-btn" : ""}" data-id="${r.id}" data-date="${r.date}">
                                 ${r.absence_count > 0 ? r.absence_count + " Absence" + (r.absence_count !== 1 ? "s" : "") + " &amp; Subs" : "Absences &amp; Subs"}
                             </button>
+                            <button class="subtle-btn view-requests-btn" data-id="${r.id}" data-date="${r.date}" style="${r.pending_count > 0 ? "" : ""}">
+                                Requests${r.pending_count > 0 ? ` <span class="msg-badge">${r.pending_count}</span>` : ""}
+                            </button>
                             <button class="subtle-btn danger-btn delete-reh-btn" data-id="${r.id}">
                                 Delete
                             </button>
@@ -416,7 +419,8 @@ async function loadUpcoming() {
                 `;
                 card.querySelector(".reh-notes-btn").addEventListener("click", () => openChoirNotesModal(r.id));
                 card.querySelector(".edit-reh-btn").addEventListener("click", () => openChoirEditModal(r.id));
-                card.querySelector(".view-absences-btn").addEventListener("click", () => openAbsenceModal(r.id, r.date));
+                card.querySelector(".view-absences-btn").addEventListener("click", () => openAbsenceModal(r.id, r.date, false));
+                card.querySelector(".view-requests-btn").addEventListener("click", () => openAbsenceModal(r.id, r.date, true));
                 card.querySelector(".delete-reh-btn").addEventListener("click", () => deleteRehearsal(r.id));
                 body.appendChild(card);
             });
@@ -574,9 +578,13 @@ async function deleteRehearsal(id) {
 
 // ── Absence modal ─────────────────────────────────────────────────────────────
 
-async function openAbsenceModal(rehearsalId, dateISO) {
+let activeRehearsalDate = null;
+
+async function openAbsenceModal(rehearsalId, dateISO, requestsOnly = false) {
     activeRehearsalId = rehearsalId;
-    document.getElementById("absence-modal-title").textContent = `Absences — ${fmtDate(dateISO)}`;
+    activeRehearsalDate = dateISO;
+    document.getElementById("absence-modal-title").textContent =
+        requestsOnly ? `Requests — ${fmtDate(dateISO)}` : `Absences — ${fmtDate(dateISO)}`;
     document.getElementById("absence-modal").classList.remove("hidden");
     document.getElementById("absence-modal-list").innerHTML = `<em class="empty-note">Loading…</em>`;
 
@@ -587,14 +595,21 @@ async function openAbsenceModal(rehearsalId, dateISO) {
         ]);
         const absences = await absRes.json();
         const subReqs = await subRes.json();
-        renderAbsenceList(absences, Array.isArray(subReqs) ? subReqs : []);
+        renderAbsenceList(absences, Array.isArray(subReqs) ? subReqs : [], requestsOnly);
     } catch (e) { console.error(e); }
 }
 
-function renderAbsenceList(absences, subReqs) {
+function renderAbsenceList(absences, subReqs, requestsOnly = false) {
     const box = document.getElementById("absence-modal-list");
-    if (!absences.length) {
-        box.innerHTML = `<em class="empty-note">No absences reported.</em>`;
+
+    const pending = absences.filter(a => a.status === "pending");
+    const approved = absences.filter(a => a.status !== "pending");
+    const displayList = requestsOnly ? pending : approved;
+
+    if (!displayList.length) {
+        box.innerHTML = requestsOnly
+            ? `<em class="empty-note">No pending requests.</em>`
+            : `<em class="empty-note">No absences reported.</em>`;
         return;
     }
 
@@ -603,8 +618,46 @@ function renderAbsenceList(absences, subReqs) {
     (subReqs || []).forEach(r => { subBySec[r.section_id] = r; });
 
     box.innerHTML = "";
+
+    if (requestsOnly) {
+        // Pending requests with Approve / Deny
+        pending.forEach(a => {
+            const row = document.createElement("div");
+            row.style.cssText = "padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;";
+            row.innerHTML = `
+                <span>
+                    <strong>${escapeHtml(a.singer)}</strong>
+                    <span style="font-size:.8rem;background:var(--warning,#b45309);color:#fff;border-radius:4px;padding:1px 6px;margin-left:6px;">Pending</span>
+                    <span style="font-size:.88rem;color:var(--text-muted);margin-left:4px;">${escapeHtml(a.section)}</span>
+                    ${a.reason ? `<em style="color:var(--text-muted);font-size:.88rem;display:block;margin-top:2px;">${escapeHtml(a.reason)}</em>` : ""}
+                    ${a.note ? `<div style="font-size:.82rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(a.note)}</div>` : ""}
+                    ${a.contact_preferred_on_approval ? `<div style="font-size:.8rem;color:var(--accent);margin-top:3px;">Preferred subs will be contacted on approval</div>` : ""}
+                </span>
+                <span style="display:flex;gap:6px;flex-shrink:0;">
+                    <button class="subtle-btn approve-absence-btn" data-id="${a.id}" style="color:var(--success);border-color:var(--success);">Approve</button>
+                    <button class="subtle-btn deny-absence-btn danger-btn" data-id="${a.id}">Deny</button>
+                </span>
+            `;
+            row.querySelector(".approve-absence-btn").addEventListener("click", async e => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = "…";
+                await approveAbsence(Number(btn.dataset.id));
+            });
+            row.querySelector(".deny-absence-btn").addEventListener("click", async e => {
+                const btn = e.currentTarget;
+                btn.disabled = true;
+                btn.textContent = "…";
+                await denyAbsence(Number(btn.dataset.id));
+            });
+            box.appendChild(row);
+        });
+        return;
+    }
+
+    // Approved absences grouped by section
     const bySec = {};
-    absences.forEach(a => {
+    approved.forEach(a => {
         if (!bySec[a.section]) bySec[a.section] = [];
         bySec[a.section].push(a);
     });
@@ -639,6 +692,26 @@ function renderAbsenceList(absences, subReqs) {
             box.appendChild(row);
         });
     });
+}
+
+async function approveAbsence(absenceId) {
+    try {
+        await fetch(`${API}/choir/absence-request/${absenceId}/approve`, {
+            method: "POST", credentials: "include",
+        });
+    } catch (e) { console.error(e); }
+    openAbsenceModal(activeRehearsalId, activeRehearsalDate, true);
+    loadChoirRehearsals();
+}
+
+async function denyAbsence(absenceId) {
+    try {
+        await fetch(`${API}/choir/absence-request/${absenceId}/deny`, {
+            method: "POST", credentials: "include",
+        });
+    } catch (e) { console.error(e); }
+    openAbsenceModal(activeRehearsalId, activeRehearsalDate, true);
+    loadChoirRehearsals();
 }
 
 // ── Find-sub modal ────────────────────────────────────────────────────────────

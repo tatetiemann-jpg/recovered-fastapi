@@ -116,6 +116,8 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
             cur.execute("ALTER TABLE absence_requests ADD COLUMN IF NOT EXISTS note TEXT;")
+            cur.execute("ALTER TABLE absence_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'approved';")
+            cur.execute("ALTER TABLE absence_requests ADD COLUMN IF NOT EXISTS contact_preferred_on_approval BOOLEAN NOT NULL DEFAULT FALSE;")
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS org_type TEXT DEFAULT 'opera';")
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lessons_enabled BOOLEAN DEFAULT FALSE;")
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lesson_duration_min INTEGER DEFAULT 30;")
@@ -6467,8 +6469,14 @@ def choir_get_rehearsals(request: Request):
                 (reh_ids,),
             )
             absence_counts = {row[0]: row[1] for row in cur.fetchall()}
+            cur.execute(
+                "SELECT rehearsal_id, COUNT(*) FROM absence_requests WHERE rehearsal_id = ANY(%s) AND status='pending' GROUP BY rehearsal_id",
+                (reh_ids,),
+            )
+            pending_counts = {row[0]: row[1] for row in cur.fetchall()}
             for r in result:
                 r["absence_count"] = absence_counts.get(r["id"], 0)
+                r["pending_count"] = pending_counts.get(r["id"], 0)
 
         return result
 
@@ -6930,9 +6938,10 @@ def choir_mark_absent(payload: dict, request: Request):
         return {"status": "fail", "message": "rehearsal_id required"}
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE SET reason=EXCLUDED.reason, note=EXCLUDED.note
+            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note, status)
+            VALUES (%s, %s, %s, %s, 'pending')
+            ON CONFLICT (rehearsal_id, singer_id) DO UPDATE
+              SET reason=EXCLUDED.reason, note=EXCLUDED.note, status='pending', contact_preferred_on_approval=FALSE
         """, (rehearsal_id, user["id"], reason, note))
     return {"status": "success"}
 
@@ -6990,22 +6999,113 @@ def choir_cancel_absence(rehearsal_id: int, request: Request):
                     (rehearsal_id, user["id"]))
     return {"status": "success"}
 
+
+@app.post("/choir/absence-request/{absence_id}/approve")
+def choir_approve_absence(absence_id: int, request: Request):
+    user = require_choir_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT ar.id, ar.singer_id, ar.rehearsal_id, ar.contact_preferred_on_approval,
+                   u.fullname, u.email,
+                   COALESCE(u.section_id,
+                       (SELECT cs.id FROM choir_sections cs
+                        WHERE cs.org_id = u.org_id AND LOWER(cs.name) = LOWER(u.voice_type) LIMIT 1)
+                   ) AS section_id,
+                   r.start_time
+            FROM absence_requests ar
+            JOIN users u ON u.id = ar.singer_id
+            JOIN rehearsals r ON r.id = ar.rehearsal_id
+            WHERE ar.id = %s
+        """, (absence_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Absence request not found")
+    ar_id, singer_id, rehearsal_id, contact_flag, singer_name, singer_email, section_id, start_time = row
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE absence_requests SET status='approved' WHERE id=%s", (ar_id,))
+
+    if contact_flag and section_id:
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                SELECT id FROM sub_requests
+                WHERE rehearsal_id=%s AND section_id=%s AND status NOT IN ('filled','cancelled')
+            """, (rehearsal_id, section_id))
+            sr_row = cur.fetchone()
+            if sr_row:
+                sub_request_id = sr_row[0]
+            else:
+                cur.execute("""
+                    INSERT INTO sub_requests (rehearsal_id, section_id, created_by)
+                    VALUES (%s, %s, %s) RETURNING id
+                """, (rehearsal_id, section_id, singer_id))
+                sub_request_id = cur.fetchone()[0]
+        _advance_preferred_sub(sub_request_id, rehearsal_id, section_id)
+
+    if singer_email:
+        rdate = start_time.strftime("%A, %B %-d") if hasattr(start_time, "strftime") else str(start_time)
+        html_body = (
+            f"<p>Hi {singer_name},</p>"
+            f"<p>Your absence request for the rehearsal on <strong>{rdate}</strong> has been approved.</p>"
+        )
+        text_body = f"Hi {singer_name},\n\nYour absence request for the rehearsal on {rdate} has been approved."
+        send_email(singer_email, f"Absence request approved — {rdate}", html_body, text_body)
+
+    return {"status": "success"}
+
+
+@app.post("/choir/absence-request/{absence_id}/deny")
+def choir_deny_absence(absence_id: int, request: Request):
+    user = require_choir_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT ar.singer_id, ar.rehearsal_id, u.fullname, u.email, r.start_time
+            FROM absence_requests ar
+            JOIN users u ON u.id = ar.singer_id
+            JOIN rehearsals r ON r.id = ar.rehearsal_id
+            WHERE ar.id = %s
+        """, (absence_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Absence request not found")
+    singer_id, rehearsal_id, singer_name, singer_email, start_time = row
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM absence_requests WHERE id=%s", (absence_id,))
+
+    if singer_email:
+        rdate = start_time.strftime("%A, %B %-d") if hasattr(start_time, "strftime") else str(start_time)
+        html_body = (
+            f"<p>Hi {singer_name},</p>"
+            f"<p>Your absence request for the rehearsal on <strong>{rdate}</strong> was not approved. "
+            f"Please contact your admin if you have any questions.</p>"
+        )
+        text_body = (
+            f"Hi {singer_name},\n\nYour absence request for the rehearsal on {rdate} was not approved. "
+            f"Please contact your admin if you have any questions."
+        )
+        send_email(singer_email, f"Absence request not approved — {rdate}", html_body, text_body)
+
+    return {"status": "success"}
+
+
 @app.get("/choir/absences/{rehearsal_id}")
 def choir_get_absences(rehearsal_id: int, request: Request):
     user = require_choir_admin(request)
     org_id = user["org_id"]
     with db_cursor() as cur:
         cur.execute("""
-            SELECT ar.singer_id, u.fullname, u.section_id, u.voice_type, ar.reason, ar.note
+            SELECT ar.singer_id, u.fullname, u.section_id, u.voice_type, ar.reason, ar.note,
+                   ar.id, ar.status, ar.contact_preferred_on_approval
             FROM absence_requests ar
             JOIN users u ON u.id = ar.singer_id
             WHERE ar.rehearsal_id = %s
-            ORDER BY u.fullname
+            ORDER BY ar.status DESC, u.fullname
         """, (rehearsal_id,))
         rows = cur.fetchall()
 
         result = []
-        for singer_id, fullname, section_id, voice_type, reason, note in rows:
+        for singer_id, fullname, section_id, voice_type, reason, note, ar_id, ar_status, contact_flag in rows:
             resolved_id = section_id
             section_name = None
             if resolved_id:
@@ -7024,12 +7124,15 @@ def choir_get_absences(rehearsal_id: int, request: Request):
                 else:
                     section_name = voice_type.capitalize()
             result.append({
+                "id": ar_id,
                 "singer_id": singer_id,
                 "singer": fullname,
                 "section_id": resolved_id,
                 "section": section_name or "?",
                 "reason": reason or "",
                 "note": note or "",
+                "status": ar_status or "approved",
+                "contact_preferred_on_approval": bool(contact_flag),
             })
         return result
 
@@ -7037,8 +7140,11 @@ def choir_get_absences(rehearsal_id: int, request: Request):
 def choir_my_absences(request: Request):
     user = require_choir_member(request)
     with db_cursor() as cur:
-        cur.execute("SELECT rehearsal_id FROM absence_requests WHERE singer_id=%s", (user["id"],))
-        return [r[0] for r in cur.fetchall()]
+        cur.execute(
+            "SELECT rehearsal_id, status FROM absence_requests WHERE singer_id=%s",
+            (user["id"],)
+        )
+        return [{"rehearsal_id": r[0], "status": r[1]} for r in cur.fetchall()]
 
 
 @app.get("/choir/my-sub-status")
@@ -7934,6 +8040,22 @@ def choir_contact_preferred_subs(payload: dict, request: Request):
         if not section_id:
             return {"status": "fail", "message": "Could not resolve your section"}
 
+    # If member's absence is still pending approval, store intent — don't email yet
+    if user["role"] != "admin":
+        with db_cursor() as cur:
+            cur.execute("""
+                SELECT id FROM absence_requests
+                WHERE rehearsal_id = %s AND singer_id = %s AND status = 'pending'
+            """, (rehearsal_id, user["id"]))
+            pending_row = cur.fetchone()
+        if pending_row:
+            with db_cursor(commit=True) as cur:
+                cur.execute("""
+                    UPDATE absence_requests SET contact_preferred_on_approval = TRUE
+                    WHERE id = %s
+                """, (pending_row[0],))
+            return {"status": "success", "pending_approval": True}
+
     with db_cursor(commit=True) as cur:
         cur.execute("""
             SELECT id FROM sub_requests
@@ -8279,11 +8401,11 @@ def ensemble_absences(request: Request):
     user = require_ensemble_member(request)
     with db_cursor() as cur:
         cur.execute(
-            "SELECT rehearsal_id FROM absence_requests WHERE singer_id = %s",
+            "SELECT rehearsal_id, status FROM absence_requests WHERE singer_id = %s",
             (user["id"],)
         )
         rows = cur.fetchall()
-    return [r[0] for r in rows]
+    return [{"rehearsal_id": r[0], "status": r[1]} for r in rows]
 
 
 @app.post("/ensemble/absence")
@@ -8298,37 +8420,11 @@ def ensemble_mark_absent(payload: dict, request: Request):
         return {"status": "fail", "message": "reason required"}
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO absence_requests (rehearsal_id, singer_id, reason, note, status)
+            VALUES (%s, %s, %s, %s, 'pending')
             ON CONFLICT (rehearsal_id, singer_id) DO UPDATE
-              SET reason = EXCLUDED.reason, note = EXCLUDED.note
+              SET reason = EXCLUDED.reason, note = EXCLUDED.note, status = 'pending', contact_preferred_on_approval = FALSE
         """, (rehearsal_id, user["id"], reason, note))
-        cur.execute("""
-            SELECT r.start_time, o.name
-            FROM rehearsals r
-            JOIN organizations o ON o.id = r.org_id
-            WHERE r.id = %s
-        """, (rehearsal_id,))
-        row = cur.fetchone()
-        cur.execute(
-            "SELECT email FROM users WHERE org_id = %s AND role IN ('admin', 'head_admin') AND email IS NOT NULL",
-            (user["org_id"],)
-        )
-        admins = [r[0] for r in cur.fetchall()]
-    if row:
-        reh_date = row[0].strftime("%B %-d, %Y") if hasattr(row[0], "strftime") else str(row[0])
-        org_name = row[1]
-        subject = f"{user['fullname']} marked absent — {reh_date}"
-        note_line = f"<p><strong>Note:</strong> {html_mod.escape(note)}</p>" if note else ""
-        html_body = f"""
-            <p><strong>{html_mod.escape(user['fullname'])}</strong> ({html_mod.escape(user.get('instrument',''))})
-            has marked themselves absent for the ensemble rehearsal on <strong>{reh_date}</strong> at {html_mod.escape(org_name)}.</p>
-            <p><strong>Reason:</strong> {html_mod.escape(reason)}</p>
-            {note_line}
-        """
-        text_body = f"{user['fullname']} ({user.get('instrument','')}) absent on {reh_date} at {org_name}.\nReason: {reason}" + (f"\nNote: {note}" if note else "")
-        for email in admins:
-            send_email(email, subject, html_body, text_body)
     return {"status": "success"}
 
 
