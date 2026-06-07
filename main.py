@@ -7288,13 +7288,10 @@ def _render_sub_email(sub_name: str, section_name: str, org_name: str,
     return html, text
 
 
-def _preferred_window_hours(rank) -> int:
+def _preferred_window_hours(rank) -> float:
     """Hours a preferred sub at the given rank has to respond before the next is contacted."""
-    if rank == 1:
-        return 8
-    if rank == 2:
-        return 6
-    return 4
+    # TESTING: shortened windows — change back to 8/6/4 before going live
+    return 0.02  # ~1.2 minutes for all ranks
 
 
 def _advance_preferred_sub(req_id: int, rehearsal_id: int, section_id: int) -> bool:
