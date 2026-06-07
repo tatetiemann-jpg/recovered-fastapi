@@ -701,7 +701,7 @@ async function approveAbsence(absenceId) {
         });
     } catch (e) { console.error(e); }
     openAbsenceModal(activeRehearsalId, activeRehearsalDate, true);
-    loadChoirRehearsals();
+    loadUpcoming();
 }
 
 async function denyAbsence(absenceId) {
@@ -711,7 +711,7 @@ async function denyAbsence(absenceId) {
         });
     } catch (e) { console.error(e); }
     openAbsenceModal(activeRehearsalId, activeRehearsalDate, true);
-    loadChoirRehearsals();
+    loadUpcoming();
 }
 
 // ── Find-sub modal ────────────────────────────────────────────────────────────
