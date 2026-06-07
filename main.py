@@ -7,7 +7,7 @@ and referenced by org_id. For now we hardcode the org to "boa" since the
 app supports one festival at a time.
 """
 from fastapi import FastAPI, Request, Query, Response, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -7876,6 +7876,14 @@ def choir_escalate_subs(request: Request):
     if not cron_secret or request.headers.get("x-cron-secret") != cron_secret:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    try:
+        return _run_escalate_subs()
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500, content={"error": str(e), "trace": traceback.format_exc()})
+
+
+def _run_escalate_subs():
     # ── Pass 1: advance stale preferred windows ──────────────────────────────
     with db_cursor() as cur:
         cur.execute("""
@@ -7941,6 +7949,7 @@ def choir_escalate_subs(request: Request):
             """, (req_id,))
 
     return {"status": "ok", "cascaded": cascaded, "escalated": escalated, "checked": len(stale)}
+
 
 
 @app.post("/choir/contact-sub")
