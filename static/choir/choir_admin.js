@@ -887,7 +887,6 @@ function buildSubRow(s) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ preferred_rank: rank }),
             });
-            loadSubRoster();
         });
     }
 
