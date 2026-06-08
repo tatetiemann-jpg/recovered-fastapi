@@ -4231,3 +4231,11 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 .payment-input-row:last-child { border-bottom: none; }
 .payment-input-row input[type="number"] { width: 70px; }
 
+.af-child-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+.af-child-row input { width: 100%; min-width: 0; }

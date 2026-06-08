@@ -9731,6 +9731,7 @@ def studio_teacher_add_family(payload: dict, request: Request):
         return {"status": "fail", "message": "Family name is required"}
     parent_name = (payload.get("parent_name") or "").strip() or None
     parent_email = (payload.get("parent_email") or "").strip().lower() or None
+    children = payload.get("children") or []
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
@@ -9739,7 +9740,37 @@ def studio_teacher_add_family(payload: dict, request: Request):
             RETURNING id
         """, (teacher["id"], family_name, parent_name, parent_email))
         fam_id = cur.fetchone()[0]
-    return {"status": "success", "id": fam_id}
+
+        students_added = 0
+        for child in children:
+            child_name = (child.get("name") or "").strip()
+            child_email = (child.get("email") or "").strip().lower() or None
+            if not child_name:
+                continue
+            # Find existing student by email or name, update their family_id
+            matched = False
+            if child_email:
+                cur.execute(
+                    "UPDATE studio_students SET family_id = %s WHERE teacher_id = %s AND LOWER(email) = %s RETURNING id",
+                    (fam_id, teacher["id"], child_email)
+                )
+                if cur.fetchone():
+                    matched = True
+            if not matched:
+                cur.execute(
+                    "UPDATE studio_students SET family_id = %s WHERE teacher_id = %s AND LOWER(name) = LOWER(%s) AND family_id IS NULL RETURNING id",
+                    (fam_id, teacher["id"], child_name)
+                )
+                if cur.fetchone():
+                    matched = True
+            if not matched:
+                cur.execute(
+                    "INSERT INTO studio_students (teacher_id, name, email, family_id) VALUES (%s, %s, %s, %s)",
+                    (teacher["id"], child_name, child_email, fam_id)
+                )
+            students_added += 1
+
+    return {"status": "success", "id": fam_id, "students_added": students_added}
 
 
 @app.get("/studio-teacher/families")

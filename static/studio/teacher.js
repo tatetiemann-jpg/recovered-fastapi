@@ -1241,15 +1241,30 @@ async function submitAddStudent() {
     btn.textContent = "Add Student";
 }
 
+function addFamilyChildRow(name = "", email = "") {
+    const list = document.getElementById("af-children-list");
+    const row = document.createElement("div");
+    row.className = "af-child-row";
+    row.innerHTML = `
+        <input class="af-child-name" type="text" placeholder="Child's name" value="${escHtml(name)}">
+        <input class="af-child-email" type="email" placeholder="Email (optional)" value="${escHtml(email)}">
+        <button class="subtle-btn" onclick="this.closest('.af-child-row').remove()">✕</button>
+    `;
+    list.appendChild(row);
+}
+
 function initAddFamilyModal() {
     document.getElementById("add-family-btn")?.addEventListener("click", () => {
         document.getElementById("af-name").value = "";
         document.getElementById("af-parent-name").value = "";
         document.getElementById("af-parent-email").value = "";
         document.getElementById("af-msg").textContent = "";
+        document.getElementById("af-children-list").innerHTML = "";
+        addFamilyChildRow(); // start with one blank child row
         document.getElementById("add-family-modal").classList.remove("hidden");
     });
 
+    document.getElementById("af-add-child-btn")?.addEventListener("click", () => addFamilyChildRow());
     document.getElementById("af-submit-btn")?.addEventListener("click", submitAddFamily);
     document.getElementById("af-cancel-btn")?.addEventListener("click", () => {
         document.getElementById("add-family-modal").classList.add("hidden");
@@ -1262,6 +1277,13 @@ async function submitAddFamily() {
     const name = document.getElementById("af-name").value.trim();
     if (!name) { msg.textContent = "Family name is required."; return; }
 
+    const children = Array.from(document.querySelectorAll(".af-child-row"))
+        .map(row => ({
+            name: row.querySelector(".af-child-name").value.trim(),
+            email: row.querySelector(".af-child-email").value.trim().toLowerCase() || null,
+        }))
+        .filter(c => c.name);
+
     btn.disabled = true;
     btn.textContent = "Creating…";
     try {
@@ -1273,16 +1295,17 @@ async function submitAddFamily() {
                 family_name: name,
                 parent_name: document.getElementById("af-parent-name").value.trim() || null,
                 parent_email: document.getElementById("af-parent-email").value.trim().toLowerCase() || null,
+                children,
             }),
         });
         const data = await res.json();
         if (data.status === "success") {
-            msg.textContent = "Family created!";
+            msg.textContent = `Family created with ${data.students_added} student${data.students_added !== 1 ? "s" : ""}!`;
             await loadStudents();
             setTimeout(() => {
                 document.getElementById("add-family-modal").classList.add("hidden");
                 msg.textContent = "";
-            }, 800);
+            }, 1000);
         } else {
             msg.textContent = data.message || "Failed.";
         }

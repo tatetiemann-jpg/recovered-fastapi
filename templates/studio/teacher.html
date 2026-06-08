@@ -316,7 +316,7 @@
 <!-- ADD FAMILY MODAL -->
 <!-- ============================================================ -->
 <div id="add-family-modal" class="modal-overlay hidden">
-    <div class="modal-card">
+    <div class="modal-card modal-large">
         <h3>Add Family</h3>
         <p class="hint">Create a family group so siblings can share a payment pool.</p>
 
@@ -328,6 +328,16 @@
 
         <label>Parent email (optional)</label>
         <input id="af-parent-email" type="email" placeholder="jane@example.com">
+
+        <div style="margin-top:var(--space-4);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+                <strong>Children</strong>
+                <button id="af-add-child-btn" class="subtle-btn">+ Add child</button>
+            </div>
+            <div id="af-children-list">
+                <!-- child rows injected here -->
+            </div>
+        </div>
 
         <div class="modal-actions">
             <button id="af-submit-btn">Create Family</button>
