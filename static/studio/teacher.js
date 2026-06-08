@@ -624,37 +624,78 @@ async function submitParseModal() {
 }
 
 function renderParsePreview(lessons) {
-    const tbody = document.getElementById("parse-preview-body");
+    const container = document.getElementById("parse-preview-groups");
     const section = document.getElementById("parse-preview-section");
     if (!lessons.length) {
         document.getElementById("parse-msg").textContent = "No lessons found in text.";
         section.classList.add("hidden");
         return;
     }
-    tbody.innerHTML = lessons.map((l, i) => `
-        <tr data-row="${i}">
-            <td><input class="pr-date" type="date" value="${escHtml(l.date || "")}"></td>
-            <td><input class="pr-time" type="time" value="${escHtml(l.time || "")}"></td>
-            <td><input class="pr-name" type="text" placeholder="Full name" value="${escHtml(l.student_name || "")}" style="min-width:120px;"></td>
-            <td><input class="pr-email" type="email" placeholder="email — required to contact student" value="${escHtml(l.email || "")}" style="min-width:160px;${!l.email ? 'border-color:var(--color-warning,#b45309);' : ''}"></td>
-            <td>
+
+    // Group by student name (case-insensitive) preserving insertion order
+    const groupMap = new Map();
+    lessons.forEach(l => {
+        const key = (l.student_name || "Unknown").trim().toLowerCase();
+        if (!groupMap.has(key)) {
+            groupMap.set(key, { name: l.student_name || "", email: l.email || "", lessons: [] });
+        }
+        const g = groupMap.get(key);
+        if (!g.email && l.email) g.email = l.email;
+        g.lessons.push(l);
+    });
+
+    container.innerHTML = Array.from(groupMap.values()).map(g => {
+        const emailMissing = !g.email;
+        const lessonRows = g.lessons.map(l => `
+            <div class="parse-lesson-row">
+                <input class="pr-date" type="date" value="${escHtml(l.date || "")}">
+                <input class="pr-time" type="time" value="${escHtml(l.time || "")}">
                 <select class="pr-dur">
                     <option value="30" ${(l.duration_min||30)==30?"selected":""}>30 min</option>
                     <option value="45" ${l.duration_min==45?"selected":""}>45 min</option>
                     <option value="60" ${l.duration_min==60?"selected":""}>60 min</option>
                     <option value="90" ${l.duration_min==90?"selected":""}>90 min</option>
                 </select>
-            </td>
-            <td><input class="pr-zoom" type="url" placeholder="Zoom link (optional)" value="${escHtml(l.zoom_link || "")}" style="min-width:140px;"></td>
-            <td><button class="subtle-btn" onclick="removeParsedRow(${i})">Remove</button></td>
-        </tr>
-    `).join("");
+                <input class="pr-zoom" type="url" placeholder="Zoom (optional)" value="${escHtml(l.zoom_link || "")}">
+                <button class="subtle-btn" onclick="removeParsedLesson(this)">Remove</button>
+            </div>
+        `).join("");
+
+        return `
+            <div class="parse-student-group">
+                <div class="parse-student-header">
+                    <div class="parse-student-name-wrap">
+                        <label>Student</label>
+                        <input class="pr-name" type="text" value="${escHtml(g.name)}" placeholder="Full name">
+                    </div>
+                    <div class="parse-student-email-wrap">
+                        <label>Email</label>
+                        <input class="pr-email" type="email"
+                            placeholder="email — required to contact"
+                            value="${escHtml(g.email)}"
+                            style="${emailMissing ? 'border-color:var(--color-warning,#b45309);' : ''}">
+                    </div>
+                </div>
+                <div class="parse-student-lessons">
+                    <div class="parse-lesson-header hint">Date &nbsp;·&nbsp; Time &nbsp;·&nbsp; Duration &nbsp;·&nbsp; Zoom</div>
+                    ${lessonRows}
+                </div>
+            </div>
+        `;
+    }).join("");
+
     section.classList.remove("hidden");
 }
 
-function removeParsedRow(i) {
-    parsedLessons.splice(i, 1);
-    renderParsePreview(parsedLessons);
+function removeParsedLesson(btn) {
+    const row = btn.closest(".parse-lesson-row");
+    const group = row.closest(".parse-student-group");
+    row.remove();
+    if (!group.querySelectorAll(".parse-lesson-row").length) group.remove();
+    const container = document.getElementById("parse-preview-groups");
+    if (!container.querySelectorAll(".parse-student-group").length) {
+        document.getElementById("parse-preview-section").classList.add("hidden");
+    }
 }
 
 async function confirmParsedLessons() {
@@ -662,36 +703,30 @@ async function confirmParsedLessons() {
     btn.disabled = true;
     btn.textContent = "Adding…";
 
-    // Read current values from the editable preview table
-    const rows = document.querySelectorAll("#parse-preview-body tr[data-row]");
     let added = 0;
-    for (const row of rows) {
-        const date = row.querySelector(".pr-date")?.value?.trim();
-        const time = row.querySelector(".pr-time")?.value?.trim();
-        const name = row.querySelector(".pr-name")?.value?.trim();
-        const email = row.querySelector(".pr-email")?.value?.trim().toLowerCase() || null;
-        const dur = parseInt(row.querySelector(".pr-dur")?.value || "30");
-        const zoom = row.querySelector(".pr-zoom")?.value?.trim() || null;
-
-        if (!date || !time || !name) continue;
-        try {
-            const res = await fetch(`${API}/studio-teacher/lesson`, {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    date,
-                    time,
-                    duration_min: dur,
-                    external_name: name,
-                    external_email: email,
-                    zoom_link: zoom,
-                }),
-            });
-            const data = await res.json();
-            if (data.status === "success") added++;
-        } catch (e) { /* continue */ }
+    for (const group of document.querySelectorAll(".parse-student-group")) {
+        const name = group.querySelector(".pr-name")?.value?.trim();
+        const email = group.querySelector(".pr-email")?.value?.trim().toLowerCase() || null;
+        for (const row of group.querySelectorAll(".parse-lesson-row")) {
+            const date = row.querySelector(".pr-date")?.value?.trim();
+            const time = row.querySelector(".pr-time")?.value?.trim();
+            const dur = parseInt(row.querySelector(".pr-dur")?.value || "30");
+            const zoom = row.querySelector(".pr-zoom")?.value?.trim() || null;
+            if (!date || !time || !name) continue;
+            try {
+                const res = await fetch(`${API}/studio-teacher/lesson`, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ date, time, duration_min: dur,
+                        external_name: name, external_email: email, zoom_link: zoom }),
+                });
+                const data = await res.json();
+                if (data.status === "success") added++;
+            } catch (e) { /* continue */ }
+        }
     }
+
     btn.disabled = false;
     btn.textContent = "Add All";
     document.getElementById("parse-msg").textContent = `${added} lesson(s) added.`;
