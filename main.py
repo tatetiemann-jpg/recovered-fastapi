@@ -9706,6 +9706,49 @@ def studio_teacher_mark_attendance(lesson_id: int, payload: dict, request: Reque
     return {"status": "success"}
 
 
+def _infer_durations_from_gaps(lessons: list) -> list:
+    """Infer duration_min from time gaps only when all gaps on a day are consistent
+    (snap to the same standard duration).  Mixed or ambiguous gaps are left alone."""
+    from datetime import datetime as _dtp
+    VALID = [30, 45, 60, 90]
+    TOLERANCE = 10  # minutes either side of a standard duration
+
+    by_date: dict = {}
+    for i, lesson in enumerate(lessons):
+        by_date.setdefault(lesson.get("date", ""), []).append((i, lesson))
+
+    for entries in by_date.values():
+        if len(entries) < 2:
+            continue  # single lesson — nothing to measure against
+        entries.sort(key=lambda x: x[1].get("time", "00:00"))
+
+        snapped: list = []
+        for j in range(len(entries) - 1):
+            _, curr = entries[j]
+            _, nxt = entries[j + 1]
+            try:
+                t1 = _dtp.strptime(curr["time"], "%H:%M")
+                t2 = _dtp.strptime(nxt["time"], "%H:%M")
+                gap = int((t2 - t1).total_seconds() / 60)
+                if gap > 90:
+                    continue  # likely a break between sessions — ignore
+                nearest = min(VALID, key=lambda v: abs(v - gap))
+                if abs(nearest - gap) <= TOLERANCE:
+                    snapped.append(nearest)
+                else:
+                    snapped.append(None)  # gap doesn't match any standard length
+            except (ValueError, KeyError):
+                snapped.append(None)
+
+        # Only apply if every measured gap resolved to the same duration
+        if snapped and all(s == snapped[0] for s in snapped) and snapped[0] is not None:
+            duration = snapped[0]
+            for idx, _ in entries:
+                lessons[idx]["duration_min"] = duration
+
+    return lessons
+
+
 @app.post("/studio-teacher/lessons-parse")
 def studio_teacher_lessons_parse(payload: dict, request: Request):
     require_studio_teacher(request)
@@ -9721,13 +9764,16 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
         "Extract every individual lesson entry from the schedule text. "
         "Return a JSON array only — no explanation, no markdown, no code fences. Each entry: "
         "{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"student_name\": \"First Last\", "
-        "\"email\": null, \"duration_min\": 30}. "
+        "\"email\": null, \"duration_min\": 60}. "
         "Rules: "
         "1. Date headers like 'WEDNESDAY 6/3' or 'TUES 6/9' apply to all lessons listed beneath them until the next header. Infer the year from context. "
         "2. Times may lack colons — '645PM' means 6:45 PM, '11AM' means 11:00 AM. Convert to 24-hour HH:MM. "
         "3. Student names are ALL CAPS on their own line followed by a time — capitalize them normally (e.g. 'MEL' → 'Mel'). "
         "4. Ignore separator lines (___), notes in parentheses like (NO KATHERINE), and blank lines. "
-        "5. If no duration is given, default to 30. "
+        "5. Infer duration_min from the time gap between consecutive lessons on the same day. "
+        "   Snap to the nearest standard length: 30, 45, 60, or 90 min. "
+        "   For the last lesson of the day (no following lesson), use the most common duration seen that day. "
+        "   If the schedule is only one lesson with no gaps to measure, default to 60. "
         "6. Return only the raw JSON array."
     )
     client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -9740,9 +9786,7 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
         )
         import json as _json, re as _re
         raw = msg.content[0].text.strip()
-        # Strip markdown fences if present
         raw = _re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
-        # Extract first JSON array from the response
         m = _re.search(r'\[.*\]', raw, _re.DOTALL)
         raw = m.group(0) if m else raw
         parsed = _json.loads(raw)
@@ -9750,6 +9794,10 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
             parsed = []
     except Exception as e:
         return {"status": "fail", "message": f"Parse error: {e}"}
+
+    # Post-process: deterministically infer durations from time gaps
+    parsed = _infer_durations_from_gaps(parsed)
+
     return {"status": "success", "lessons": parsed}
 
 
