@@ -9362,19 +9362,26 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
     if not ANTHROPIC_API_KEY:
         return {"status": "fail", "message": "Parsing not configured"}
 
+    current_year = datetime.now(EST).year
     system_prompt = (
-        "You are a lesson schedule parser. Extract lesson entries from freeform text. "
-        "Return a JSON array only — no explanation. Each entry: "
-        "{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"student_name\": \"...\", "
-        "\"email\": \"...\" (or null), \"duration_min\": 30}. "
-        "Infer duration from context (e.g. '30min', '1 hour' = 60). Default 30 if unspecified. "
-        "Use 24-hour time. Return only valid JSON."
+        f"You are a lesson schedule parser. Today's year is {current_year}. "
+        "Extract every individual lesson entry from the schedule text. "
+        "Return a JSON array only — no explanation, no markdown, no code fences. Each entry: "
+        "{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"student_name\": \"First Last\", "
+        "\"email\": null, \"duration_min\": 30}. "
+        "Rules: "
+        "1. Date headers like 'WEDNESDAY 6/3' or 'TUES 6/9' apply to all lessons listed beneath them until the next header. Infer the year from context. "
+        "2. Times may lack colons — '645PM' means 6:45 PM, '11AM' means 11:00 AM. Convert to 24-hour HH:MM. "
+        "3. Student names are ALL CAPS on their own line followed by a time — capitalize them normally (e.g. 'MEL' → 'Mel'). "
+        "4. Ignore separator lines (___), notes in parentheses like (NO KATHERINE), and blank lines. "
+        "5. If no duration is given, default to 30. "
+        "6. Return only the raw JSON array."
     )
     client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=4096,
             system=system_prompt,
             messages=[{"role": "user", "content": raw_text}]
         )
