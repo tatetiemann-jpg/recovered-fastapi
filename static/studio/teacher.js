@@ -988,11 +988,14 @@ function renderStudentRow(s, familyName) {
 
 function paymentBadge(payments) {
     if (!payments || !payments.length) return `<span class="pay-badge pay-none">No payment record</span>`;
-    const overrun = payments.some(p => p.remaining < 0);
-    const nearzero = payments.some(p => p.remaining === 0 && p.lessons_paid > 0);
-    if (overrun) return `<span class="pay-badge pay-overrun">Payment needed</span>`;
-    if (nearzero) return `<span class="pay-badge pay-warn">Lessons used up</span>`;
-    return `<span class="pay-badge pay-ok">${payments.map(p => `${p.remaining}×${p.duration_min}min`).join(", ")} remaining</span>`;
+    // Only consider durations that have actual activity
+    const active = payments.filter(p => p.scheduled > 0 || p.lessons_paid > 0);
+    if (!active.length) return `<span class="pay-badge pay-none">No payment record</span>`;
+    if (active.some(p => p.remaining < 0)) return `<span class="pay-badge pay-overrun">Payment needed</span>`;
+    // remaining >= 0 for all active durations — fully paid or prepaid
+    const surplus = active.filter(p => p.remaining > 0);
+    if (!surplus.length) return `<span class="pay-badge pay-ok">Fully paid</span>`;
+    return `<span class="pay-badge pay-ok">${surplus.map(p => `${p.remaining}×${p.duration_min}min`).join(", ")} prepaid</span>`;
 }
 
 // ============================================================
@@ -1018,14 +1021,17 @@ function openStudentDetail(studentId) {
     if (!s.payments || !s.payments.length) {
         payEl.innerHTML = `<em class="hint">No payment records.</em>`;
     } else {
-        payEl.innerHTML = s.payments.map(p => {
-            const remaining = p.remaining;
-            let cls = remaining > 0 ? "pay-ok" : remaining === 0 ? "pay-warn" : "pay-overrun";
-            return `<div class="payment-row">
-                <strong>${p.duration_min} min:</strong>
-                <span class="pay-badge ${cls}">${p.lessons_paid} paid · ${p.scheduled} scheduled · ${remaining} remaining</span>
-            </div>`;
-        }).join("");
+        payEl.innerHTML = s.payments
+            .filter(p => p.scheduled > 0 || p.lessons_paid > 0)
+            .map(p => {
+                const remaining = p.remaining;
+                const cls = remaining >= 0 ? "pay-ok" : "pay-overrun";
+                const label = remaining > 0 ? `${remaining} prepaid` : remaining === 0 ? "Fully paid" : `${Math.abs(remaining)} owed`;
+                return `<div class="payment-row">
+                    <strong>${p.duration_min} min:</strong>
+                    <span class="pay-badge ${cls}">${p.lessons_paid} paid · ${p.scheduled} scheduled · ${label}</span>
+                </div>`;
+            }).join("");
     }
 
     document.getElementById("student-detail-modal").classList.remove("hidden");
