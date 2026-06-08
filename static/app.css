@@ -3975,3 +3975,243 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
   padding: 2px 10px;
 }
 
+/* ============================================================
+   STUDIO TEACHER DASHBOARD
+   ============================================================ */
+
+/* Calendar nav */
+.studio-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* Calendar grid */
+.studio-calendar {
+  overflow-x: auto;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  min-width: 280px;
+}
+.cal-weekday-header {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: var(--space-1) 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cal-weekday-header.cal-clickable {
+  cursor: pointer;
+  color: var(--accent);
+}
+.cal-weekday-header.cal-clickable:hover {
+  text-decoration: underline;
+}
+.cal-cell {
+  position: relative;
+  min-height: 48px;
+  padding: var(--space-1);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.cal-cell.cal-empty {
+  background: transparent;
+}
+.cal-cell.cal-unavailable {
+  background: var(--bg-sunken);
+  opacity: 0.45;
+}
+.cal-cell.cal-available {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.cal-cell.cal-available:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.cal-cell.cal-today .cal-day-num {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+}
+.cal-day-num {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.cal-dot {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 5px;
+  margin-top: auto;
+}
+.cal-dot-green {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.cal-dot-yellow {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Lesson cards */
+.lesson-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.lesson-card:last-child { border-bottom: none; }
+.lesson-card.lesson-past { opacity: 0.7; }
+.lesson-card-info { display: flex; flex-direction: column; gap: 2px; }
+.zoom-link {
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+/* Student list */
+.student-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+.student-row:last-child { border-bottom: none; }
+.student-row:hover { background: var(--bg-sunken); border-radius: var(--radius); padding-left: var(--space-2); }
+.student-family-block {
+  margin-bottom: var(--space-4);
+}
+.student-family-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: var(--space-1) 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: var(--space-1);
+}
+
+/* Payment badges */
+.pay-badge {
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 500;
+}
+.pay-ok    { background: var(--accent-soft); color: var(--accent); }
+.pay-warn  { background: #fef3c7; color: #92400e; }
+.pay-overrun { background: #fee2e2; color: #991b1b; }
+.pay-none  { background: var(--bg-sunken); color: var(--muted); }
+.payment-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+/* Student picker dropdown */
+.studio-student-picker { position: relative; }
+.student-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  z-index: 200;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.student-option {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.student-option:hover { background: var(--accent-soft); }
+
+/* Parse preview — grouped by student */
+.parse-student-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+.parse-student-header {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+}
+.parse-student-header label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 2px;
+}
+.parse-student-name-wrap { flex: 1; min-width: 140px; }
+.parse-student-email-wrap { flex: 2; min-width: 180px; }
+.parse-student-lessons { padding: var(--space-2) var(--space-3); }
+.parse-lesson-header {
+  display: grid;
+  grid-template-columns: 140px 110px 100px 1fr 60px;
+  gap: var(--space-2);
+  font-size: 0.72rem;
+  padding: var(--space-1) 0;
+  color: var(--muted);
+}
+.parse-lesson-row {
+  display: grid;
+  grid-template-columns: 140px 110px 100px 1fr 60px;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--border);
+}
+.parse-lesson-row input,
+.parse-lesson-row select {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+/* Stats row on student detail */
+.stats-row { display: flex; gap: var(--space-4); }
+.stats-row > div { text-align: center; }
+.payment-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+.payment-input-row:last-child { border-bottom: none; }
+.payment-input-row input[type="number"] { width: 70px; }
+
