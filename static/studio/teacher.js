@@ -924,41 +924,56 @@ function populateFamilySelect() {
 function renderStudentList(students) {
     const el = document.getElementById("studio-students-list");
     if (!el) return;
-    if (!students.length) {
-        el.innerHTML = `<em class="empty-note">No students yet. Add a student to get started.</em>`;
-        return;
-    }
 
-    // Group by family
-    const families = {};
+    // Build family map from students
+    const familiesWithMembers = {};
     const solos = [];
     students.forEach(s => {
         if (s.family_id) {
-            if (!families[s.family_id]) families[s.family_id] = { name: s.family_name, members: [] };
-            families[s.family_id].members.push(s);
+            if (!familiesWithMembers[s.family_id]) familiesWithMembers[s.family_id] = { name: s.family_name, members: [] };
+            familiesWithMembers[s.family_id].members.push(s);
         } else {
             solos.push(s);
         }
     });
 
+    // Merge in any families that exist but have no students yet
+    allFamilies.forEach(f => {
+        if (!familiesWithMembers[f.id]) {
+            familiesWithMembers[f.id] = { name: f.family_name, members: [] };
+        }
+    });
+
+    const familyList = Object.values(familiesWithMembers);
+    const hasFamilies = familyList.length > 0;
+
+    if (!hasFamilies && !solos.length) {
+        el.innerHTML = `<em class="empty-note">No students yet. Add a student to get started.</em>`;
+        return;
+    }
+
     let html = "";
-    const hasFamilies = Object.keys(families).length > 0;
 
     if (hasFamilies) {
         html += `<div class="student-section-header">Families</div>`;
-        Object.values(families).forEach(fam => {
+        familyList.forEach(fam => {
+            const count = fam.members.length;
             html += `<div class="student-family-block">
                 <div class="student-family-header"><strong>${escHtml(fam.name)}</strong>
-                    <span class="hint" style="font-weight:400"> · ${fam.members.length} student${fam.members.length !== 1 ? "s" : ""}</span>
+                    <span class="hint" style="font-weight:400"> · ${count} student${count !== 1 ? "s" : ""}</span>
                 </div>`;
-            fam.members.forEach(s => { html += renderStudentRow(s, fam.name); });
+            if (count) {
+                fam.members.forEach(s => { html += renderStudentRow(s); });
+            } else {
+                html += `<div class="empty-note" style="font-size:0.85rem;padding:var(--space-2) 0;">No students yet — add a student and assign them to this family.</div>`;
+            }
             html += `</div>`;
         });
     }
 
     if (solos.length) {
         html += `<div class="student-section-header" style="margin-top:${hasFamilies ? 'var(--space-4)' : '0'}">Individual Students</div>`;
-        solos.forEach(s => { html += renderStudentRow(s, null); });
+        solos.forEach(s => { html += renderStudentRow(s); });
     }
 
     el.innerHTML = html;
@@ -1262,8 +1277,12 @@ async function submitAddFamily() {
         });
         const data = await res.json();
         if (data.status === "success") {
-            document.getElementById("add-family-modal").classList.add("hidden");
+            msg.textContent = "Family created!";
             await loadStudents();
+            setTimeout(() => {
+                document.getElementById("add-family-modal").classList.add("hidden");
+                msg.textContent = "";
+            }, 800);
         } else {
             msg.textContent = data.message || "Failed.";
         }
