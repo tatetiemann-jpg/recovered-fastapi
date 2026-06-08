@@ -23,7 +23,6 @@
         <button class="tab-btn" data-tab="today">Today</button>
         <button class="tab-btn" data-tab="notes">Lesson Notes</button>
         <button class="tab-btn" data-tab="availability">Schedule</button>
-        <button class="tab-btn hidden" data-tab="schedule" id="schedule-lessons-tab-btn">Schedule Lessons</button>
         <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
     </nav>
 
@@ -110,26 +109,6 @@
             </div>
         </div>
 
-    </section>
-
-    <!-- ============================ -->
-    <!-- SCHEDULE LESSONS TAB (studio teachers only) -->
-    <!-- ============================ -->
-    <section class="tab-panel" data-tab-panel="schedule">
-        <div class="box">
-            <h2>Schedule Lessons</h2>
-            <p class="hint">Your regular weekly slots. Click any open slot to assign a student — the next 12 sessions will be booked automatically.</p>
-            <div class="schedule-duration-row">
-                <span class="hint">Slot length:</span>
-                <button type="button" class="slot-duration-chip active schedule-duration-chip" data-duration="30">30 min</button>
-                <button type="button" class="slot-duration-chip schedule-duration-chip" data-duration="45">45 min</button>
-                <button type="button" class="slot-duration-chip schedule-duration-chip" data-duration="60">60 min</button>
-                <button type="button" class="slot-duration-chip schedule-duration-chip" data-duration="90">90 min</button>
-            </div>
-            <div id="schedule-week-grid" class="schedule-week-grid">
-                <em class="empty-note">Loading&hellip;</em>
-            </div>
-        </div>
     </section>
 
     <!-- MESSAGES TAB -->
@@ -261,45 +240,6 @@
         </div>
 
         <p id="request-msg"></p>
-    </div>
-</div>
-
-<!-- ================= -->
-<!-- ASSIGN RECURRING SLOT MODAL -->
-<!-- ================= -->
-<div id="assign-slot-modal" class="modal-overlay hidden">
-    <div class="modal-card modal-large">
-        <h3 id="assign-slot-title">Assign Student</h3>
-        <p id="assign-slot-subtitle" class="hint"></p>
-
-        <div class="scope-selector">
-            <label class="scope-option">
-                <input type="radio" name="assign-student-type" value="existing" checked>
-                Org student
-            </label>
-            <label class="scope-option">
-                <input type="radio" name="assign-student-type" value="external">
-                External (not on CountrPnt)
-            </label>
-        </div>
-
-        <div id="assign-existing-student">
-            <input type="text" id="assign-student-search" placeholder="Filter students&hellip;">
-            <div id="assign-student-list" class="dm-recipient-pills"></div>
-        </div>
-
-        <div id="assign-external-student" class="hidden">
-            <label for="assign-ext-name">Name</label>
-            <input type="text" id="assign-ext-name" placeholder="Full name">
-            <label for="assign-ext-email">Email (optional)</label>
-            <input type="email" id="assign-ext-email" placeholder="email@example.com">
-        </div>
-
-        <div class="modal-actions">
-            <button type="button" id="confirm-assign-btn">Assign &amp; Schedule 12 Weeks</button>
-            <button type="button" id="close-assign-modal-btn" class="subtle-btn">Cancel</button>
-        </div>
-        <p id="assign-modal-msg" class="hint"></p>
     </div>
 </div>
 

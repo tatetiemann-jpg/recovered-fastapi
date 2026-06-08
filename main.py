@@ -620,20 +620,11 @@ def find_user(username: str, role: Optional[str] = None):
         }
 
 def is_booking_window_open_for(target_date, tz=None, open_hour=21, close_hour=18) -> bool:
-    """
-    Returns True if the booking window for `target_date` is currently open.
-
-    Booking window rules:
-      - Opens at `open_hour`:00 PM the day before target_date (default 9 PM)
-      - Closes at `close_hour`:00 on target_date itself (default 6 PM)
-      - All times in the org's local timezone (defaults to US/Eastern)
-    """
+    """Day-of only: window is open on the same calendar day, before close_hour."""
     if tz is None:
         tz = EST
     now_local = datetime.now(tz)
-    window_open = tz.localize(datetime.combine(target_date - timedelta(days=1), dtime(open_hour, 0)))
-    window_close = tz.localize(datetime.combine(target_date, dtime(close_hour, 0)))
-    return window_open <= now_local <= window_close
+    return now_local.date() == target_date and now_local.hour < close_hour
 
 def get_student_rehearsal_conflicts(student_id: int, date_obj, time_obj, tz=None) -> bool:
     """
@@ -3940,20 +3931,10 @@ def get_teacher_viewing_date(tz=None):
     return now_local.date()
 
 def get_bookable_date(tz=None, close_hour=18):
-    """
-    Returns the date the dashboard should be oriented toward.
-
-    Once the booking window closes (default 6 PM / close_hour), the dashboard
-    switches to showing the next day as "coming up next."
-    Whether booking is actually OPEN is a separate question — use
-    is_booking_window_open_for() for that.
-    """
+    """Day-of only: always returns today in the org's timezone."""
     if tz is None:
         tz = EST
-    now_local = datetime.now(tz)
-    if now_local.hour >= close_hour:
-        return now_local.date() + timedelta(days=1)
-    return now_local.date()
+    return datetime.now(tz).date()
 
 @app.get("/teacher/today")
 def teacher_today(request: Request):
@@ -4684,8 +4665,7 @@ def student_today(request: Request):
     now_local = datetime.now(org_tz)
     target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    # "Pending" means the dashboard shows the next day, but booking hasn't opened yet.
-    booking_pending = (not booking_open) and (cfg["booking_close_hour"] <= now_local.hour < cfg["booking_open_hour"])
+    booking_pending = False  # day-of only: no pre-booking window
 
     # Today's rehearsals for this student
     with db_cursor() as cur:
@@ -5078,7 +5058,7 @@ def student_book(payload: dict, request: Request):
         if not is_booking_window_open_for(lesson_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
             return {
                 "status": "fail",
-                "message": f"Booking is closed. The window opens at {cfg['booking_open_hour']}:00 the day before and closes at {cfg['booking_close_hour']}:00."
+                "message": f"Booking is closed. Booking is open until {cfg['booking_close_hour']}:00 on the day of your lesson."
             }
 
         # Block past times today
@@ -5291,7 +5271,7 @@ def orchestra_member_today(request: Request):
     now_local = datetime.now(org_tz)
     target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    booking_pending = (not booking_open) and (cfg["booking_close_hour"] <= now_local.hour < cfg["booking_open_hour"])
+    booking_pending = False  # day-of only: no pre-booking window
 
     org_id = member["org_id"]
     member_instrument = (member.get("instrument") or "").strip().lower()
@@ -8117,7 +8097,7 @@ def choir_member_today_booking(request: Request):
     now_local = datetime.now(org_tz)
     target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    booking_pending = (not booking_open) and (cfg["booking_close_hour"] <= now_local.hour < cfg["booking_open_hour"])
+    booking_pending = False  # day-of only: no pre-booking window
 
     org_id = user["org_id"]
     teachers = []
@@ -8226,7 +8206,7 @@ def choir_member_book(payload: dict, request: Request):
         return {"status": "fail", "message": "Lessons can only be booked for the current bookable day"}
 
     if not is_booking_window_open_for(lesson_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
-        return {"status": "fail", "message": f"Booking is closed. The window opens at {cfg['booking_open_hour']}:00 the day before and closes at {cfg['booking_close_hour']}:00."}
+        return {"status": "fail", "message": f"Booking is closed. Booking is open until {cfg['booking_close_hour']}:00 on the day of your lesson."}
 
     slot_dt = org_tz.localize(datetime.combine(lesson_date, lesson_time))
     if slot_dt <= datetime.now(org_tz):

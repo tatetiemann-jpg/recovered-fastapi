@@ -479,16 +479,9 @@ function renderBookingSection(data) {
         return;
     }
 
-    if (data.booking_pending) {
-        const dayName = formatTodayHeader(data.date);
-        statusEl.textContent = `Booking for ${dayName} opens tonight at 9 PM.`;
-        list.innerHTML = `<em class="empty-note">Come back at 9 PM to book.</em>`;
-        return;
-    }
-
     if (!data.booking_open) {
-        statusEl.textContent = "Booking is currently closed. It opens at 9 PM the day before and closes at 6 PM.";
-        list.innerHTML = `<em class="empty-note">Come back when the window opens.</em>`;
+        statusEl.textContent = "Booking is closed for today. Come back tomorrow to book.";
+        list.innerHTML = `<em class="empty-note">Booking is open until 6 PM on the day of your lesson.</em>`;
         return;
     }
 
