@@ -1026,10 +1026,11 @@ function openStudentDetail(studentId) {
             .map(p => {
                 const remaining = p.remaining;
                 const cls = remaining >= 0 ? "pay-ok" : "pay-overrun";
-                const label = remaining > 0 ? `${remaining} prepaid` : remaining === 0 ? "Fully paid" : `${Math.abs(remaining)} owed`;
+                const outstanding = remaining < 0 ? Math.abs(remaining) : 0;
+                const label = remaining > 0 ? `${remaining} prepaid` : remaining === 0 ? "Fully paid" : `${outstanding} outstanding`;
                 return `<div class="payment-row">
                     <strong>${p.duration_min} min:</strong>
-                    <span class="pay-badge ${cls}">${p.lessons_paid} paid · ${p.scheduled} scheduled · ${label}</span>
+                    <span class="pay-badge ${cls}">${p.scheduled} scheduled · ${p.lessons_paid} paid · ${label}</span>
                 </div>`;
             }).join("");
     }
