@@ -4191,6 +4191,19 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 .student-option:hover { background: var(--accent-soft); }
 
 /* Parse preview — grouped by student */
+.parse-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  background: var(--color-warning-bg, #fffbeb);
+  border: 1px solid var(--color-warning-border, #fcd34d);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  color: var(--color-warning-text, #92400e);
+}
+
 .parse-student-group {
   border: 1px solid var(--border);
   border-radius: var(--radius);
