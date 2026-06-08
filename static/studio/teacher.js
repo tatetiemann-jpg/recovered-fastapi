@@ -47,9 +47,99 @@ function initLogout() {
         await fetch(`${API}/logout`, { method: "POST", credentials: "include" });
         location.href = "/login";
     });
+    // Show studio settings section when modal opens and populate fields
     document.getElementById("open-edit-account-btn")?.addEventListener("click", () => {
-        document.getElementById("edit-account-modal")?.classList.remove("hidden");
+        document.getElementById("studio-settings-section")?.classList.remove("hidden");
+        loadStudioSettingsFields();
     });
+    // Save studio settings alongside account changes
+    document.getElementById("save-account-btn")?.addEventListener("click", saveStudioSettings);
+    // Wire up rate checkboxes to show/hide price inputs
+    document.querySelectorAll(".edit-rate-check").forEach(cb => {
+        cb.addEventListener("change", () => {
+            const wrap = cb.closest(".rate-row").querySelector(".rate-price-wrap");
+            wrap.classList.toggle("hidden", !cb.checked);
+            if (cb.checked) wrap.querySelector(".edit-rate-input").focus();
+        });
+    });
+}
+
+async function loadStudioSettingsFields() {
+    try {
+        const res = await fetch(`${API}/studio-teacher/settings`, { credentials: "include" });
+        const s = await res.json();
+
+        // Payment handles
+        document.getElementById("edit-pay-venmo").value  = s.payment_venmo  || "";
+        document.getElementById("edit-pay-zelle").value  = s.payment_zelle  || "";
+        document.getElementById("edit-pay-cashapp").value = s.payment_cashapp || "";
+        document.getElementById("edit-pay-paypal").value = s.payment_paypal  || "";
+
+        // Cancellation policy
+        document.getElementById("edit-cancel-hours").value = s.cancel_hours ?? "";
+        document.getElementById("edit-cancel-charge").checked = !!s.cancel_charge;
+        document.getElementById("edit-cancel-free-count").value = s.free_cancels_per_student ?? 0;
+
+        // Rates — check the box and fill the price for each stored duration
+        const rateMap = {};
+        (s.lesson_rates || []).forEach(r => { rateMap[r.duration_min] = r.rate_cents; });
+        document.querySelectorAll(".edit-rate-check").forEach(cb => {
+            const dur = parseInt(cb.dataset.dur);
+            const wrap = cb.closest(".rate-row").querySelector(".rate-price-wrap");
+            const input = wrap.querySelector(".edit-rate-input");
+            if (rateMap[dur] !== undefined) {
+                cb.checked = true;
+                wrap.classList.remove("hidden");
+                input.value = (rateMap[dur] / 100).toFixed(0);
+            } else {
+                cb.checked = false;
+                wrap.classList.add("hidden");
+                input.value = "";
+            }
+        });
+    } catch (e) {
+        console.error("Failed to load studio settings:", e);
+    }
+}
+
+async function saveStudioSettings() {
+    const lesson_rates = [];
+    document.querySelectorAll(".edit-rate-check:checked").forEach(cb => {
+        const dur = parseInt(cb.dataset.dur);
+        const rateInput = cb.closest(".rate-row").querySelector(".edit-rate-input");
+        const rate = parseFloat(rateInput?.value || "0") || 0;
+        lesson_rates.push({ duration_min: dur, rate });
+    });
+
+    const payload = {
+        payment_venmo:   document.getElementById("edit-pay-venmo")?.value.trim()   || null,
+        payment_zelle:   document.getElementById("edit-pay-zelle")?.value.trim()   || null,
+        payment_cashapp: document.getElementById("edit-pay-cashapp")?.value.trim() || null,
+        payment_paypal:  document.getElementById("edit-pay-paypal")?.value.trim()  || null,
+        lesson_rates,
+        cancel_hours: parseInt(document.getElementById("edit-cancel-hours")?.value || "0") || null,
+        cancel_charge: document.getElementById("edit-cancel-charge")?.checked || false,
+        free_cancels_per_student: parseInt(document.getElementById("edit-cancel-free-count")?.value || "0") || 0,
+    };
+
+    const msgEl = document.getElementById("studio-settings-msg");
+    try {
+        const res = await fetch(`${API}/studio-teacher/settings`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.status === "success" && msgEl) {
+            msgEl.textContent = "Studio settings saved.";
+            msgEl.className = "hint success-msg";
+            setTimeout(() => { if (msgEl) { msgEl.textContent = ""; msgEl.className = "hint"; } }, 2000);
+        }
+    } catch (e) {
+        console.error("Failed to save studio settings:", e);
+        if (msgEl) { msgEl.textContent = "Failed to save settings."; msgEl.className = "hint error-msg"; }
+    }
 }
 
 // ============================================================
@@ -293,6 +383,20 @@ function renderCalendar(year, month, availDays, lessonData) {
 // LESSON MODAL (single day)
 // ============================================================
 
+function updateLessonSummary() {
+    const dur = getActiveChip("lesson-duration-chips") || "30";
+    const el = document.getElementById("lesson-summary");
+    if (el) el.textContent = `${dur} min lesson selected`;
+}
+
+function updateMwSummary() {
+    const dur = getActiveChip("mw-duration-chips") || "30";
+    const count = getActiveChip("mw-count-chips") || "1";
+    const dayName = lessonModalWeekday !== null ? DAY_NAMES[lessonModalWeekday] + "s" : "selected day";
+    const el = document.getElementById("mw-summary");
+    if (el) el.textContent = `Scheduling ${count} × ${dur} min lesson${parseInt(count) > 1 ? "s" : ""} on ${dayName}`;
+}
+
 async function openLessonModal(dateStr) {
     lessonModalDate = dateStr;
     selectedStudentId = null;
@@ -309,8 +413,8 @@ async function openLessonModal(dateStr) {
     document.getElementById("lesson-overrun-warning").classList.add("hidden");
     document.getElementById("lesson-modal-msg").textContent = "";
 
-    // Reset duration chips to 30
     setActiveChip("lesson-duration-chips", "30");
+    updateLessonSummary();
 
     document.getElementById("lesson-modal").classList.remove("hidden");
 
@@ -340,6 +444,7 @@ function initLessonModal() {
         const chip = e.target.closest(".chip");
         if (!chip) return;
         setActiveChip("lesson-duration-chips", chip.dataset.dur);
+        updateLessonSummary();
         if (lessonModalDate) fetchAndPopulateSlots("lesson-time-select", lessonModalDate, chip.dataset.dur);
         if (selectedStudentId) updateBalanceDisplay(selectedStudentId, chip.dataset.dur, "lesson-student-balance", "lesson-overrun-warning");
     });
@@ -479,6 +584,7 @@ async function openWeekdayModal(dow) {
     document.getElementById("mw-modal-msg").textContent = "";
     setActiveChip("mw-duration-chips", "30");
     setActiveChip("mw-count-chips", "1");
+    updateMwSummary();
 
     // Load slots for next occurrence of this weekday
     const nextDate = nextWeekdayDate(calYear, calMonth, dow);
@@ -519,6 +625,7 @@ function initMultiweekModal() {
         const chip = e.target.closest(".chip");
         if (!chip) return;
         setActiveChip("mw-duration-chips", chip.dataset.dur);
+        updateMwSummary();
         const firstDate = nextWeekdayDate(calYear, calMonth, lessonModalWeekday);
         if (firstDate) fetchAndPopulateSlots("mw-time-select", firstDate, chip.dataset.dur);
         if (mwSelectedStudentId) updateBalanceDisplay(mwSelectedStudentId, chip.dataset.dur, "mw-student-balance", null);
@@ -528,6 +635,7 @@ function initMultiweekModal() {
         const chip = e.target.closest(".chip");
         if (!chip) return;
         setActiveChip("mw-count-chips", chip.dataset.count);
+        updateMwSummary();
     });
 
     const mwSearch = document.getElementById("mw-student-search");
@@ -1032,6 +1140,21 @@ function openStudentDetail(studentId) {
     document.getElementById("sd-family").textContent = s.family_name ? `Family: ${s.family_name}` : "";
     document.getElementById("sd-present-count").textContent = s.attendance?.present ?? 0;
     document.getElementById("sd-absent-count").textContent = s.attendance?.absent ?? 0;
+
+    // Free cancel status
+    const fcEl = document.getElementById("sd-free-cancel");
+    if (fcEl) {
+        const allowed = s.free_cancels_allowed || 0;
+        const used = s.free_cancels_used || 0;
+        if (allowed > 0) {
+            const available = used < allowed;
+            fcEl.textContent = available ? "Free cancel: Available" : "Free cancel: Used";
+            fcEl.className = "hint " + (available ? "pay-ok" : "pay-warn");
+            fcEl.style.display = "";
+        } else {
+            fcEl.style.display = "none";
+        }
+    }
     document.getElementById("sd-msg").textContent = "";
     document.getElementById("sd-edit-form").classList.add("hidden");
     document.getElementById("sd-edit-msg").textContent = "";

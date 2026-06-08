@@ -213,9 +213,12 @@ async def lifespan(app: FastAPI):
                     payment_paypal  TEXT,
                     lesson_rates    JSONB NOT NULL DEFAULT '[]'::jsonb,
                     cancel_hours    INTEGER,
-                    cancel_charge   BOOLEAN NOT NULL DEFAULT FALSE
+                    cancel_charge   BOOLEAN NOT NULL DEFAULT FALSE,
+                    free_cancels_per_student INTEGER NOT NULL DEFAULT 0
                 );
             """)
+            cur.execute("ALTER TABLE studio_teacher_settings ADD COLUMN IF NOT EXISTS free_cancels_per_student INTEGER NOT NULL DEFAULT 0;")
+            cur.execute("ALTER TABLE studio_students ADD COLUMN IF NOT EXISTS free_cancels_used INTEGER NOT NULL DEFAULT 0;")
             # Cancel future booked lessons whose recurring slot has been deactivated
             cur.execute("""
                 UPDATE lessons
@@ -2218,21 +2221,23 @@ def accept_invite(payload: dict):
             except (ValueError, TypeError):
                 cancel_hours = None
             cancel_charge = bool(studio.get("cancel_charge", False))
+            free_cancels = int(studio.get("free_cancels_per_student") or 0)
             cur.execute("""
                 INSERT INTO studio_teacher_settings
                     (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                     lesson_rates, cancel_hours, cancel_charge)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                     lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (teacher_id) DO UPDATE SET
-                    payment_zelle   = EXCLUDED.payment_zelle,
-                    payment_venmo   = EXCLUDED.payment_venmo,
-                    payment_cashapp = EXCLUDED.payment_cashapp,
-                    payment_paypal  = EXCLUDED.payment_paypal,
-                    lesson_rates    = EXCLUDED.lesson_rates,
-                    cancel_hours    = EXCLUDED.cancel_hours,
-                    cancel_charge   = EXCLUDED.cancel_charge
+                    payment_zelle             = EXCLUDED.payment_zelle,
+                    payment_venmo             = EXCLUDED.payment_venmo,
+                    payment_cashapp           = EXCLUDED.payment_cashapp,
+                    payment_paypal            = EXCLUDED.payment_paypal,
+                    lesson_rates              = EXCLUDED.lesson_rates,
+                    cancel_hours              = EXCLUDED.cancel_hours,
+                    cancel_charge             = EXCLUDED.cancel_charge,
+                    free_cancels_per_student  = EXCLUDED.free_cancels_per_student
             """, (user_id, zelle, venmo, cashapp, paypal, _json.dumps(rates),
-                  cancel_hours, cancel_charge))
+                  cancel_hours, cancel_charge, free_cancels))
 
     return {"status": "success", "role": role}
 
@@ -9112,22 +9117,24 @@ def studio_teacher_settings_get(request: Request):
     with db_cursor() as cur:
         cur.execute("""
             SELECT payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                   lesson_rates, cancel_hours, cancel_charge
+                   lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student
             FROM studio_teacher_settings WHERE teacher_id = %s
         """, (teacher["id"],))
         row = cur.fetchone()
     if not row:
         return {"payment_zelle": None, "payment_venmo": None,
                 "payment_cashapp": None, "payment_paypal": None,
-                "lesson_rates": [], "cancel_hours": None, "cancel_charge": False}
+                "lesson_rates": [], "cancel_hours": None, "cancel_charge": False,
+                "free_cancels_per_student": 0}
     return {
-        "payment_zelle":   row[0],
-        "payment_venmo":   row[1],
-        "payment_cashapp": row[2],
-        "payment_paypal":  row[3],
-        "lesson_rates":    row[4] or [],
-        "cancel_hours":    row[5],
-        "cancel_charge":   row[6],
+        "payment_zelle":              row[0],
+        "payment_venmo":              row[1],
+        "payment_cashapp":            row[2],
+        "payment_paypal":             row[3],
+        "lesson_rates":               row[4] or [],
+        "cancel_hours":               row[5],
+        "cancel_charge":              row[6],
+        "free_cancels_per_student":   row[7] or 0,
     }
 
 
@@ -9155,22 +9162,24 @@ def studio_teacher_settings_update(payload: dict, request: Request):
     except (ValueError, TypeError):
         cancel_hours = None
     cancel_charge = bool(payload.get("cancel_charge", False))
+    free_cancels = int(payload.get("free_cancels_per_student") or 0)
     with db_cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO studio_teacher_settings
                 (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                 lesson_rates, cancel_hours, cancel_charge)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                 lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (teacher_id) DO UPDATE SET
-                payment_zelle   = EXCLUDED.payment_zelle,
-                payment_venmo   = EXCLUDED.payment_venmo,
-                payment_cashapp = EXCLUDED.payment_cashapp,
-                payment_paypal  = EXCLUDED.payment_paypal,
-                lesson_rates    = EXCLUDED.lesson_rates,
-                cancel_hours    = EXCLUDED.cancel_hours,
-                cancel_charge   = EXCLUDED.cancel_charge
+                payment_zelle             = EXCLUDED.payment_zelle,
+                payment_venmo             = EXCLUDED.payment_venmo,
+                payment_cashapp           = EXCLUDED.payment_cashapp,
+                payment_paypal            = EXCLUDED.payment_paypal,
+                lesson_rates              = EXCLUDED.lesson_rates,
+                cancel_hours              = EXCLUDED.cancel_hours,
+                cancel_charge             = EXCLUDED.cancel_charge,
+                free_cancels_per_student  = EXCLUDED.free_cancels_per_student
         """, (teacher["id"], zelle, venmo, cashapp, paypal, _json.dumps(rates),
-              cancel_hours, cancel_charge))
+              cancel_hours, cancel_charge, free_cancels))
     return {"status": "success"}
 
 
@@ -9638,24 +9647,49 @@ def studio_teacher_cancel_lesson(lesson_id: int, request: Request):
         cur.execute("""
             UPDATE lessons SET status = 'cancelled', cancelled_at = NOW()
             WHERE id = %s AND teacher_id = %s AND status = 'booked'
-            RETURNING external_name, external_email, lesson_date, lesson_time, duration_min
+            RETURNING external_name, external_email, lesson_date, lesson_time, duration_min, studio_student_id
         """, (lesson_id, teacher["id"]))
         row = cur.fetchone()
-    if not row:
-        return {"status": "fail", "message": "Lesson not found"}
+        if not row:
+            return {"status": "fail", "message": "Lesson not found"}
 
-    ext_name, ext_email, ldate, ltime, dur = row
+        ext_name, ext_email, ldate, ltime, dur, ss_id = row
+        free_cancel_used = False
+
+        if ss_id:
+            # Check teacher's free cancel allowance
+            cur.execute(
+                "SELECT free_cancels_per_student FROM studio_teacher_settings WHERE teacher_id = %s",
+                (teacher["id"],)
+            )
+            settings_row = cur.fetchone()
+            allowed = settings_row[0] if settings_row else 0
+            if allowed > 0:
+                cur.execute(
+                    "SELECT free_cancels_used FROM studio_students WHERE id = %s",
+                    (ss_id,)
+                )
+                used_row = cur.fetchone()
+                used = used_row[0] if used_row else 0
+                if used < allowed:
+                    cur.execute(
+                        "UPDATE studio_students SET free_cancels_used = free_cancels_used + 1 WHERE id = %s",
+                        (ss_id,)
+                    )
+                    free_cancel_used = True
+
     if ext_email:
         date_label = ldate.strftime("%A, %B %-d")
-        time_label = ltime.strftime("%H:%M") if ltime else ""
+        time_label = ltime.strftime("%-I:%M %p") if ltime else ""
+        cancel_note = " (free cancellation applied)" if free_cancel_used else ""
         html = (
             f"<p>Hi {ext_name or 'there'},</p>"
-            f"<p>Your {dur}-minute lesson on <strong>{date_label} at {time_label}</strong> has been cancelled.</p>"
+            f"<p>Your {dur}-minute lesson on <strong>{date_label} at {time_label}</strong> has been cancelled{cancel_note}.</p>"
             f"<p>— {teacher.get('fullname', 'Your teacher')}</p>"
         )
-        text = f"Hi {ext_name or 'there'},\nYour lesson on {date_label} at {time_label} has been cancelled."
+        text = f"Hi {ext_name or 'there'},\nYour lesson on {date_label} at {time_label} has been cancelled{cancel_note}."
         send_email(ext_email, "Lesson cancelled — CountrPnt", html, text)
-    return {"status": "success"}
+    return {"status": "success", "free_cancel_used": free_cancel_used}
 
 
 @app.patch("/studio-teacher/lesson/{lesson_id}/attendance")
@@ -9726,7 +9760,8 @@ def studio_teacher_students(request: Request):
     with db_cursor() as cur:
         cur.execute("""
             SELECT ss.id, ss.name, ss.email, ss.parent_name, ss.parent_email, ss.family_id,
-                   sf.family_name, sf.parent_name AS fam_parent_name, sf.parent_email AS fam_parent_email
+                   sf.family_name, sf.parent_name AS fam_parent_name, sf.parent_email AS fam_parent_email,
+                   ss.free_cancels_used
             FROM studio_students ss
             LEFT JOIN studio_families sf ON sf.id = ss.family_id
             WHERE ss.teacher_id = %s
@@ -9772,9 +9807,18 @@ def studio_teacher_students(request: Request):
     for ss_id, dur, cnt in scheduled_rows:
         scheduled_by_student.setdefault(ss_id, {})[dur] = cnt
 
+    # Get teacher's free cancel allowance once
+    with db_cursor() as cur2:
+        cur2.execute(
+            "SELECT free_cancels_per_student FROM studio_teacher_settings WHERE teacher_id = %s",
+            (teacher["id"],)
+        )
+        fc_row = cur2.fetchone()
+    free_cancels_allowed = fc_row[0] if fc_row else 0
+
     out = []
     for r in student_rows:
-        ss_id, name, email, p_name, p_email, fam_id, fam_name, fam_p_name, fam_p_email = r
+        ss_id, name, email, p_name, p_email, fam_id, fam_name, fam_p_name, fam_p_email, free_cancels_used = r
 
         attendance = att_rows.get(ss_id, {"present": 0, "absent": 0})
 
@@ -9806,6 +9850,8 @@ def studio_teacher_students(request: Request):
             "family_name": fam_name,
             "attendance": {"present": int(attendance["present"]), "absent": int(attendance["absent"])},
             "payments": payments,
+            "free_cancels_used": free_cancels_used or 0,
+            "free_cancels_allowed": free_cancels_allowed,
         })
     return out
 

@@ -113,6 +113,7 @@
             <button class="chip" data-dur="60">60 min</button>
             <button class="chip" data-dur="90">90 min</button>
         </div>
+        <p id="lesson-summary" class="hint" style="margin:-var(--space-2) 0 var(--space-2);"></p>
 
         <label>Time</label>
         <select id="lesson-time-select"><option value="">— select —</option></select>
@@ -173,6 +174,7 @@
             <button class="chip" data-count="3">3</button>
             <button class="chip" data-count="4">4</button>
         </div>
+        <p id="mw-summary" class="hint" style="margin:-var(--space-1) 0 var(--space-3);font-weight:500;"></p>
 
         <div class="modal-actions">
             <button id="mw-submit-btn">Schedule</button>
@@ -350,6 +352,7 @@
             <div><strong id="sd-present-count">0</strong><br><span class="hint">Attended</span></div>
             <div><strong id="sd-absent-count">0</strong><br><span class="hint">Missed</span></div>
         </div>
+        <p id="sd-free-cancel" class="hint" style="display:none;margin:0 0 var(--space-2);"></p>
 
         <h4>Payment Summary</h4>
         <div id="sd-payment-summary"><em class="hint">No payment records.</em></div>

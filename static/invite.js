@@ -151,6 +151,7 @@
                 lesson_rates,
                 cancel_hours: parseInt(document.getElementById("cancel-hours")?.value || "0") || null,
                 cancel_charge: document.getElementById("cancel-charge")?.checked || false,
+                free_cancels_per_student: parseInt(document.getElementById("cancel-free-count")?.value || "0") || 0,
             };
         }
 
