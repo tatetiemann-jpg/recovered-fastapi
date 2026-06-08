@@ -636,7 +636,7 @@ function renderParsePreview(lessons) {
             <td><input class="pr-date" type="date" value="${escHtml(l.date || "")}"></td>
             <td><input class="pr-time" type="time" value="${escHtml(l.time || "")}"></td>
             <td><input class="pr-name" type="text" placeholder="Full name" value="${escHtml(l.student_name || "")}" style="min-width:120px;"></td>
-            <td><input class="pr-email" type="email" placeholder="email (optional)" value="${escHtml(l.email || "")}" style="min-width:140px;"></td>
+            <td><input class="pr-email" type="email" placeholder="email — required to contact student" value="${escHtml(l.email || "")}" style="min-width:160px;${!l.email ? 'border-color:var(--color-warning,#b45309);' : ''}"></td>
             <td>
                 <select class="pr-dur">
                     <option value="30" ${(l.duration_min||30)==30?"selected":""}>30 min</option>
