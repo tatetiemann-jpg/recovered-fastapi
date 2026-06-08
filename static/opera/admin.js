@@ -2183,11 +2183,11 @@ async function sendInvite() {
             msg.classList.add("success-msg");
 
             // Clear form, refresh list
-            document.getElementById("invite-email").value = "";
-            document.getElementById("invite-fullname-hint").value = "";
-            const orgNameEl = document.getElementById("invite-org-name");
+            ["invite-email", "invite-fullname-hint", "invite-org-name", "invite-org-logo"].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = "";
+            });
             const orgSlugEl = document.getElementById("invite-org-slug");
-            if (orgNameEl) orgNameEl.value = "";
             if (orgSlugEl) { orgSlugEl.value = ""; delete orgSlugEl.dataset.manuallyEdited; }
             loadInvitations();
         } else {
