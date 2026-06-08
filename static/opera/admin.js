@@ -2124,6 +2124,7 @@ async function sendInvite() {
     const orgName = document.getElementById("invite-org-name")?.value.trim() || "";
     const orgSlug = document.getElementById("invite-org-slug")?.value.trim() || "";
     const orgType = document.getElementById("invite-org-type")?.value || "opera";
+    const orgLogoUrl = document.getElementById("invite-org-logo")?.value.trim() || null;
 
     // Lesson config fields
     const lessonsEnabled = document.getElementById("invite-lessons-enabled")?.checked || false;
@@ -2162,6 +2163,7 @@ async function sendInvite() {
                 org_name: orgName || null,
                 org_slug: orgSlug || null,
                 org_type: orgType || null,
+                org_logo_url: orgLogoUrl,
                 lessons_enabled: lessonsEnabled,
                 lesson_durations: lessonDurations,
                 lesson_max_per_day: lessonMaxPerDay,

@@ -129,6 +129,7 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lesson_cancellation_notice_min INTEGER DEFAULT 60;")
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lesson_has_lunch_break BOOLEAN DEFAULT TRUE;")
             cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS lesson_max_per_teacher INTEGER DEFAULT 5;")
+            cur.execute("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;")
             cur.execute("ALTER TABLE lessons ALTER COLUMN student_id DROP NOT NULL;")
             cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS external_name TEXT;")
             cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS external_email TEXT;")
@@ -1338,11 +1339,14 @@ def me(request: Request):
     if not user:
         return {"logged_in": False}
     org_name = None
+    org_logo_url = None
     if user.get("org_id"):
         with db_cursor() as cur:
-            cur.execute("SELECT name FROM organizations WHERE id = %s", (user["org_id"],))
+            cur.execute("SELECT name, logo_url FROM organizations WHERE id = %s", (user["org_id"],))
             row = cur.fetchone()
-        org_name = row[0] if row else None
+        if row:
+            org_name = row[0]
+            org_logo_url = row[1]
     return {
         "logged_in": True,
         "username": user["username"],
@@ -1351,6 +1355,7 @@ def me(request: Request):
         "email_verified": user.get("email_verified", True),
         "theme": user.get("theme", "queen-of-the-night"),
         "org_name": org_name,
+        "org_logo_url": org_logo_url,
         "org_type": user.get("org_type", "opera"),
         "section_id": user.get("section_id"),
     }
@@ -1880,6 +1885,7 @@ def admin_invite(payload: dict, request: Request):
     # system_admin inviting a head_admin can specify (or create) an org for them
     org_name = (payload.get("org_name") or "").strip()
     org_slug = (payload.get("org_slug") or "").strip().lower()
+    org_logo_url = (payload.get("org_logo_url") or "").strip() or None
 
     new_org_type = (payload.get("org_type") or "opera").strip()
     if new_org_type not in ("opera", "choir", "studio"):
@@ -1903,19 +1909,19 @@ def admin_invite(payload: dict, request: Request):
         existing = get_org_id(org_slug)
         if existing:
             org_id = existing
-            # Update org_type and lesson config if supplied
+            # Update org_type, lesson config, and logo if supplied
             with db_cursor(commit=True) as cur:
                 cur.execute("""
                     UPDATE organizations SET org_type=%s, lessons_enabled=%s,
                         lesson_durations=%s, lesson_max_per_day=%s,
                         lesson_booking_open_hour=%s, lesson_booking_close_hour=%s,
                         lesson_cancellation_notice_min=%s, lesson_has_lunch_break=%s,
-                        lesson_max_per_teacher=%s
+                        lesson_max_per_teacher=%s, logo_url=COALESCE(%s, logo_url)
                     WHERE id=%s
                 """, (new_org_type, lessons_enabled, lesson_durations, lesson_max_per_day,
                       lesson_booking_open_hour, lesson_booking_close_hour,
                       lesson_cancellation_notice_min, lesson_has_lunch_break,
-                      lesson_max_per_teacher, org_id))
+                      lesson_max_per_teacher, org_logo_url, org_id))
         elif org_name:
             # Create the org on the fly with the specified type and lesson config
             with db_cursor(commit=True) as cur:
@@ -1923,14 +1929,14 @@ def admin_invite(payload: dict, request: Request):
                     INSERT INTO organizations (name, slug, org_type, lessons_enabled,
                         lesson_durations, lesson_max_per_day, lesson_booking_open_hour,
                         lesson_booking_close_hour, lesson_cancellation_notice_min,
-                        lesson_has_lunch_break, lesson_max_per_teacher)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        lesson_has_lunch_break, lesson_max_per_teacher, logo_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
                     RETURNING id
                 """, (org_name, org_slug, new_org_type, lessons_enabled,
                       lesson_durations, lesson_max_per_day, lesson_booking_open_hour,
                       lesson_booking_close_hour, lesson_cancellation_notice_min,
-                      lesson_has_lunch_break, lesson_max_per_teacher))
+                      lesson_has_lunch_break, lesson_max_per_teacher, org_logo_url))
                 org_id = cur.fetchone()[0]
             _org_id_cache[org_slug] = org_id
         else:

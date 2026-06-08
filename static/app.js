@@ -36,9 +36,13 @@ async function loadMe() {
 
         const el = document.getElementById("welcome");
         if (el && FULLNAME) {
-            el.textContent = data.org_name
-                ? `Welcome, ${FULLNAME} — ${data.org_name}`
-                : `Welcome, ${FULLNAME}`;
+            if (data.org_logo_url) {
+                el.innerHTML = `<img src="${data.org_logo_url}" alt="${data.org_name || ''}" class="org-logo"> Welcome, ${FULLNAME}${data.org_name ? ` — ${data.org_name}` : ""}`;
+            } else {
+                el.textContent = data.org_name
+                    ? `Welcome, ${FULLNAME} — ${data.org_name}`
+                    : `Welcome, ${FULLNAME}`;
+            }
         }
 
         // Show "please verify your email" banner if needed
