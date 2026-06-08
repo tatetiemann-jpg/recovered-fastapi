@@ -9707,11 +9707,15 @@ def studio_teacher_mark_attendance(lesson_id: int, payload: dict, request: Reque
 
 
 def _infer_durations_from_gaps(lessons: list) -> list:
-    """Infer duration_min from time gaps only when all gaps on a day are consistent
-    (snap to the same standard duration).  Mixed or ambiguous gaps are left alone."""
+    """Infer duration_min from time gaps between consecutive lessons on the same day.
+    Each gap sets the duration for the preceding lesson independently.
+    Gaps over 90 min are treated as breaks and skipped.
+    Gaps that don't snap within ±10 min of a standard duration (30/45/60/90) are ignored.
+    The last lesson of each day inherits the most common inferred duration for that day."""
     from datetime import datetime as _dtp
+    from collections import Counter as _Counter
     VALID = [30, 45, 60, 90]
-    TOLERANCE = 10  # minutes either side of a standard duration
+    TOLERANCE = 10
 
     by_date: dict = {}
     for i, lesson in enumerate(lessons):
@@ -9719,32 +9723,31 @@ def _infer_durations_from_gaps(lessons: list) -> list:
 
     for entries in by_date.values():
         if len(entries) < 2:
-            continue  # single lesson — nothing to measure against
+            continue
         entries.sort(key=lambda x: x[1].get("time", "00:00"))
 
-        snapped: list = []
+        day_inferred: list = []
         for j in range(len(entries) - 1):
-            _, curr = entries[j]
+            idx, curr = entries[j]
             _, nxt = entries[j + 1]
             try:
                 t1 = _dtp.strptime(curr["time"], "%H:%M")
                 t2 = _dtp.strptime(nxt["time"], "%H:%M")
                 gap = int((t2 - t1).total_seconds() / 60)
                 if gap > 90:
-                    continue  # likely a break between sessions — ignore
+                    continue  # break between sessions — skip
                 nearest = min(VALID, key=lambda v: abs(v - gap))
                 if abs(nearest - gap) <= TOLERANCE:
-                    snapped.append(nearest)
-                else:
-                    snapped.append(None)  # gap doesn't match any standard length
+                    lessons[idx]["duration_min"] = nearest
+                    day_inferred.append(nearest)
             except (ValueError, KeyError):
-                snapped.append(None)
+                pass
 
-        # Only apply if every measured gap resolved to the same duration
-        if snapped and all(s == snapped[0] for s in snapped) and snapped[0] is not None:
-            duration = snapped[0]
-            for idx, _ in entries:
-                lessons[idx]["duration_min"] = duration
+        # Last lesson: use the most common duration inferred that day
+        if day_inferred:
+            most_common = _Counter(day_inferred).most_common(1)[0][0]
+            last_idx = entries[-1][0]
+            lessons[last_idx]["duration_min"] = most_common
 
     return lessons
 
