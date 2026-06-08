@@ -2,7 +2,6 @@
 // STUDIO TEACHER DASHBOARD
 // ============================================================
 
-const API = "";
 const VALID_TEACHER_TABS = ["lessons", "schedule", "students", "messages"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January","February","March","April","May","June",
