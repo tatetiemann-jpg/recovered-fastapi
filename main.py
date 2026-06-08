@@ -1798,8 +1798,15 @@ def render_invite_email(invite_url: str, role: str, fullname_hint: str, inviter_
         "admin": "Admin",
         "head_admin": "Head Admin",
         "orchestra_admin": "Orchestra Admin",
+        "teacher": "Teacher",
+        "studio_teacher": "Studio Teacher",
+        "studio_member": "Studio Member",
+        "student": "Vocalist",
+        "orchestra_member": "Instrumentalist",
+        "choir_member": "Choir Member",
+        "ensemble_member": "Ensemble Member",
     }
-    role_label = role_labels.get(role, "Teacher")
+    role_label = role_labels.get(role, role.replace("_", " ").title())
     greeting = f"Hi {fullname_hint}," if fullname_hint else "Hi there,"
     inviter_line = f"{inviter_name} has invited you" if inviter_name else "You've been invited"
     org_suffix = f" of <strong>{org_name}</strong>" if org_name else ""
