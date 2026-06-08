@@ -2,7 +2,7 @@
 // STUDIO TEACHER DASHBOARD
 // ============================================================
 
-const VALID_TEACHER_TABS = ["lessons", "schedule", "students", "messages"];
+const VALID_TEACHER_TABS = ["lessons", "schedule", "students"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January","February","March","April","May","June",
                      "July","August","September","October","November","December"];
@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initLogout();
     initCalendarNav();
     initModals();
-    initDmTab();
+    initEmailModal();
 });
 
 async function loadMe() {
@@ -70,7 +70,6 @@ function switchTab(tab) {
     if (tab === "lessons") loadLessons();
     if (tab === "schedule") initCalendar();
     if (tab === "students") loadStudents();
-    if (tab === "messages") loadDmInbox();
 }
 
 // ============================================================
@@ -87,6 +86,9 @@ async function loadLessons() {
 
         renderLessonList("today-lessons-list", today, "No lessons today.");
         renderLessonList("upcoming-lessons-list", upcoming, "No upcoming lessons.");
+        // Show email button only when there are students with emails today
+        const emailBtn = document.getElementById("email-today-btn");
+        if (emailBtn) emailBtn.classList.toggle("hidden", !today.length);
     } catch (e) {
         console.error(e);
     }
@@ -1116,20 +1118,12 @@ function initStudentDetailModal() {
 
     document.getElementById("sd-message-btn")?.addEventListener("click", () => {
         const s = allStudents.find(s => s.id === activeStudentId);
-        if (!s || !s.email) {
-            document.getElementById("sd-msg").textContent = "No email on file for this student.";
+        if (!s || (!s.email && !s.parent_email)) {
+            document.getElementById("sd-msg").textContent = "No email address on file for this student.";
             return;
         }
         document.getElementById("student-detail-modal").classList.add("hidden");
-        switchTab("messages");
-        // Pre-fill DM scope to direct and set recipient
-        document.getElementById("dm-scope").value = "direct";
-        document.getElementById("dm-scope").dispatchEvent(new Event("change"));
-        const searchEl = document.getElementById("dm-recipient-search");
-        if (searchEl) {
-            searchEl.value = s.name;
-            searchEl.dispatchEvent(new Event("input"));
-        }
+        openEmailModal({ mode: "student", studentId: s.id, studentName: s.name });
     });
 
     document.getElementById("sd-update-payments-btn")?.addEventListener("click", () => {
@@ -1376,75 +1370,77 @@ async function submitAddFamily() {
 // MESSAGES TAB (reuse DM pattern from app.js)
 // ============================================================
 
-function initDmTab() {
-    document.getElementById("dm-scope")?.addEventListener("change", e => {
-        const isDirectEl = document.getElementById("dm-recipient-row");
-        if (isDirectEl) isDirectEl.classList.toggle("hidden", e.target.value !== "direct");
-    });
+// ============================================================
+// EMAIL COMPOSE MODAL
+// ============================================================
 
-    document.querySelectorAll(".dm-view-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            document.querySelectorAll(".dm-view-btn").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            loadDmInbox(btn.dataset.dmView);
-        });
-    });
+let emailModalMode = null; // "student" | "today"
+let emailModalStudentId = null;
 
-    document.getElementById("dm-send-btn")?.addEventListener("click", sendDm);
+function openEmailModal({ mode, studentId = null, studentName = null }) {
+    emailModalMode = mode;
+    emailModalStudentId = studentId;
+    document.getElementById("email-subject").value = "";
+    document.getElementById("email-body").value = "";
+    document.getElementById("email-modal-msg").textContent = "";
+    if (mode === "today") {
+        document.getElementById("email-modal-title").textContent = "Email Today's Students";
+        document.getElementById("email-modal-to").textContent = "Sends to all students with lessons today who have an email on file.";
+    } else {
+        document.getElementById("email-modal-title").textContent = `Email ${studentName || "Student"}`;
+        document.getElementById("email-modal-to").textContent = studentName ? `To: ${studentName}` : "";
+    }
+    document.getElementById("email-modal").classList.remove("hidden");
 }
 
-async function loadDmInbox(view = "inbox") {
-    const el = document.getElementById("dm-list");
-    if (!el) return;
-    try {
-        const res = await fetch(`${API}/dm/inbox?view=${view}`, { credentials: "include" });
-        const data = await res.json();
-        if (!Array.isArray(data) || !data.length) {
-            el.innerHTML = `<em class="empty-note">No messages.</em>`;
-            return;
-        }
-        el.innerHTML = data.map(m => {
-            const ts = m.created_at ? new Date(m.created_at).toLocaleString() : "";
-            return `<div class="dm-item ${m.unread ? 'dm-unread' : ''}">
-                <div class="dm-item-from">${escHtml(m.sender_name || "")}</div>
-                <div class="dm-item-body">${escHtml(m.body || "")}</div>
-                <div class="dm-item-ts hint">${ts}</div>
-            </div>`;
-        }).join("");
-    } catch (e) {
-        el.innerHTML = `<em class="empty-note">Error loading messages.</em>`;
-    }
-}
+function initEmailModal() {
+    document.getElementById("email-cancel-btn")?.addEventListener("click", () => {
+        document.getElementById("email-modal").classList.add("hidden");
+    });
 
-async function sendDm() {
-    const btn = document.getElementById("dm-send-btn");
-    const status = document.getElementById("dm-send-status");
-    const scope = document.getElementById("dm-scope").value;
-    const body = document.getElementById("dm-body").value.trim();
-    if (!body) { status.textContent = "Message cannot be empty."; return; }
+    document.getElementById("email-today-btn")?.addEventListener("click", () => {
+        openEmailModal({ mode: "today" });
+    });
 
-    btn.disabled = true;
-    btn.textContent = "Sending…";
-    try {
-        const res = await fetch(`${API}/dm/send`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ scope, body, recipient_ids: [] }),
-        });
-        const data = await res.json();
-        if (data.status === "success") {
-            status.textContent = `Sent to ${data.sent_to} recipient(s).`;
-            document.getElementById("dm-body").value = "";
-            loadDmInbox();
-        } else {
-            status.textContent = data.message || "Failed to send.";
+    document.getElementById("email-send-btn")?.addEventListener("click", async () => {
+        const btn = document.getElementById("email-send-btn");
+        const msg = document.getElementById("email-modal-msg");
+        const subject = document.getElementById("email-subject").value.trim();
+        const body = document.getElementById("email-body").value.trim();
+        if (!subject || !body) { msg.textContent = "Subject and message are required."; return; }
+
+        btn.disabled = true;
+        btn.textContent = "Sending…";
+        try {
+            let endpoint, payload;
+            if (emailModalMode === "today") {
+                endpoint = `${API}/studio-teacher/email-today`;
+                payload = { subject, body };
+            } else {
+                endpoint = `${API}/studio-teacher/email-student`;
+                payload = { student_id: emailModalStudentId, subject, body };
+            }
+            const res = await fetch(endpoint, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                msg.textContent = emailModalMode === "today"
+                    ? `Sent to ${data.sent} student${data.sent !== 1 ? "s" : ""}.`
+                    : "Email sent!";
+                setTimeout(() => document.getElementById("email-modal").classList.add("hidden"), 1200);
+            } else {
+                msg.textContent = data.message || "Failed to send.";
+            }
+        } catch (e) {
+            msg.textContent = "Server error.";
         }
-    } catch (e) {
-        status.textContent = "Server error.";
-    }
-    btn.disabled = false;
-    btn.textContent = "Send Message";
+        btn.disabled = false;
+        btn.textContent = "Send";
+    });
 }
 
 // ============================================================

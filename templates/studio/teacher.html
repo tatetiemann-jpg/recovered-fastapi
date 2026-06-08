@@ -23,7 +23,6 @@
         <button class="tab-btn" data-tab="lessons">Lessons</button>
         <button class="tab-btn" data-tab="schedule">Schedule</button>
         <button class="tab-btn" data-tab="students">Students</button>
-        <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
     </nav>
 
     <!-- ============================ -->
@@ -31,7 +30,10 @@
     <!-- ============================ -->
     <section class="tab-panel" data-tab-panel="lessons">
         <div class="box">
-            <h2 id="today-lessons-header">Today</h2>
+            <div class="section-header">
+                <h2 id="today-lessons-header">Today</h2>
+                <button id="email-today-btn" class="subtle-btn hidden">Email Today's Students</button>
+            </div>
             <div id="today-lessons-list"><em class="empty-note">No lessons today.</em></div>
         </div>
         <div class="box" id="upcoming-lessons-box">
@@ -81,51 +83,6 @@
         </div>
     </section>
 
-    <!-- ============================ -->
-    <!-- MESSAGES TAB -->
-    <!-- ============================ -->
-    <section class="tab-panel" data-tab-panel="messages">
-        <div class="box">
-            <div class="section-header">
-                <h2>Messages</h2>
-            </div>
-            <p class="hint">Message your students. Recipients receive an email notification.</p>
-
-            <div class="dm-view-toggle">
-                <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
-                <button class="dm-view-btn" data-dm-view="read">Read</button>
-                <button class="dm-view-btn" data-dm-view="sent">Sent</button>
-            </div>
-
-            <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
-
-            <div class="dm-compose">
-                <h3>New Message</h3>
-                <div class="dm-scope-row">
-                    <label for="dm-scope">Send to</label>
-                    <select id="dm-scope">
-                        <option value="studio_today">Today's Lessons</option>
-                        <option value="studio_week">This Week's Lessons</option>
-                        <option value="studio_all">All My Students</option>
-                        <option value="direct">Individual</option>
-                    </select>
-                </div>
-                <div id="dm-recipient-row" class="dm-recipient-row hidden">
-                    <label>Recipients</label>
-                    <div class="dm-recipient-picker">
-                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
-                        <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
-                    </div>
-                </div>
-                <label for="dm-body">Message</label>
-                <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
-                <div style="margin-top:var(--space-3);">
-                    <button id="dm-send-btn">Send Message</button>
-                </div>
-                <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
-            </div>
-        </div>
-    </section>
 
 </div>
 
@@ -436,6 +393,28 @@
             <button id="dd-add-btn">+ Add Lesson</button>
             <button onclick="document.getElementById('day-detail-modal').classList.add('hidden')">Close</button>
         </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- EMAIL COMPOSE MODAL -->
+<!-- ============================================================ -->
+<div id="email-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="email-modal-title">Send Email</h3>
+        <p id="email-modal-to" class="hint"></p>
+
+        <label>Subject</label>
+        <input id="email-subject" type="text" placeholder="e.g. Reminder about tomorrow's lesson">
+
+        <label>Message</label>
+        <textarea id="email-body" rows="6" placeholder="Write your message…"></textarea>
+
+        <div class="modal-actions">
+            <button id="email-send-btn">Send</button>
+            <button id="email-cancel-btn" class="subtle-btn">Cancel</button>
+        </div>
+        <p id="email-modal-msg" class="hint"></p>
     </div>
 </div>
 

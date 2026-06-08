@@ -9927,3 +9927,90 @@ def studio_teacher_invite(payload: dict, request: Request):
     return {"status": "success", "email_sent": sent}
 
 
+
+
+@app.post("/studio-teacher/email-student")
+def studio_teacher_email_student(payload: dict, request: Request):
+    """Email a specific studio student directly."""
+    teacher = require_studio_teacher(request)
+    student_id = payload.get("student_id")
+    subject = (payload.get("subject") or "").strip()
+    body = (payload.get("body") or "").strip()
+    if not subject or not body:
+        return {"status": "fail", "message": "Subject and message are required"}
+
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT name, email, parent_email FROM studio_students WHERE id = %s AND teacher_id = %s",
+            (student_id, teacher["id"])
+        )
+        row = cur.fetchone()
+    if not row:
+        return {"status": "fail", "message": "Student not found"}
+    name, email, parent_email = row
+    recipient = email or parent_email
+    if not recipient:
+        return {"status": "fail", "message": "No email address on file for this student"}
+
+    teacher_name = teacher.get("fullname") or "Your teacher"
+    teacher_email = teacher.get("email") or None
+    html = f"<p>{body.replace(chr(10), '<br>')}</p><p style='margin-top:16px;color:#888'>— {teacher_name}</p>"
+    text = f"{body}\n\n— {teacher_name}"
+    sent = send_email(
+        to=recipient,
+        subject=subject,
+        html_body=html,
+        text_body=text,
+        from_name=f"{teacher_name} via Countrpnt",
+        from_address=EMAIL_FROM,
+        reply_to=teacher_email,
+    )
+    return {"status": "success" if sent else "fail", "message": "" if sent else "Failed to send email"}
+
+
+@app.post("/studio-teacher/email-today")
+def studio_teacher_email_today(payload: dict, request: Request):
+    """Email all students with lessons today."""
+    teacher = require_studio_teacher(request)
+    subject = (payload.get("subject") or "").strip()
+    body = (payload.get("body") or "").strip()
+    if not subject or not body:
+        return {"status": "fail", "message": "Subject and message are required"}
+
+    today = datetime.now(EST).date()
+    teacher_name = teacher.get("fullname") or "Your teacher"
+    teacher_email = teacher.get("email") or None
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT
+                COALESCE(ss.email, l.external_email) AS email,
+                COALESCE(ss.parent_email, '') AS parent_email,
+                COALESCE(ss.name, l.external_name, 'Student') AS name
+            FROM lessons l
+            LEFT JOIN studio_students ss ON ss.id = l.studio_student_id
+            WHERE l.teacher_id = %s AND l.lesson_date = %s AND l.status = 'booked'
+        """, (teacher["id"], today))
+        rows = cur.fetchall()
+
+    sent_count = 0
+    already_emailed = set()
+    html_body = f"<p>{body.replace(chr(10), '<br>')}</p><p style='margin-top:16px;color:#888'>— {teacher_name}</p>"
+    text_body = f"{body}\n\n— {teacher_name}"
+    for email, parent_email, name in rows:
+        recipient = email or parent_email or None
+        if not recipient or recipient in already_emailed:
+            continue
+        already_emailed.add(recipient)
+        send_email(
+            to=recipient,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+            from_name=f"{teacher_name} via Countrpnt",
+            from_address=EMAIL_FROM,
+            reply_to=teacher_email,
+        )
+        sent_count += 1
+
+    return {"status": "success", "sent": sent_count}
