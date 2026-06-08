@@ -9706,16 +9706,25 @@ def studio_teacher_mark_attendance(lesson_id: int, payload: dict, request: Reque
     return {"status": "success"}
 
 
+def _snap_to_duration(gap: int):
+    """Return the standard lesson duration that this gap clearly represents,
+    or None if the gap is ambiguous (e.g. 75 min could be 60+buffer or 90-short).
+    Each standard has its own tolerance so genuinely ambiguous gaps don't get forced."""
+    if gap > 90:
+        return None  # break between sessions
+    for dur, tol in [(30, 6), (45, 6), (60, 7), (90, 5)]:
+        if abs(gap - dur) <= tol:
+            return dur
+    return None  # gap sits between standards — don't guess
+
+
 def _infer_durations_from_gaps(lessons: list) -> list:
     """Infer duration_min from time gaps between consecutive lessons on the same day.
     Each gap sets the duration for the preceding lesson independently.
-    Gaps over 90 min are treated as breaks and skipped.
-    Gaps that don't snap within ±10 min of a standard duration (30/45/60/90) are ignored.
+    Gaps over 90 min are treated as breaks and skipped entirely.
     The last lesson of each day inherits the most common inferred duration for that day."""
     from datetime import datetime as _dtp
     from collections import Counter as _Counter
-    VALID = [30, 45, 60, 90]
-    TOLERANCE = 10
 
     by_date: dict = {}
     for i, lesson in enumerate(lessons):
@@ -9734,12 +9743,10 @@ def _infer_durations_from_gaps(lessons: list) -> list:
                 t1 = _dtp.strptime(curr["time"], "%H:%M")
                 t2 = _dtp.strptime(nxt["time"], "%H:%M")
                 gap = int((t2 - t1).total_seconds() / 60)
-                if gap > 90:
-                    continue  # break between sessions — skip
-                nearest = min(VALID, key=lambda v: abs(v - gap))
-                if abs(nearest - gap) <= TOLERANCE:
-                    lessons[idx]["duration_min"] = nearest
-                    day_inferred.append(nearest)
+                snapped = _snap_to_duration(gap)
+                if snapped is not None:
+                    lessons[idx]["duration_min"] = snapped
+                    day_inferred.append(snapped)
             except (ValueError, KeyError):
                 pass
 
@@ -9752,9 +9759,73 @@ def _infer_durations_from_gaps(lessons: list) -> list:
     return lessons
 
 
+def _apply_historical_durations(lessons: list, teacher_id: int) -> list:
+    """For lessons whose duration is still at the default (60), look up the student's
+    most common past lesson duration for this teacher and apply it.
+    Matches by first name (case-insensitive) — skips if the name is ambiguous."""
+    from collections import Counter as _Counter
+
+    DEFAULT = 60
+    # Collect names that still need a duration
+    needs_lookup = [l for l in lessons if l.get("duration_min") == DEFAULT]
+    if not needs_lookup:
+        return lessons
+
+    first_names = list({l["student_name"].strip().split()[0].lower()
+                        for l in needs_lookup if l.get("student_name")})
+    if not first_names:
+        return lessons
+
+    with db_cursor() as cur:
+        # Get all students for this teacher whose first name matches any in our list
+        cur.execute("""
+            SELECT ss.id, lower(split_part(ss.name, ' ', 1)) AS fname
+            FROM studio_students ss
+            WHERE ss.teacher_id = %s
+              AND lower(split_part(ss.name, ' ', 1)) = ANY(%s)
+        """, (teacher_id, first_names))
+        name_to_ids: dict = {}
+        for sid, fname in cur.fetchall():
+            name_to_ids.setdefault(fname, []).append(sid)
+
+        # Remove ambiguous first names (two different students with same first name)
+        unambiguous = {fname: ids[0] for fname, ids in name_to_ids.items() if len(ids) == 1}
+        if not unambiguous:
+            return lessons
+
+        student_ids = list(unambiguous.values())
+        cur.execute("""
+            SELECT studio_student_id, duration_min
+            FROM lessons
+            WHERE teacher_id = %s
+              AND studio_student_id = ANY(%s)
+              AND duration_min IS NOT NULL
+              AND status = 'booked'
+        """, (teacher_id, student_ids))
+        history: dict = {}
+        for sid, dur in cur.fetchall():
+            history.setdefault(sid, []).append(dur)
+
+    # Build first_name → most_common_duration map
+    id_to_fname = {v: k for k, v in unambiguous.items()}
+    fname_dur: dict = {}
+    for sid, durs in history.items():
+        if durs:
+            fname_dur[id_to_fname[sid]] = _Counter(durs).most_common(1)[0][0]
+
+    for lesson in lessons:
+        if lesson.get("duration_min") != DEFAULT:
+            continue
+        fname = (lesson.get("student_name") or "").strip().split()[0].lower()
+        if fname in fname_dur:
+            lesson["duration_min"] = fname_dur[fname]
+
+    return lessons
+
+
 @app.post("/studio-teacher/lessons-parse")
 def studio_teacher_lessons_parse(payload: dict, request: Request):
-    require_studio_teacher(request)
+    teacher = require_studio_teacher(request)
     raw_text = (payload.get("text") or "").strip()
     if not raw_text:
         return {"status": "fail", "message": "No text provided"}
@@ -9800,6 +9871,9 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
 
     # Post-process: deterministically infer durations from time gaps
     parsed = _infer_durations_from_gaps(parsed)
+
+    # Final pass: for any lesson still at the default, check the student's history
+    parsed = _apply_historical_durations(parsed, teacher["id"])
 
     return {"status": "success", "lessons": parsed}
 
