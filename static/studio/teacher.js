@@ -632,12 +632,20 @@ function renderParsePreview(lessons) {
         return;
     }
     tbody.innerHTML = lessons.map((l, i) => `
-        <tr>
-            <td>${escHtml(l.date || "")}</td>
-            <td>${escHtml(l.time || "")}</td>
-            <td>${escHtml(l.student_name || "")}</td>
-            <td>${escHtml(l.email || "")}</td>
-            <td>${l.duration_min || 30} min</td>
+        <tr data-row="${i}">
+            <td><input class="pr-date" type="date" value="${escHtml(l.date || "")}"></td>
+            <td><input class="pr-time" type="time" value="${escHtml(l.time || "")}"></td>
+            <td><input class="pr-name" type="text" placeholder="Full name" value="${escHtml(l.student_name || "")}" style="min-width:120px;"></td>
+            <td><input class="pr-email" type="email" placeholder="email (optional)" value="${escHtml(l.email || "")}" style="min-width:140px;"></td>
+            <td>
+                <select class="pr-dur">
+                    <option value="30" ${(l.duration_min||30)==30?"selected":""}>30 min</option>
+                    <option value="45" ${l.duration_min==45?"selected":""}>45 min</option>
+                    <option value="60" ${l.duration_min==60?"selected":""}>60 min</option>
+                    <option value="90" ${l.duration_min==90?"selected":""}>90 min</option>
+                </select>
+            </td>
+            <td><input class="pr-zoom" type="url" placeholder="Zoom link (optional)" value="${escHtml(l.zoom_link || "")}" style="min-width:140px;"></td>
             <td><button class="subtle-btn" onclick="removeParsedRow(${i})">Remove</button></td>
         </tr>
     `).join("");
@@ -653,19 +661,31 @@ async function confirmParsedLessons() {
     const btn = document.getElementById("parse-confirm-btn");
     btn.disabled = true;
     btn.textContent = "Adding…";
+
+    // Read current values from the editable preview table
+    const rows = document.querySelectorAll("#parse-preview-body tr[data-row]");
     let added = 0;
-    for (const l of parsedLessons) {
+    for (const row of rows) {
+        const date = row.querySelector(".pr-date")?.value?.trim();
+        const time = row.querySelector(".pr-time")?.value?.trim();
+        const name = row.querySelector(".pr-name")?.value?.trim();
+        const email = row.querySelector(".pr-email")?.value?.trim().toLowerCase() || null;
+        const dur = parseInt(row.querySelector(".pr-dur")?.value || "30");
+        const zoom = row.querySelector(".pr-zoom")?.value?.trim() || null;
+
+        if (!date || !time || !name) continue;
         try {
             const res = await fetch(`${API}/studio-teacher/lesson`, {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    date: l.date,
-                    time: l.time,
-                    duration_min: l.duration_min || 30,
-                    external_name: l.student_name,
-                    external_email: l.email || null,
+                    date,
+                    time,
+                    duration_min: dur,
+                    external_name: name,
+                    external_email: email,
+                    zoom_link: zoom,
                 }),
             });
             const data = await res.json();
