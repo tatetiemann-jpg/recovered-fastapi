@@ -204,6 +204,18 @@ async def lifespan(app: FastAPI):
                 ON studio_payment_pools (teacher_id, student_id, duration_min)
                 WHERE student_id IS NOT NULL;
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS studio_teacher_settings (
+                    teacher_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                    payment_zelle   TEXT,
+                    payment_venmo   TEXT,
+                    payment_cashapp TEXT,
+                    payment_paypal  TEXT,
+                    lesson_rates    JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    cancel_hours    INTEGER,
+                    cancel_charge   BOOLEAN NOT NULL DEFAULT FALSE
+                );
+            """)
             # Cancel future booked lessons whose recurring slot has been deactivated
             cur.execute("""
                 UPDATE lessons
@@ -2182,6 +2194,45 @@ def accept_invite(payload: dict):
             "UPDATE invitations SET accepted_at = NOW() WHERE token = %s",
             (token,)
         )
+
+        if role == "studio_teacher":
+            import json as _json
+            studio = payload.get("studio_settings") or {}
+            zelle   = (studio.get("payment_zelle")   or "").strip() or None
+            venmo   = (studio.get("payment_venmo")   or "").strip() or None
+            cashapp = (studio.get("payment_cashapp") or "").strip() or None
+            paypal  = (studio.get("payment_paypal")  or "").strip() or None
+            raw_rates = studio.get("lesson_rates") or []
+            rates = []
+            for r in raw_rates:
+                try:
+                    dur = int(r.get("duration_min", 0))
+                    rate_cents = int(round(float(r.get("rate", 0)) * 100))
+                    if dur > 0:
+                        rates.append({"duration_min": dur, "rate_cents": rate_cents})
+                except (ValueError, TypeError):
+                    pass
+            cancel_hours = studio.get("cancel_hours")
+            try:
+                cancel_hours = int(cancel_hours) if cancel_hours is not None else None
+            except (ValueError, TypeError):
+                cancel_hours = None
+            cancel_charge = bool(studio.get("cancel_charge", False))
+            cur.execute("""
+                INSERT INTO studio_teacher_settings
+                    (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
+                     lesson_rates, cancel_hours, cancel_charge)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (teacher_id) DO UPDATE SET
+                    payment_zelle   = EXCLUDED.payment_zelle,
+                    payment_venmo   = EXCLUDED.payment_venmo,
+                    payment_cashapp = EXCLUDED.payment_cashapp,
+                    payment_paypal  = EXCLUDED.payment_paypal,
+                    lesson_rates    = EXCLUDED.lesson_rates,
+                    cancel_hours    = EXCLUDED.cancel_hours,
+                    cancel_charge   = EXCLUDED.cancel_charge
+            """, (user_id, zelle, venmo, cashapp, paypal, _json.dumps(rates),
+                  cancel_hours, cancel_charge))
 
     return {"status": "success", "role": role}
 
@@ -9054,6 +9105,74 @@ def send_dm(payload: dict, request: Request):
 # ========================================================
 # STUDIO TEACHER
 # ========================================================
+
+@app.get("/studio-teacher/settings")
+def studio_teacher_settings_get(request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
+                   lesson_rates, cancel_hours, cancel_charge
+            FROM studio_teacher_settings WHERE teacher_id = %s
+        """, (teacher["id"],))
+        row = cur.fetchone()
+    if not row:
+        return {"payment_zelle": None, "payment_venmo": None,
+                "payment_cashapp": None, "payment_paypal": None,
+                "lesson_rates": [], "cancel_hours": None, "cancel_charge": False}
+    return {
+        "payment_zelle":   row[0],
+        "payment_venmo":   row[1],
+        "payment_cashapp": row[2],
+        "payment_paypal":  row[3],
+        "lesson_rates":    row[4] or [],
+        "cancel_hours":    row[5],
+        "cancel_charge":   row[6],
+    }
+
+
+@app.patch("/studio-teacher/settings")
+def studio_teacher_settings_update(payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    import json as _json
+    zelle   = (payload.get("payment_zelle")   or "").strip() or None
+    venmo   = (payload.get("payment_venmo")   or "").strip() or None
+    cashapp = (payload.get("payment_cashapp") or "").strip() or None
+    paypal  = (payload.get("payment_paypal")  or "").strip() or None
+    raw_rates = payload.get("lesson_rates") or []
+    rates = []
+    for r in raw_rates:
+        try:
+            dur = int(r.get("duration_min", 0))
+            rate_cents = int(round(float(r.get("rate", 0)) * 100))
+            if dur > 0:
+                rates.append({"duration_min": dur, "rate_cents": rate_cents})
+        except (ValueError, TypeError):
+            pass
+    cancel_hours = payload.get("cancel_hours")
+    try:
+        cancel_hours = int(cancel_hours) if cancel_hours is not None else None
+    except (ValueError, TypeError):
+        cancel_hours = None
+    cancel_charge = bool(payload.get("cancel_charge", False))
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO studio_teacher_settings
+                (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
+                 lesson_rates, cancel_hours, cancel_charge)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (teacher_id) DO UPDATE SET
+                payment_zelle   = EXCLUDED.payment_zelle,
+                payment_venmo   = EXCLUDED.payment_venmo,
+                payment_cashapp = EXCLUDED.payment_cashapp,
+                payment_paypal  = EXCLUDED.payment_paypal,
+                lesson_rates    = EXCLUDED.lesson_rates,
+                cancel_hours    = EXCLUDED.cancel_hours,
+                cancel_charge   = EXCLUDED.cancel_charge
+        """, (teacher["id"], zelle, venmo, cashapp, paypal, _json.dumps(rates),
+              cancel_hours, cancel_charge))
+    return {"status": "success"}
+
 
 def _resolve_studio_student(cur, teacher_id: int, name: str, email: str | None) -> int:
     """Find or create a studio_students record. Match email first, then name. Returns student id."""

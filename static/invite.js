@@ -43,21 +43,35 @@
     intro.classList.add("hidden");
     formWrapper.classList.remove("hidden");
 
-    const roleLabelMap = { admin: "Admin", head_admin: "Opera Admin", teacher: "Teacher", orchestra_admin: "Orchestra Admin", student: "Vocalist", orchestra_member: "Instrumentalist", choir_member: "Choir Member", ensemble_member: "Ensemble Member" };
+    const roleLabelMap = {
+        admin: "Admin", head_admin: "Opera Admin", teacher: "Teacher",
+        orchestra_admin: "Orchestra Admin", student: "Vocalist",
+        orchestra_member: "Instrumentalist", choir_member: "Choir Member",
+        ensemble_member: "Ensemble Member", studio_teacher: "Studio Teacher",
+        studio_member: "Studio Member",
+    };
     const roleLabel = roleLabelMap[inviteInfo.role] || inviteInfo.role;
-    const orgPart = inviteInfo.org_name ? ` of ${inviteInfo.org_name}` : "";
-    let summaryText = `You've been invited as ${roleLabel}${orgPart}. Email: ${inviteInfo.email}`;
+    const orgPart = inviteInfo.org_name ? ` · ${inviteInfo.org_name}` : "";
+    let summaryText = `${roleLabel}${orgPart} · ${inviteInfo.email}`;
     if (inviteInfo.role === "ensemble_member" && inviteInfo.instrument) {
-        summaryText += ` — ${inviteInfo.instrument}`;
+        summaryText += ` · ${inviteInfo.instrument}`;
     } else if (inviteInfo.role === "teacher" && inviteInfo.teacher_type === "instrumental") {
-        const instruments = inviteInfo.teacher_instruments
-            ? ` — Instruments: ${inviteInfo.teacher_instruments}`
-            : "";
-        summaryText += `. Type: Instrumental${instruments}`;
-    } else if (inviteInfo.role === "teacher") {
-        summaryText += ". Type: Vocal";
+        const instruments = inviteInfo.teacher_instruments ? ` · ${inviteInfo.teacher_instruments}` : "";
+        summaryText += ` · Instrumental teacher${instruments}`;
     }
     document.getElementById("invite-summary").textContent = summaryText;
+
+    // Studio teacher — show rates + payment fields
+    if (inviteInfo.role === "studio_teacher") {
+        document.getElementById("studio-teacher-fields")?.classList.remove("hidden");
+        document.querySelectorAll(".rate-check").forEach(cb => {
+            cb.addEventListener("change", () => {
+                const wrap = cb.closest(".rate-row").querySelector(".rate-price-wrap");
+                wrap.classList.toggle("hidden", !cb.checked);
+                if (cb.checked) wrap.querySelector(".rate-input").focus();
+            });
+        });
+    }
 
     if (inviteInfo.fullname_hint) {
         document.getElementById("invite-fullname").value = inviteInfo.fullname_hint;
@@ -119,6 +133,27 @@
             return;
         }
 
+        // Collect studio teacher settings if applicable
+        let studioSettings = null;
+        if (inviteInfo.role === "studio_teacher") {
+            const lesson_rates = [];
+            document.querySelectorAll(".rate-check:checked").forEach(cb => {
+                const dur = parseInt(cb.dataset.dur);
+                const rateInput = cb.closest(".rate-row").querySelector(".rate-input");
+                const rate = parseFloat(rateInput?.value || "0") || 0;
+                lesson_rates.push({ duration_min: dur, rate });
+            });
+            studioSettings = {
+                payment_venmo:   document.getElementById("pay-venmo")?.value.trim() || null,
+                payment_zelle:   document.getElementById("pay-zelle")?.value.trim() || null,
+                payment_cashapp: document.getElementById("pay-cashapp")?.value.trim() || null,
+                payment_paypal:  document.getElementById("pay-paypal")?.value.trim() || null,
+                lesson_rates,
+                cancel_hours: parseInt(document.getElementById("cancel-hours")?.value || "0") || null,
+                cancel_charge: document.getElementById("cancel-charge")?.checked || false,
+            };
+        }
+
         submitBtn.disabled = true;
         submitBtn.textContent = "Creating account…";
 
@@ -134,6 +169,7 @@
                     password,
                     theme,
                     voice_type: voiceType || null,
+                    studio_settings: studioSettings,
                 })
             });
             const data = await res.json();

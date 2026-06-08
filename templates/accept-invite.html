@@ -50,7 +50,79 @@
             </select>
         </div>
 
-        <label>Theme</label>
+        <!-- Studio teacher only -->
+        <div id="studio-teacher-fields" class="hidden">
+            <hr style="margin:var(--space-4) 0;border:none;border-top:1px solid var(--border);">
+            <h3>Your Lesson Rates</h3>
+            <p class="hint">Select the lesson lengths you offer and set your rate for each. Students will see these when booking.</p>
+            <div id="rate-rows" style="display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-3);">
+                <label class="rate-row">
+                    <input type="checkbox" class="rate-check" data-dur="30"> 30 min
+                    <span class="rate-price-wrap hidden">
+                        <span style="margin-left:var(--space-3);">$</span>
+                        <input type="number" class="rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
+                    </span>
+                </label>
+                <label class="rate-row">
+                    <input type="checkbox" class="rate-check" data-dur="45"> 45 min
+                    <span class="rate-price-wrap hidden">
+                        <span style="margin-left:var(--space-3);">$</span>
+                        <input type="number" class="rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
+                    </span>
+                </label>
+                <label class="rate-row">
+                    <input type="checkbox" class="rate-check" data-dur="60"> 60 min
+                    <span class="rate-price-wrap hidden">
+                        <span style="margin-left:var(--space-3);">$</span>
+                        <input type="number" class="rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
+                    </span>
+                </label>
+                <label class="rate-row">
+                    <input type="checkbox" class="rate-check" data-dur="90"> 90 min
+                    <span class="rate-price-wrap hidden">
+                        <span style="margin-left:var(--space-3);">$</span>
+                        <input type="number" class="rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
+                    </span>
+                </label>
+            </div>
+
+            <hr style="margin:var(--space-4) 0;border:none;border-top:1px solid var(--border);">
+            <h3>Payment Info <span class="hint" style="font-size:0.85rem;font-weight:400;">(optional)</span></h3>
+            <p class="hint">Add your payment handles so students know how to pay you. You can update these later.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+                <div>
+                    <label>Venmo</label>
+                    <input id="pay-venmo" type="text" placeholder="@yourhandle">
+                </div>
+                <div>
+                    <label>Zelle</label>
+                    <input id="pay-zelle" type="text" placeholder="Phone or email">
+                </div>
+                <div>
+                    <label>Cash App</label>
+                    <input id="pay-cashapp" type="text" placeholder="$yourcashtag">
+                </div>
+                <div>
+                    <label>PayPal</label>
+                    <input id="pay-paypal" type="text" placeholder="paypal.me/yourname">
+                </div>
+            </div>
+
+            <hr style="margin:var(--space-4) 0;border:none;border-top:1px solid var(--border);">
+            <h3>Cancellation Policy <span class="hint" style="font-size:0.85rem;font-weight:400;">(optional)</span></h3>
+            <p class="hint">How much notice do you require for cancellations? This will be included in your lesson confirmation emails.</p>
+            <div style="display:flex;align-items:center;gap:var(--space-2);">
+                <input id="cancel-hours" type="number" min="0" step="1" placeholder="24" style="width:80px;">
+                <span>hours notice required</span>
+            </div>
+            <div style="margin-top:var(--space-2);">
+                <label style="font-size:0.9rem;display:flex;align-items:center;gap:var(--space-2);">
+                    <input type="checkbox" id="cancel-charge"> Charge for late cancellations
+                </label>
+            </div>
+        </div>
+
+        <label style="margin-top:var(--space-4);display:block;">Theme</label>
         <p class="hint">Pick the look you'd like. You can change this later in your account settings.</p>
         <div id="invite-theme-picker"></div>
 
