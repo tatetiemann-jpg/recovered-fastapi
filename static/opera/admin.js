@@ -2231,8 +2231,8 @@ function onInviteRoleChange() {
     if (!select) return;
 
     if (USER_ROLE === "system_admin") {
-        // system_admin invites: Opera Admin, Choir Admin, or Studio Teacher
-        ["orchestra_admin", "student"].forEach(val => {
+        // system_admin can invite: Opera Admin, Choir Admin, Studio Teacher
+        ["orchestra_admin", "student", "teacher"].forEach(val => {
             const opt = select.querySelector(`option[value="${val}"]`);
             if (opt) opt.style.display = "none";
         });
@@ -2240,11 +2240,11 @@ function onInviteRoleChange() {
         if (headAdminOpt) headAdminOpt.style.display = "";
         const adminOpt = select.querySelector('option[value="admin"]');
         if (adminOpt) { adminOpt.style.display = ""; adminOpt.textContent = "Choir Admin"; }
-        const teacherOpt = select.querySelector('option[value="teacher"]');
-        if (teacherOpt) { teacherOpt.style.display = ""; teacherOpt.textContent = "Studio Teacher"; }
+        const studioTeacherOpt = select.querySelector('option[value="studio_teacher"]');
+        if (studioTeacherOpt) studioTeacherOpt.style.display = "";
 
         // Default to head_admin if no valid selection
-        if (!["head_admin", "admin", "teacher"].includes(select.value)) {
+        if (!["head_admin", "admin", "studio_teacher"].includes(select.value)) {
             select.value = "head_admin";
         }
 
@@ -2266,11 +2266,11 @@ function onInviteRoleChange() {
             if (orgTypeEl) orgTypeEl.value = "choir";
             if (orgHint) orgHint.textContent = "Enter a name and ID for the choir they'll administer. A new org is created if the ID doesn't exist yet.";
             document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
-        } else if (role === "teacher") {
+        } else if (role === "studio_teacher") {
             if (orgTypeRow) orgTypeRow.classList.add("hidden");
             if (orgTypeEl) orgTypeEl.value = "studio";
             if (orgHint) orgHint.textContent = "Enter a name and ID for their private studio. A new studio org is created if the ID doesn't exist yet.";
-            document.getElementById("invite-teacher-type-section")?.classList.remove("hidden");
+            document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
         }
         return;
     }
@@ -2295,7 +2295,11 @@ function onInviteRoleChange() {
     // Org section: system_admin only (handled above)
     document.getElementById("invite-org-section")?.classList.add("hidden");
 
-    // Teacher type section: only shown when inviting a teacher
+    // Hide studio_teacher option for non-system-admin (head_admin can still see it)
+    const studioOpt = select.querySelector('option[value="studio_teacher"]');
+    if (studioOpt) studioOpt.style.display = USER_ROLE === "head_admin" ? "" : "none";
+
+    // Teacher type section: only shown when inviting an opera teacher
     const teacherTypeSection = document.getElementById("invite-teacher-type-section");
     if (teacherTypeSection) {
         teacherTypeSection.classList.toggle("hidden", role !== "teacher");
