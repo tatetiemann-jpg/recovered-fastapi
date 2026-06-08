@@ -4106,13 +4106,20 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 .student-family-block {
   margin-bottom: var(--space-4);
 }
-.student-family-header {
-  font-size: 0.75rem;
+.student-section-header {
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--muted);
-  padding: var(--space-1) 0;
-  border-bottom: 2px solid var(--border);
+  padding: var(--space-2) 0 var(--space-1);
+  font-weight: 600;
+}
+.student-family-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  padding: var(--space-2) 0 var(--space-1);
+  border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-1);
 }
 

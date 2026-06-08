@@ -9055,6 +9055,43 @@ def send_dm(payload: dict, request: Request):
 # STUDIO TEACHER
 # ========================================================
 
+def _resolve_studio_student(cur, teacher_id: int, name: str, email: str | None) -> int:
+    """Find or create a studio_students record. Match email first, then name. Returns student id."""
+    if email:
+        cur.execute(
+            "SELECT id FROM studio_students WHERE teacher_id = %s AND LOWER(email) = LOWER(%s)",
+            (teacher_id, email)
+        )
+        row = cur.fetchone()
+        if row:
+            # Fill in name if it was blank
+            cur.execute(
+                "UPDATE studio_students SET name = %s WHERE id = %s AND (name IS NULL OR name = '')",
+                (name, row[0])
+            )
+            return row[0]
+    if name:
+        cur.execute(
+            "SELECT id FROM studio_students WHERE teacher_id = %s AND LOWER(name) = LOWER(%s)",
+            (teacher_id, name)
+        )
+        row = cur.fetchone()
+        if row:
+            # Fill in email if the student didn't have one
+            if email:
+                cur.execute(
+                    "UPDATE studio_students SET email = LOWER(%s) WHERE id = %s AND email IS NULL",
+                    (email, row[0])
+                )
+            return row[0]
+    # No match — create new student
+    cur.execute(
+        "INSERT INTO studio_students (teacher_id, name, email) VALUES (%s, %s, %s) RETURNING id",
+        (teacher_id, name, email.lower() if email else None)
+    )
+    return cur.fetchone()[0]
+
+
 def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min: int) -> dict:
     """Returns {lessons_paid, scheduled, remaining} for a student's billing group."""
     cur.execute(
@@ -9290,11 +9327,13 @@ def studio_teacher_add_lesson(payload: dict, request: Request):
             )
             ss_row = cur.fetchone()
             if ss_row:
-                if not ext_name:
-                    ext_name = ss_row[0]
-                if not ext_email:
-                    ext_email = ss_row[1]
+                if not ext_name: ext_name = ss_row[0]
+                if not ext_email: ext_email = ss_row[1]
+        elif ext_name:
+            # Auto-create or match student so they appear in the Students tab
+            studio_student_id = _resolve_studio_student(cur, teacher["id"], ext_name, ext_email)
 
+        if studio_student_id:
             balance = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
             if balance["remaining"] <= 0:
                 payment_overrun = True
@@ -9386,6 +9425,10 @@ def studio_teacher_add_lessons_bulk(payload: dict, request: Request):
                 if ss:
                     if not ext_name: ext_name = ss[0]
                     if not ext_email: ext_email = ss[1]
+            elif ext_name:
+                studio_student_id = _resolve_studio_student(cur, teacher["id"], ext_name, ext_email)
+
+            if studio_student_id:
                 bal = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
                 if bal["remaining"] <= 0:
                     payment_overrun = True

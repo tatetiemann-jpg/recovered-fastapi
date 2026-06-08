@@ -942,32 +942,45 @@ function renderStudentList(students) {
     });
 
     let html = "";
+    const hasFamilies = Object.keys(families).length > 0;
 
-    Object.values(families).forEach(fam => {
-        html += `<div class="student-family-block">
-            <div class="student-family-header"><strong>${escHtml(fam.name)}</strong></div>`;
-        fam.members.forEach(s => { html += renderStudentRow(s); });
-        html += `</div>`;
-    });
+    if (hasFamilies) {
+        html += `<div class="student-section-header">Families</div>`;
+        Object.values(families).forEach(fam => {
+            html += `<div class="student-family-block">
+                <div class="student-family-header"><strong>${escHtml(fam.name)}</strong>
+                    <span class="hint" style="font-weight:400"> · ${fam.members.length} student${fam.members.length !== 1 ? "s" : ""}</span>
+                </div>`;
+            fam.members.forEach(s => { html += renderStudentRow(s, fam.name); });
+            html += `</div>`;
+        });
+    }
 
-    solos.forEach(s => { html += renderStudentRow(s); });
+    if (solos.length) {
+        html += `<div class="student-section-header" style="margin-top:${hasFamilies ? 'var(--space-4)' : '0'}">Individual Students</div>`;
+        solos.forEach(s => { html += renderStudentRow(s, null); });
+    }
 
     el.innerHTML = html;
 }
 
-function renderStudentRow(s) {
+function renderStudentRow(s, familyName) {
     const payBadge = paymentBadge(s.payments);
     const att = s.attendance || { present: 0, absent: 0 };
+    const noEmailBadge = !s.email
+        ? `<span class="pay-badge pay-warn" title="Add an email so this student can be messaged">No email</span>`
+        : "";
     return `
         <div class="student-row" onclick="openStudentDetail(${s.id})">
             <div>
                 <strong>${escHtml(s.name)}</strong>
                 ${s.email ? `<span class="hint"> · ${escHtml(s.email)}</span>` : ""}
-                ${s.parent_name ? `<span class="hint"> · Parent: ${escHtml(s.parent_name)}</span>` : ""}
+                ${s.parent_name ? `<br><span class="hint">Parent: ${escHtml(s.parent_name)}</span>` : ""}
             </div>
-            <div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
                 <span class="hint">${att.present} attended · ${att.absent} missed</span>
                 ${payBadge}
+                ${noEmailBadge}
             </div>
         </div>
     `;
