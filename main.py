@@ -39,6 +39,7 @@ ADMIN_ROLES = frozenset({"admin", "head_admin", "system_admin", "orchestra_admin
 
 OPERA_ADMIN_ROLES = frozenset({"director", "assistant_director", "stage_manager", "assistant_stage_manager"})
 ORCHESTRA_ADMIN_ROLES = frozenset({"conductor", "assistant_conductor", "orchestra_manager"})
+TEACHER_ROLES = frozenset({"teacher", "studio_teacher"})
 
 
 # ========================================================
@@ -154,6 +155,54 @@ async def lifespan(app: FastAPI):
                     user_id INT REFERENCES users(id) ON DELETE CASCADE,
                     PRIMARY KEY (rehearsal_id, user_id)
                 );
+            """)
+            # Studio teacher infrastructure
+            cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS zoom_link TEXT;")
+            cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS attendance TEXT;")
+            cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS payment_overrun BOOLEAN DEFAULT FALSE;")
+            # studio_student_id links lessons to studio_students registry (set after studio_students table exists)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS studio_families (
+                    id SERIAL PRIMARY KEY,
+                    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    family_name TEXT NOT NULL,
+                    parent_name TEXT,
+                    parent_email TEXT
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS studio_students (
+                    id SERIAL PRIMARY KEY,
+                    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    email TEXT,
+                    parent_name TEXT,
+                    parent_email TEXT
+                );
+            """)
+            cur.execute("ALTER TABLE studio_students ADD COLUMN IF NOT EXISTS family_id INTEGER REFERENCES studio_families(id) ON DELETE SET NULL;")
+            cur.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS studio_student_id INTEGER REFERENCES studio_students(id) ON DELETE SET NULL;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS studio_payment_pools (
+                    id SERIAL PRIMARY KEY,
+                    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    family_id INTEGER REFERENCES studio_families(id) ON DELETE CASCADE,
+                    student_id INTEGER REFERENCES studio_students(id) ON DELETE CASCADE,
+                    duration_min INTEGER NOT NULL,
+                    lessons_paid INTEGER NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uidx_payment_pool_family
+                ON studio_payment_pools (teacher_id, family_id, duration_min)
+                WHERE family_id IS NOT NULL;
+            """)
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uidx_payment_pool_student
+                ON studio_payment_pools (teacher_id, student_id, duration_min)
+                WHERE student_id IS NOT NULL;
             """)
             # Cancel future booked lessons whose recurring slot has been deactivated
             cur.execute("""
@@ -574,6 +623,13 @@ def require_head_admin(request: Request):
     user = require_user(request)
     if user["role"] not in ("head_admin", "system_admin"):
         raise HTTPException(status_code=403, detail="Head admin access required")
+    return user
+
+
+def require_studio_teacher(request: Request):
+    user = require_user(request)
+    if user["role"] != "studio_teacher":
+        raise HTTPException(status_code=403, detail="Studio teacher access required")
     return user
 
 
@@ -1161,6 +1217,11 @@ def teacher_page(request: Request):
     return templates.TemplateResponse(request, "opera/teacher.html")
 
 
+@app.get("/studio-teacher", response_class=HTMLResponse)
+def studio_teacher_page(request: Request):
+    return templates.TemplateResponse(request, "studio/teacher.html")
+
+
 @app.get("/student", response_class=HTMLResponse)
 def student_page(request: Request):
     return templates.TemplateResponse(request, "opera/student.html")
@@ -1291,8 +1352,10 @@ ALLOWED_VOICE_TYPES = {
 # ========================================================
 
 import resend
+import anthropic as _anthropic
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "noreply@countrpnt.com")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Countrpnt")
 APP_URL = os.environ.get("APP_URL", "https://countrpnt.com")
@@ -1777,8 +1840,8 @@ def admin_invite(payload: dict, request: Request):
     #   orchestra_admin → can invite teacher only
     org_type = admin_user.get("org_type", "opera")
     allowed_by_role = {
-        "system_admin":    {"head_admin", "admin", "student", "teacher"},
-        "head_admin":      {"admin", "orchestra_admin", "teacher"},
+        "system_admin":    {"head_admin", "admin", "student", "teacher", "studio_teacher"},
+        "head_admin":      {"admin", "orchestra_admin", "teacher", "studio_teacher"},
         "admin":           {"teacher", "student", "choir_member", "ensemble_member"} if org_type == "choir" else {"teacher"},
         "orchestra_admin": {"teacher"},
     }
@@ -3985,7 +4048,9 @@ def teacher_today(request: Request):
 
 @app.get("/teacher/weekly")
 def teacher_weekly(request: Request):
-    teacher = require_user(request, role="teacher")
+    teacher = require_user(request)
+    if teacher["role"] not in TEACHER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
     with db_cursor() as cur:
         cur.execute("""
             SELECT weekday, start_time, end_time
@@ -4011,7 +4076,9 @@ def teacher_update_availability(data: AvailabilityRequestData, request: Request)
     - scope='permanent': replaces the weekly template
     - scope='one_time': adds exceptions for the specified week
     """
-    teacher = require_user(request, role="teacher")
+    teacher = require_user(request)
+    if teacher["role"] not in TEACHER_ROLES:
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     if data.scope not in ("permanent", "one_time"):
         return {"status": "fail", "message": "Invalid scope"}
@@ -8982,5 +9049,613 @@ def send_dm(payload: dict, request: Request):
         )
 
     return {"status": "success", "sent_to": len(resolved)}
+
+
+# ========================================================
+# STUDIO TEACHER
+# ========================================================
+
+def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min: int) -> dict:
+    """Returns {lessons_paid, scheduled, remaining} for a student's billing group."""
+    cur.execute(
+        "SELECT family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
+        (student_id, teacher_id)
+    )
+    row = cur.fetchone()
+    if not row:
+        return {"lessons_paid": 0, "scheduled": 0, "remaining": 0}
+    family_id = row[0]
+
+    if family_id:
+        cur.execute("""
+            SELECT lessons_paid FROM studio_payment_pools
+            WHERE family_id = %s AND duration_min = %s AND teacher_id = %s
+        """, (family_id, duration_min, teacher_id))
+        pool_row = cur.fetchone()
+        lessons_paid = pool_row[0] if pool_row else 0
+        cur.execute("""
+            SELECT COUNT(*) FROM lessons
+            WHERE studio_student_id IN (
+                SELECT id FROM studio_students WHERE family_id = %s AND teacher_id = %s
+            ) AND duration_min = %s AND status = 'booked'
+        """, (family_id, teacher_id, duration_min))
+    else:
+        cur.execute("""
+            SELECT lessons_paid FROM studio_payment_pools
+            WHERE student_id = %s AND duration_min = %s AND teacher_id = %s
+        """, (student_id, duration_min, teacher_id))
+        pool_row = cur.fetchone()
+        lessons_paid = pool_row[0] if pool_row else 0
+        cur.execute("""
+            SELECT COUNT(*) FROM lessons
+            WHERE studio_student_id = %s AND duration_min = %s AND status = 'booked'
+        """, (student_id, duration_min))
+
+    scheduled = cur.fetchone()[0]
+    return {
+        "lessons_paid": lessons_paid,
+        "scheduled": scheduled,
+        "remaining": lessons_paid - scheduled,
+    }
+
+
+def _send_payment_reminder_email(teacher_name: str, student_name: str, student_email: str,
+                                  parent_name: str, parent_email: str,
+                                  scheduled: int, lessons_paid: int, duration_min: int):
+    recipient_email = parent_email or student_email
+    recipient_name = parent_name or student_name
+    if not recipient_email:
+        return False
+    subject = f"Payment reminder — {student_name}"
+    html = (
+        f"<p>Hi {recipient_name},</p>"
+        f"<p>{student_name} has <strong>{scheduled}</strong> upcoming lessons scheduled "
+        f"({duration_min}-minute sessions) but only <strong>{lessons_paid}</strong> lesson(s) on file as paid.</p>"
+        f"<p>Please submit payment at your earliest convenience. Reply to this email if you have any questions.</p>"
+        f"<p>— {teacher_name}</p>"
+    )
+    text = (
+        f"Hi {recipient_name},\n\n"
+        f"{student_name} has {scheduled} upcoming lessons scheduled "
+        f"({duration_min}-minute sessions) but only {lessons_paid} lesson(s) on file as paid.\n\n"
+        f"Please submit payment at your earliest convenience.\n\n— {teacher_name}"
+    )
+    return send_email(recipient_email, subject, html, text)
+
+
+@app.get("/studio-teacher/lessons")
+def studio_teacher_lessons(request: Request):
+    teacher = require_studio_teacher(request)
+    today = datetime.now(EST).date()
+    week_ago = today - timedelta(days=7)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, lesson_date, lesson_time, duration_min,
+                   external_name, external_email, studio_student_id,
+                   zoom_link, attendance, status
+            FROM lessons
+            WHERE teacher_id = %s AND status = 'booked'
+              AND lesson_date >= %s
+            ORDER BY lesson_date, lesson_time
+        """, (teacher["id"], week_ago))
+        rows = cur.fetchall()
+
+    lessons = []
+    for r in rows:
+        lid, ldate, ltime, dur, ext_name, ext_email, ss_id, zoom, att, status = r
+        lessons.append({
+            "id": lid,
+            "date": ldate.isoformat(),
+            "time": ltime.strftime("%H:%M") if ltime else None,
+            "duration_min": dur,
+            "student_name": ext_name,
+            "student_email": ext_email,
+            "studio_student_id": ss_id,
+            "zoom_link": zoom,
+            "attendance": att,
+            "is_today": ldate == today,
+            "is_past": ldate < today,
+        })
+    return lessons
+
+
+@app.get("/studio-teacher/calendar")
+def studio_teacher_calendar(request: Request, year: int = None, month: int = None):
+    teacher = require_studio_teacher(request)
+    today = datetime.now(EST).date()
+    if year is None:
+        year = today.year
+    if month is None:
+        month = today.month
+
+    import calendar as _cal
+    num_days = _cal.monthrange(year, month)[1]
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT weekday, start_time FROM weekly_availability
+            WHERE teacher_id = %s AND active = TRUE
+        """, (teacher["id"],))
+        avail_rows = cur.fetchall()
+
+        available_weekdays = {r[0] for r in avail_rows}
+
+        cur.execute("""
+            SELECT EXTRACT(DAY FROM lesson_date)::int,
+                   COUNT(*),
+                   BOOL_OR(COALESCE(payment_overrun, FALSE))
+            FROM lessons
+            WHERE teacher_id = %s AND status = 'booked'
+              AND EXTRACT(YEAR FROM lesson_date) = %s
+              AND EXTRACT(MONTH FROM lesson_date) = %s
+            GROUP BY EXTRACT(DAY FROM lesson_date)
+        """, (teacher["id"], year, month))
+        lesson_rows = cur.fetchall()
+
+    lessons_map = {r[0]: {"count": r[1], "has_yellow": r[2]} for r in lesson_rows}
+
+    from datetime import date as _date
+    available_days = []
+    for day in range(1, num_days + 1):
+        d = _date(year, month, day)
+        if d.weekday() in available_weekdays:
+            available_days.append(day)
+
+    lessons = [
+        {"day": day, "count": info["count"], "has_yellow": info["has_yellow"]}
+        for day, info in lessons_map.items()
+    ]
+
+    return {"available_days": available_days, "lessons": lessons, "year": year, "month": month}
+
+
+@app.get("/studio-teacher/available-slots")
+def studio_teacher_available_slots(request: Request, date: str):
+    teacher = require_studio_teacher(request)
+    try:
+        from datetime import date as _date
+        target = _date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    slots = get_available_slots(teacher["id"], target, has_lunch_break=False)
+    return {"slots": slots}
+
+
+@app.post("/studio-teacher/lesson")
+def studio_teacher_add_lesson(payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    date_str = (payload.get("date") or "").strip()
+    time_str = (payload.get("time") or "").strip()
+    duration_min = int(payload.get("duration_min") or 30)
+    ext_name = (payload.get("external_name") or "").strip() or None
+    ext_email = (payload.get("external_email") or "").strip().lower() or None
+    studio_student_id = payload.get("studio_student_id") or None
+    zoom_link = (payload.get("zoom_link") or "").strip() or None
+
+    if not date_str or not time_str:
+        return {"status": "fail", "message": "Date and time are required"}
+
+    try:
+        from datetime import date as _date, time as _time
+        lesson_date = _date.fromisoformat(date_str)
+        lesson_time = datetime.strptime(time_str, "%H:%M").time()
+    except ValueError:
+        return {"status": "fail", "message": "Invalid date or time format"}
+
+    payment_overrun = False
+    reminder_needed = False
+
+    with db_cursor(commit=True) as cur:
+        if studio_student_id:
+            studio_student_id = int(studio_student_id)
+            cur.execute(
+                "SELECT name, email, parent_email FROM studio_students WHERE id = %s AND teacher_id = %s",
+                (studio_student_id, teacher["id"])
+            )
+            ss_row = cur.fetchone()
+            if ss_row:
+                if not ext_name:
+                    ext_name = ss_row[0]
+                if not ext_email:
+                    ext_email = ss_row[1]
+
+            balance = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
+            if balance["remaining"] <= 0:
+                payment_overrun = True
+                reminder_needed = True
+
+        cur.execute("""
+            INSERT INTO lessons
+                (teacher_id, lesson_date, lesson_time, duration_min,
+                 external_name, external_email, studio_student_id,
+                 zoom_link, payment_overrun, status)
+            VALUES (%s, %s, %s::time, %s, %s, %s, %s, %s, %s, 'booked')
+            RETURNING id
+        """, (
+            teacher["id"], lesson_date, time_str, duration_min,
+            ext_name, ext_email, studio_student_id,
+            zoom_link, payment_overrun
+        ))
+        lesson_id = cur.fetchone()[0]
+
+    if reminder_needed and studio_student_id:
+        with db_cursor() as cur:
+            cur.execute(
+                "SELECT name, email, parent_name, parent_email FROM studio_students WHERE id = %s",
+                (studio_student_id,)
+            )
+            sr = cur.fetchone()
+            if sr:
+                bal = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
+                _send_payment_reminder_email(
+                    teacher.get("fullname", "Your teacher"),
+                    sr[0], sr[1], sr[2], sr[3],
+                    bal["scheduled"], bal["lessons_paid"], duration_min
+                )
+
+    if ext_email:
+        from datetime import date as _date
+        date_label = lesson_date.strftime("%A, %B %-d")
+        html = (
+            f"<p>Hi {ext_name or 'there'},</p>"
+            f"<p>Your lesson has been scheduled for <strong>{date_label} at {time_str}</strong> "
+            f"({duration_min} minutes).</p>"
+        )
+        if zoom_link:
+            html += f"<p>Zoom link: <a href='{zoom_link}'>{zoom_link}</a></p>"
+        html += f"<p>— {teacher.get('fullname', 'Your teacher')}</p>"
+        text = f"Hi {ext_name or 'there'},\n\nYour lesson is scheduled for {date_label} at {time_str} ({duration_min} min)."
+        if zoom_link:
+            text += f"\nZoom: {zoom_link}"
+        send_email(ext_email, "Lesson scheduled — CountrPnt", html, text)
+
+    return {"status": "success", "lesson_id": lesson_id, "payment_overrun": payment_overrun}
+
+
+@app.delete("/studio-teacher/lesson/{lesson_id}")
+def studio_teacher_cancel_lesson(lesson_id: int, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE lessons SET status = 'cancelled', cancelled_at = NOW()
+            WHERE id = %s AND teacher_id = %s AND status = 'booked'
+            RETURNING external_name, external_email, lesson_date, lesson_time, duration_min
+        """, (lesson_id, teacher["id"]))
+        row = cur.fetchone()
+    if not row:
+        return {"status": "fail", "message": "Lesson not found"}
+
+    ext_name, ext_email, ldate, ltime, dur = row
+    if ext_email:
+        date_label = ldate.strftime("%A, %B %-d")
+        time_label = ltime.strftime("%H:%M") if ltime else ""
+        html = (
+            f"<p>Hi {ext_name or 'there'},</p>"
+            f"<p>Your {dur}-minute lesson on <strong>{date_label} at {time_label}</strong> has been cancelled.</p>"
+            f"<p>— {teacher.get('fullname', 'Your teacher')}</p>"
+        )
+        text = f"Hi {ext_name or 'there'},\nYour lesson on {date_label} at {time_label} has been cancelled."
+        send_email(ext_email, "Lesson cancelled — CountrPnt", html, text)
+    return {"status": "success"}
+
+
+@app.patch("/studio-teacher/lesson/{lesson_id}/attendance")
+def studio_teacher_mark_attendance(lesson_id: int, payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    att = (payload.get("attendance") or "").strip()
+    if att not in ("present", "absent"):
+        return {"status": "fail", "message": "attendance must be 'present' or 'absent'"}
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE lessons SET attendance = %s
+            WHERE id = %s AND teacher_id = %s
+        """, (att, lesson_id, teacher["id"]))
+    return {"status": "success"}
+
+
+@app.post("/studio-teacher/lessons-parse")
+def studio_teacher_lessons_parse(payload: dict, request: Request):
+    require_studio_teacher(request)
+    raw_text = (payload.get("text") or "").strip()
+    if not raw_text:
+        return {"status": "fail", "message": "No text provided"}
+    if not ANTHROPIC_API_KEY:
+        return {"status": "fail", "message": "Parsing not configured"}
+
+    system_prompt = (
+        "You are a lesson schedule parser. Extract lesson entries from freeform text. "
+        "Return a JSON array only — no explanation. Each entry: "
+        "{\"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"student_name\": \"...\", "
+        "\"email\": \"...\" (or null), \"duration_min\": 30}. "
+        "Infer duration from context (e.g. '30min', '1 hour' = 60). Default 30 if unspecified. "
+        "Use 24-hour time. Return only valid JSON."
+    )
+    client = _anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": raw_text}]
+        )
+        import json as _json
+        parsed = _json.loads(msg.content[0].text)
+        if not isinstance(parsed, list):
+            parsed = []
+    except Exception as e:
+        return {"status": "fail", "message": f"Parse error: {e}"}
+    return {"status": "success", "lessons": parsed}
+
+
+@app.get("/studio-teacher/students")
+def studio_teacher_students(request: Request):
+    teacher = require_studio_teacher(request)
+    today = datetime.now(EST).date()
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT ss.id, ss.name, ss.email, ss.parent_name, ss.parent_email, ss.family_id,
+                   sf.family_name, sf.parent_name AS fam_parent_name, sf.parent_email AS fam_parent_email
+            FROM studio_students ss
+            LEFT JOIN studio_families sf ON sf.id = ss.family_id
+            WHERE ss.teacher_id = %s
+            ORDER BY sf.family_name NULLS LAST, ss.name
+        """, (teacher["id"],))
+        student_rows = cur.fetchall()
+
+        cur.execute("""
+            SELECT studio_student_id,
+                   SUM(CASE WHEN attendance = 'present' THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN attendance = 'absent' THEN 1 ELSE 0 END) AS absent_count
+            FROM lessons
+            WHERE teacher_id = %s AND studio_student_id IS NOT NULL
+            GROUP BY studio_student_id
+        """, (teacher["id"],))
+        att_rows = {r[0]: {"present": r[1], "absent": r[2]} for r in cur.fetchall()}
+
+        cur.execute("""
+            SELECT student_id, family_id, duration_min, lessons_paid
+            FROM studio_payment_pools
+            WHERE teacher_id = %s
+        """, (teacher["id"],))
+        pool_rows = cur.fetchall()
+
+        # scheduled counts per student (all-time booked, matching _studio_payment_balance)
+        cur.execute("""
+            SELECT studio_student_id, duration_min, COUNT(*)
+            FROM lessons
+            WHERE teacher_id = %s AND studio_student_id IS NOT NULL AND status = 'booked'
+            GROUP BY studio_student_id, duration_min
+        """, (teacher["id"],))
+        scheduled_rows = cur.fetchall()
+
+    pool_by_student = {}
+    pool_by_family = {}
+    for pool_sid, pool_fid, pool_dur, pool_paid in pool_rows:
+        if pool_sid:
+            pool_by_student.setdefault(pool_sid, {})[pool_dur] = pool_paid
+        elif pool_fid:
+            pool_by_family.setdefault(pool_fid, {})[pool_dur] = pool_paid
+
+    scheduled_by_student = {}
+    for ss_id, dur, cnt in scheduled_rows:
+        scheduled_by_student.setdefault(ss_id, {})[dur] = cnt
+
+    out = []
+    for r in student_rows:
+        ss_id, name, email, p_name, p_email, fam_id, fam_name, fam_p_name, fam_p_email = r
+
+        attendance = att_rows.get(ss_id, {"present": 0, "absent": 0})
+
+        sched = scheduled_by_student.get(ss_id, {})
+        if fam_id:
+            paid_map = pool_by_family.get(fam_id, {})
+        else:
+            paid_map = pool_by_student.get(ss_id, {})
+
+        all_durs = set(sched.keys()) | set(paid_map.keys())
+        payments = []
+        for dur in sorted(all_durs):
+            paid = paid_map.get(dur, 0)
+            scheduled_cnt = sched.get(dur, 0)
+            payments.append({
+                "duration_min": dur,
+                "lessons_paid": paid,
+                "scheduled": scheduled_cnt,
+                "remaining": paid - scheduled_cnt,
+            })
+
+        out.append({
+            "id": ss_id,
+            "name": name,
+            "email": email,
+            "parent_name": p_name or fam_p_name,
+            "parent_email": p_email or fam_p_email,
+            "family_id": fam_id,
+            "family_name": fam_name,
+            "attendance": {"present": int(attendance["present"]), "absent": int(attendance["absent"])},
+            "payments": payments,
+        })
+    return out
+
+
+@app.post("/studio-teacher/students")
+def studio_teacher_add_student(payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return {"status": "fail", "message": "Name is required"}
+    email = (payload.get("email") or "").strip().lower() or None
+    parent_name = (payload.get("parent_name") or "").strip() or None
+    parent_email = (payload.get("parent_email") or "").strip().lower() or None
+    family_id = payload.get("family_id") or None
+    if family_id:
+        family_id = int(family_id)
+
+    with db_cursor(commit=True) as cur:
+        if not family_id and parent_email:
+            cur.execute(
+                "SELECT id FROM studio_families WHERE teacher_id = %s AND parent_email = %s LIMIT 1",
+                (teacher["id"], parent_email)
+            )
+            fam_row = cur.fetchone()
+            if fam_row:
+                family_id = fam_row[0]
+
+        cur.execute("""
+            INSERT INTO studio_students (teacher_id, name, email, parent_name, parent_email, family_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (teacher["id"], name, email, parent_name, parent_email, family_id))
+        student_id = cur.fetchone()[0]
+    return {"status": "success", "id": student_id}
+
+
+@app.post("/studio-teacher/families")
+def studio_teacher_add_family(payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    family_name = (payload.get("family_name") or "").strip()
+    if not family_name:
+        return {"status": "fail", "message": "Family name is required"}
+    parent_name = (payload.get("parent_name") or "").strip() or None
+    parent_email = (payload.get("parent_email") or "").strip().lower() or None
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO studio_families (teacher_id, family_name, parent_name, parent_email)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+        """, (teacher["id"], family_name, parent_name, parent_email))
+        fam_id = cur.fetchone()[0]
+    return {"status": "success", "id": fam_id}
+
+
+@app.get("/studio-teacher/families")
+def studio_teacher_families(request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, family_name, parent_name, parent_email
+            FROM studio_families WHERE teacher_id = %s ORDER BY family_name
+        """, (teacher["id"],))
+        rows = cur.fetchall()
+    return [{"id": r[0], "family_name": r[1], "parent_name": r[2], "parent_email": r[3]} for r in rows]
+
+
+@app.get("/studio-teacher/student/{student_id}/payment-balance")
+def studio_teacher_payment_balance(student_id: int, request: Request, duration_min: int = 30):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        balance = _studio_payment_balance(cur, teacher["id"], student_id, duration_min)
+    return balance
+
+
+@app.patch("/studio-teacher/student/{student_id}/payments")
+def studio_teacher_update_payments(student_id: int, payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    payments = payload.get("payments") or []
+    if not isinstance(payments, list):
+        return {"status": "fail", "message": "payments must be a list"}
+
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
+            (student_id, teacher["id"])
+        )
+        row = cur.fetchone()
+    if not row:
+        return {"status": "fail", "message": "Student not found"}
+    family_id = row[0]
+
+    with db_cursor(commit=True) as cur:
+        for entry in payments:
+            dur = int(entry.get("duration_min") or 30)
+            paid = int(entry.get("lessons_paid") or 0)
+            if family_id:
+                cur.execute("""
+                    INSERT INTO studio_payment_pools (teacher_id, family_id, duration_min, lessons_paid, updated_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (teacher_id, family_id, duration_min) WHERE family_id IS NOT NULL
+                    DO UPDATE SET lessons_paid = EXCLUDED.lessons_paid, updated_at = NOW()
+                """, (teacher["id"], family_id, dur, paid))
+            else:
+                cur.execute("""
+                    INSERT INTO studio_payment_pools (teacher_id, student_id, duration_min, lessons_paid, updated_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (teacher_id, student_id, duration_min) WHERE student_id IS NOT NULL
+                    DO UPDATE SET lessons_paid = EXCLUDED.lessons_paid, updated_at = NOW()
+                """, (teacher["id"], student_id, dur, paid))
+    return {"status": "success"}
+
+
+@app.post("/studio-teacher/student/{student_id}/payment-reminder")
+def studio_teacher_payment_reminder(student_id: int, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT name, email, parent_name, parent_email FROM studio_students WHERE id = %s AND teacher_id = %s",
+            (student_id, teacher["id"])
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Student not found"}
+        name, email, parent_name, parent_email = row
+
+        cur.execute("""
+            SELECT DISTINCT duration_min FROM lessons
+            WHERE studio_student_id = %s AND status = 'booked' AND lesson_date >= CURRENT_DATE
+        """, (student_id,))
+        durations = [r[0] for r in cur.fetchall()] or [30]
+        dur = durations[0]
+        balance = _studio_payment_balance(cur, teacher["id"], student_id, dur)
+
+    sent = _send_payment_reminder_email(
+        teacher.get("fullname", "Your teacher"),
+        name, email, parent_name, parent_email,
+        balance["scheduled"], balance["lessons_paid"], dur
+    )
+    return {"status": "success" if sent else "fail"}
+
+
+@app.post("/studio-teacher/invite")
+def studio_teacher_invite(payload: dict, request: Request):
+    """Studio teacher invites a studio_member to join their studio."""
+    teacher = require_studio_teacher(request)
+    email = (payload.get("email") or "").strip().lower()
+    fullname_hint = (payload.get("fullname_hint") or "").strip() or None
+
+    if not email or not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+        return {"status": "fail", "message": "Please enter a valid email."}
+
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM users WHERE org_id = %s AND email = %s",
+            (teacher["org_id"], email)
+        )
+        if cur.fetchone():
+            return {"status": "fail", "message": "A user with that email already exists."}
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(EST) + timedelta(days=INVITE_TOKEN_DAYS)
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE invitations SET accepted_at = NOW()
+            WHERE email = %s AND org_id = %s AND accepted_at IS NULL
+        """, (email, teacher["org_id"]))
+        cur.execute("""
+            INSERT INTO invitations (token, email, role, org_id, invited_by,
+                                     fullname_hint, expires_at, teacher_type)
+            VALUES (%s, %s, 'studio_member', %s, %s, %s, %s, 'vocal')
+        """, (token, email, teacher["org_id"], teacher["id"], fullname_hint, expires))
+
+    invite_url = f"{APP_URL}/accept-invite?token={token}"
+    with db_cursor() as cur:
+        cur.execute("SELECT name FROM organizations WHERE id = %s", (teacher["org_id"],))
+        org_row = cur.fetchone()
+    org_name = org_row[0] if org_row else ""
+
+    html, text = render_invite_email(invite_url, "studio_member", fullname_hint or "", teacher.get("fullname", ""), org_name)
+    sent = send_email(email, "You've been invited to CountrPnt", html, text)
+    return {"status": "success", "email_sent": sent}
 
 

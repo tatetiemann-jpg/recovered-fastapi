@@ -6,3 +6,4 @@ jinja2
 pytz
 bcrypt
 resend
+anthropic

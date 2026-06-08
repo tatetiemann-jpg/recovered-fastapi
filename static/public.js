@@ -131,6 +131,10 @@ async function login() {
             location.href = "/admin";
         } else if (data.role === "teacher") {
             location.href = "/teacher";
+        } else if (data.role === "studio_teacher") {
+            location.href = "/studio-teacher";
+        } else if (data.role === "studio_member") {
+            location.href = "/student";
         } else if (data.role === "student") {
             location.href = "/student";
         } else if (data.role === "orchestra_member") {

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Studio Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/themes.css">
+    <link rel="stylesheet" href="/static/app.css?v=3">
+    <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+    <div class="top-actions">
+        <button id="logout-btn">Logout</button>
+        <button id="open-edit-account-btn">Edit Account</button>
+    </div>
+
+    <h1 id="welcome">Welcome</h1>
+
+    <nav class="tab-nav">
+        <button class="tab-btn" data-tab="lessons">Lessons</button>
+        <button class="tab-btn" data-tab="schedule">Schedule</button>
+        <button class="tab-btn" data-tab="students">Students</button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
+    </nav>
+
+    <!-- ============================ -->
+    <!-- LESSONS TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="lessons">
+        <div class="box">
+            <h2 id="today-lessons-header">Today</h2>
+            <div id="today-lessons-list"><em class="empty-note">No lessons today.</em></div>
+        </div>
+        <div class="box" id="upcoming-lessons-box">
+            <h2>Upcoming</h2>
+            <div id="upcoming-lessons-list"><em class="empty-note">No upcoming lessons.</em></div>
+        </div>
+    </section>
+
+    <!-- ============================ -->
+    <!-- SCHEDULE TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="schedule">
+        <div class="box">
+            <div class="section-header">
+                <h2>Schedule</h2>
+                <div style="display:flex;gap:var(--space-2);">
+                    <button id="open-avail-btn" class="subtle-btn">Edit Availability</button>
+                    <button id="open-parse-btn" class="subtle-btn">Add from List</button>
+                </div>
+            </div>
+
+            <div class="studio-cal-nav">
+                <button id="cal-prev-btn" class="subtle-btn">&#8249;</button>
+                <span id="cal-month-label" style="font-weight:600;"></span>
+                <button id="cal-next-btn" class="subtle-btn">&#8250;</button>
+            </div>
+
+            <div id="studio-calendar" class="studio-calendar">
+                <em class="empty-note">Loading calendar…</em>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================ -->
+    <!-- STUDENTS TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="students">
+        <div class="box">
+            <div class="section-header">
+                <h2>Students</h2>
+                <div style="display:flex;gap:var(--space-2);">
+                    <button id="add-family-btn" class="subtle-btn">Add Family</button>
+                    <button id="add-student-btn">Add Student</button>
+                </div>
+            </div>
+            <div id="studio-students-list"><em class="empty-note">No students yet.</em></div>
+        </div>
+    </section>
+
+    <!-- ============================ -->
+    <!-- MESSAGES TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="messages">
+        <div class="box">
+            <div class="section-header">
+                <h2>Messages</h2>
+            </div>
+            <p class="hint">Message your students. Recipients receive an email notification.</p>
+
+            <div class="dm-view-toggle">
+                <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+                <button class="dm-view-btn" data-dm-view="read">Read</button>
+                <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+            </div>
+
+            <div id="dm-list" class="dm-list"><em class="empty-note">Loading…</em></div>
+
+            <div class="dm-compose">
+                <h3>New Message</h3>
+                <div class="dm-scope-row">
+                    <label for="dm-scope">Send to</label>
+                    <select id="dm-scope">
+                        <option value="studio_today">Today's Lessons</option>
+                        <option value="studio_week">This Week's Lessons</option>
+                        <option value="studio_all">All My Students</option>
+                        <option value="direct">Individual</option>
+                    </select>
+                </div>
+                <div id="dm-recipient-row" class="dm-recipient-row hidden">
+                    <label>Recipients</label>
+                    <div class="dm-recipient-picker">
+                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts…" class="dm-recipient-search hidden">
+                        <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+                    </div>
+                </div>
+                <label for="dm-body">Message</label>
+                <textarea id="dm-body" rows="4" placeholder="Write your message…"></textarea>
+                <div style="margin-top:var(--space-3);">
+                    <button id="dm-send-btn">Send Message</button>
+                </div>
+                <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<!-- ============================================================ -->
+<!-- LESSON ADD MODAL -->
+<!-- ============================================================ -->
+<div id="lesson-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="lesson-modal-title">Add Lesson</h3>
+        <p id="lesson-modal-date-label" class="hint"></p>
+
+        <label>Student</label>
+        <div class="studio-student-picker">
+            <input id="lesson-student-search" type="text" placeholder="Search students or type a name…" autocomplete="off">
+            <div id="lesson-student-dropdown" class="student-dropdown hidden"></div>
+        </div>
+        <div id="lesson-student-balance" class="hint" style="margin-top:var(--space-1);"></div>
+
+        <div id="lesson-free-type-row" class="hidden">
+            <label>Email (optional)</label>
+            <input id="lesson-student-email" type="email" placeholder="student@example.com">
+        </div>
+
+        <label>Duration</label>
+        <div class="chip-group" id="lesson-duration-chips">
+            <button class="chip active" data-dur="30">30 min</button>
+            <button class="chip" data-dur="45">45 min</button>
+            <button class="chip" data-dur="60">60 min</button>
+            <button class="chip" data-dur="90">90 min</button>
+        </div>
+
+        <label>Time</label>
+        <select id="lesson-time-select"><option value="">— select —</option></select>
+
+        <label>Zoom link (optional)</label>
+        <input id="lesson-zoom-link" type="url" placeholder="https://zoom.us/j/…">
+
+        <div id="lesson-overrun-warning" class="hint hidden" style="color:var(--color-warning,#b45309);margin-top:var(--space-2);">
+            &#9888; This student's paid lessons are used up — scheduling will send them a payment reminder.
+        </div>
+
+        <div class="modal-actions">
+            <button id="lesson-submit-btn">Save</button>
+            <button id="lesson-cancel-btn">Cancel</button>
+        </div>
+        <p id="lesson-modal-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MULTI-WEEK MODAL (click weekday header) -->
+<!-- ============================================================ -->
+<div id="multiweek-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="multiweek-modal-title">Add Recurring Lessons</h3>
+        <p id="multiweek-modal-sub" class="hint"></p>
+
+        <label>Student</label>
+        <div class="studio-student-picker">
+            <input id="mw-student-search" type="text" placeholder="Search students or type a name…" autocomplete="off">
+            <div id="mw-student-dropdown" class="student-dropdown hidden"></div>
+        </div>
+        <div id="mw-student-balance" class="hint" style="margin-top:var(--space-1);"></div>
+
+        <div id="mw-free-type-row" class="hidden">
+            <label>Email (optional)</label>
+            <input id="mw-student-email" type="email" placeholder="student@example.com">
+        </div>
+
+        <label>Duration</label>
+        <div class="chip-group" id="mw-duration-chips">
+            <button class="chip active" data-dur="30">30 min</button>
+            <button class="chip" data-dur="45">45 min</button>
+            <button class="chip" data-dur="60">60 min</button>
+            <button class="chip" data-dur="90">90 min</button>
+        </div>
+
+        <label>Time</label>
+        <select id="mw-time-select"><option value="">— select —</option></select>
+
+        <label>Zoom link (optional)</label>
+        <input id="mw-zoom-link" type="url" placeholder="https://zoom.us/j/…">
+
+        <label>How many weeks?</label>
+        <div class="chip-group" id="mw-count-chips">
+            <button class="chip active" data-count="1">1</button>
+            <button class="chip" data-count="2">2</button>
+            <button class="chip" data-count="3">3</button>
+            <button class="chip" data-count="4">4</button>
+        </div>
+
+        <div class="modal-actions">
+            <button id="mw-submit-btn">Schedule</button>
+            <button id="mw-cancel-btn">Cancel</button>
+        </div>
+        <p id="mw-modal-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PARSE FROM LIST MODAL -->
+<!-- ============================================================ -->
+<div id="parse-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3>Add Lessons from List</h3>
+        <p class="hint">Paste your schedule below — one lesson per line or any format. AI will extract dates, times, names, and durations.</p>
+        <textarea id="parse-text" rows="8" placeholder="e.g.&#10;Monday June 9 - Sally Smith 3pm 30min&#10;Tuesday June 10 - Bobby Jones 4:30pm 45min"></textarea>
+        <div class="modal-actions">
+            <button id="parse-submit-btn">Parse</button>
+            <button id="parse-cancel-btn">Cancel</button>
+        </div>
+        <p id="parse-msg" class="hint"></p>
+
+        <div id="parse-preview-section" class="hidden">
+            <h4>Preview</h4>
+            <table id="parse-preview-table" class="data-table">
+                <thead>
+                    <tr><th>Date</th><th>Time</th><th>Student</th><th>Email</th><th>Duration</th><th></th></tr>
+                </thead>
+                <tbody id="parse-preview-body"></tbody>
+            </table>
+            <div class="modal-actions" style="margin-top:var(--space-3);">
+                <button id="parse-confirm-btn">Add All</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- AVAILABILITY MODAL -->
+<!-- ============================================================ -->
+<div id="request-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3>Edit My Availability</h3>
+        <p class="hint">Set the days and hours you're available for lessons. Changes take effect immediately.</p>
+
+        <div class="scope-selector">
+            <label class="scope-option">
+                <input type="radio" name="request-scope" value="permanent" checked>
+                Permanent (every week)
+            </label>
+            <label class="scope-option">
+                <input type="radio" name="request-scope" value="one_time">
+                One-time for week starting:
+                <input type="date" id="request-week-start" disabled>
+            </label>
+        </div>
+
+        <div id="request-days" class="request-days-grid"></div>
+
+        <div class="modal-actions">
+            <button id="submit-request-btn">Save Changes</button>
+            <button id="cancel-request-btn">Cancel</button>
+        </div>
+        <p id="request-msg"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ADD STUDENT MODAL -->
+<!-- ============================================================ -->
+<div id="add-student-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Add Student</h3>
+
+        <label>Name</label>
+        <input id="as-name" type="text" placeholder="Full name">
+
+        <label>Email (optional)</label>
+        <input id="as-email" type="email" placeholder="student@example.com">
+
+        <label>Parent name (optional)</label>
+        <input id="as-parent-name" type="text" placeholder="Parent or guardian">
+
+        <label>Parent email (optional)</label>
+        <input id="as-parent-email" type="email" placeholder="parent@example.com">
+
+        <label>Family (optional)</label>
+        <select id="as-family-select">
+            <option value="">— solo student —</option>
+        </select>
+
+        <div class="modal-actions">
+            <button id="as-submit-btn">Add Student</button>
+            <button id="as-cancel-btn">Cancel</button>
+        </div>
+        <p id="as-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ADD FAMILY MODAL -->
+<!-- ============================================================ -->
+<div id="add-family-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Add Family</h3>
+        <p class="hint">Create a family group so siblings can share a payment pool.</p>
+
+        <label>Family name</label>
+        <input id="af-name" type="text" placeholder="e.g. Smith Family">
+
+        <label>Parent name (optional)</label>
+        <input id="af-parent-name" type="text" placeholder="Jane Smith">
+
+        <label>Parent email (optional)</label>
+        <input id="af-parent-email" type="email" placeholder="jane@example.com">
+
+        <div class="modal-actions">
+            <button id="af-submit-btn">Create Family</button>
+            <button id="af-cancel-btn">Cancel</button>
+        </div>
+        <p id="af-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- STUDENT DETAIL MODAL -->
+<!-- ============================================================ -->
+<div id="student-detail-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="sd-name"></h3>
+        <p id="sd-email" class="hint"></p>
+        <p id="sd-parent" class="hint"></p>
+        <p id="sd-family" class="hint"></p>
+
+        <div class="stats-row" style="display:flex;gap:var(--space-4);margin:var(--space-3) 0;">
+            <div><strong id="sd-present-count">0</strong><br><span class="hint">Attended</span></div>
+            <div><strong id="sd-absent-count">0</strong><br><span class="hint">Missed</span></div>
+        </div>
+
+        <h4>Payment Summary</h4>
+        <div id="sd-payment-summary"><em class="hint">No payment records.</em></div>
+
+        <div class="modal-actions" style="flex-wrap:wrap;gap:var(--space-2);">
+            <button id="sd-message-btn">Message Student</button>
+            <button id="sd-update-payments-btn">Update Payments</button>
+            <button id="sd-reminder-btn" class="subtle-btn">Send Payment Reminder</button>
+            <button id="sd-close-btn">Close</button>
+        </div>
+        <p id="sd-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- UPDATE PAYMENTS MODAL -->
+<!-- ============================================================ -->
+<div id="update-payments-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="up-title">Update Payments</h3>
+        <p class="hint">Enter the total number of lessons that have been paid for each duration.</p>
+        <div id="up-rows"></div>
+        <button id="up-add-row-btn" class="subtle-btn" style="margin-top:var(--space-2);">+ Add duration</button>
+        <div class="modal-actions">
+            <button id="up-submit-btn">Save</button>
+            <button id="up-cancel-btn">Cancel</button>
+        </div>
+        <p id="up-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- EDIT ACCOUNT MODAL -->
+<!-- ============================================================ -->
+{% include "_edit_account_modal.html" %}
+
+<script src="/static/public.js?v=3"></script>
+<script src="/static/themes.js"></script>
+<script src="/static/app.js?v=3"></script>
+<script src="/static/studio/teacher.js"></script>
+</body>
+</html>
