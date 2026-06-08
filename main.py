@@ -9785,6 +9785,30 @@ def studio_teacher_families(request: Request):
     return [{"id": r[0], "family_name": r[1], "parent_name": r[2], "parent_email": r[3]} for r in rows]
 
 
+@app.patch("/studio-teacher/student/{student_id}")
+def studio_teacher_update_student(student_id: int, payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return {"status": "fail", "message": "Name is required"}
+    email = (payload.get("email") or "").strip().lower() or None
+    parent_name = (payload.get("parent_name") or "").strip() or None
+    parent_email = (payload.get("parent_email") or "").strip().lower() or None
+    family_id = payload.get("family_id") or None
+    if family_id:
+        family_id = int(family_id)
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE studio_students
+            SET name = %s, email = %s, parent_name = %s, parent_email = %s, family_id = %s
+            WHERE id = %s AND teacher_id = %s
+        """, (name, email, parent_name, parent_email, family_id, student_id, teacher["id"]))
+        if cur.rowcount == 0:
+            return {"status": "fail", "message": "Student not found"}
+    return {"status": "success"}
+
+
 @app.get("/studio-teacher/student/{student_id}/payment-balance")
 def studio_teacher_payment_balance(student_id: int, request: Request, duration_min: int = 30):
     teacher = require_studio_teacher(request)

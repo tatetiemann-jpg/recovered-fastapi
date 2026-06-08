@@ -357,6 +357,38 @@
         <p id="sd-parent" class="hint"></p>
         <p id="sd-family" class="hint"></p>
 
+        <!-- Inline edit form (hidden by default) -->
+        <div id="sd-edit-form" class="hidden" style="border-top:1px solid var(--border);padding-top:var(--space-3);margin-top:var(--space-2);">
+            <h4 style="margin-bottom:var(--space-3);">Edit Student</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+                <div>
+                    <label>Name</label>
+                    <input id="sd-edit-name" type="text">
+                </div>
+                <div>
+                    <label>Email</label>
+                    <input id="sd-edit-email" type="email">
+                </div>
+                <div>
+                    <label>Parent name</label>
+                    <input id="sd-edit-parent-name" type="text">
+                </div>
+                <div>
+                    <label>Parent email</label>
+                    <input id="sd-edit-parent-email" type="email">
+                </div>
+                <div>
+                    <label>Family</label>
+                    <select id="sd-edit-family"></select>
+                </div>
+            </div>
+            <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);">
+                <button id="sd-edit-save-btn">Save Changes</button>
+                <button id="sd-edit-cancel-btn" class="subtle-btn">Cancel</button>
+            </div>
+            <p id="sd-edit-msg" class="hint"></p>
+        </div>
+
         <div class="stats-row" style="display:flex;gap:var(--space-4);margin:var(--space-3) 0;">
             <div><strong id="sd-present-count">0</strong><br><span class="hint">Attended</span></div>
             <div><strong id="sd-absent-count">0</strong><br><span class="hint">Missed</span></div>
@@ -368,6 +400,7 @@
         <div class="modal-actions" style="flex-wrap:wrap;gap:var(--space-2);">
             <button id="sd-message-btn">Message Student</button>
             <button id="sd-update-payments-btn">Update Payments</button>
+            <button id="sd-edit-btn" class="subtle-btn">Edit Student</button>
             <button id="sd-reminder-btn" class="subtle-btn">Send Payment Reminder</button>
             <button id="sd-close-btn">Close</button>
         </div>

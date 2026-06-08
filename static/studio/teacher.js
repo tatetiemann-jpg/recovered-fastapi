@@ -1031,6 +1031,8 @@ function openStudentDetail(studentId) {
     document.getElementById("sd-present-count").textContent = s.attendance?.present ?? 0;
     document.getElementById("sd-absent-count").textContent = s.attendance?.absent ?? 0;
     document.getElementById("sd-msg").textContent = "";
+    document.getElementById("sd-edit-form").classList.add("hidden");
+    document.getElementById("sd-edit-msg").textContent = "";
 
     const payEl = document.getElementById("sd-payment-summary");
     if (!s.payments || !s.payments.length) {
@@ -1056,6 +1058,60 @@ function openStudentDetail(studentId) {
 function initStudentDetailModal() {
     document.getElementById("sd-close-btn")?.addEventListener("click", () => {
         document.getElementById("student-detail-modal").classList.add("hidden");
+    });
+
+    document.getElementById("sd-edit-btn")?.addEventListener("click", () => {
+        const s = allStudents.find(s => s.id === activeStudentId);
+        if (!s) return;
+        document.getElementById("sd-edit-name").value = s.name || "";
+        document.getElementById("sd-edit-email").value = s.email || "";
+        document.getElementById("sd-edit-parent-name").value = s.parent_name || "";
+        document.getElementById("sd-edit-parent-email").value = s.parent_email || "";
+        // Populate family select
+        const famSel = document.getElementById("sd-edit-family");
+        famSel.innerHTML = `<option value="">— solo student —</option>` +
+            allFamilies.map(f => `<option value="${f.id}" ${s.family_id === f.id ? "selected" : ""}>${escHtml(f.family_name)}</option>`).join("");
+        document.getElementById("sd-edit-form").classList.remove("hidden");
+        document.getElementById("sd-edit-name").focus();
+    });
+
+    document.getElementById("sd-edit-cancel-btn")?.addEventListener("click", () => {
+        document.getElementById("sd-edit-form").classList.add("hidden");
+    });
+
+    document.getElementById("sd-edit-save-btn")?.addEventListener("click", async () => {
+        const btn = document.getElementById("sd-edit-save-btn");
+        const msg = document.getElementById("sd-edit-msg");
+        const name = document.getElementById("sd-edit-name").value.trim();
+        if (!name) { msg.textContent = "Name is required."; return; }
+
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+        try {
+            const res = await fetch(`${API}/studio-teacher/student/${activeStudentId}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    email: document.getElementById("sd-edit-email").value.trim().toLowerCase() || null,
+                    parent_name: document.getElementById("sd-edit-parent-name").value.trim() || null,
+                    parent_email: document.getElementById("sd-edit-parent-email").value.trim().toLowerCase() || null,
+                    family_id: document.getElementById("sd-edit-family").value || null,
+                }),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                await loadStudents();
+                openStudentDetail(activeStudentId); // re-render with updated data
+            } else {
+                msg.textContent = data.message || "Failed.";
+            }
+        } catch (e) {
+            msg.textContent = "Server error.";
+        }
+        btn.disabled = false;
+        btn.textContent = "Save Changes";
     });
 
     document.getElementById("sd-message-btn")?.addEventListener("click", () => {
