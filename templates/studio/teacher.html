@@ -383,6 +383,20 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- DAY DETAIL MODAL -->
+<!-- ============================================================ -->
+<div id="day-detail-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3 id="dd-date-label"></h3>
+        <div id="dd-list" style="margin: var(--space-3) 0;"></div>
+        <div class="modal-actions">
+            <button id="dd-add-btn">+ Add Lesson</button>
+            <button onclick="document.getElementById('day-detail-modal').classList.add('hidden')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- EDIT ACCOUNT MODAL -->
 <!-- ============================================================ -->
 {% include "_edit_account_modal.html" %}

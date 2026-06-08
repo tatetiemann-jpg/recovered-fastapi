@@ -9159,6 +9159,42 @@ def studio_teacher_lessons(request: Request):
     return lessons
 
 
+@app.get("/studio-teacher/lessons-for-date")
+def studio_teacher_lessons_for_date(request: Request, date: str):
+    teacher = require_studio_teacher(request)
+    from datetime import date as _date
+    try:
+        target = _date.fromisoformat(date)
+    except ValueError:
+        return []
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT l.id, l.lesson_time, l.duration_min,
+                   l.external_name, l.external_email,
+                   l.studio_student_id, l.zoom_link, l.attendance,
+                   ss.name AS reg_name, ss.email AS reg_email
+            FROM lessons l
+            LEFT JOIN studio_students ss ON ss.id = l.studio_student_id
+            WHERE l.teacher_id = %s AND l.lesson_date = %s AND l.status = 'booked'
+            ORDER BY l.lesson_time
+        """, (teacher["id"], target))
+        rows = cur.fetchall()
+    result = []
+    for r in rows:
+        lid, ltime, dur, ext_name, ext_email, ss_id, zoom, att, reg_name, reg_email = r
+        result.append({
+            "id": lid,
+            "time": ltime.strftime("%H:%M") if ltime else None,
+            "duration_min": dur,
+            "student_name": reg_name or ext_name or "Unknown",
+            "student_email": reg_email or ext_email,
+            "studio_student_id": ss_id,
+            "zoom_link": zoom,
+            "attendance": att,
+        })
+    return result
+
+
 @app.get("/studio-teacher/calendar")
 def studio_teacher_calendar(request: Request, year: int = None, month: int = None):
     teacher = require_studio_teacher(request)
@@ -9310,6 +9346,127 @@ def studio_teacher_add_lesson(payload: dict, request: Request):
         send_email(ext_email, "Lesson scheduled — CountrPnt", html, text)
 
     return {"status": "success", "lesson_id": lesson_id, "payment_overrun": payment_overrun}
+
+
+@app.post("/studio-teacher/lessons-bulk")
+def studio_teacher_add_lessons_bulk(payload: dict, request: Request):
+    """Insert multiple lessons and send ONE summary email per student (not one per lesson)."""
+    teacher = require_studio_teacher(request)
+    teacher_name = teacher.get("fullname") or "Your teacher"
+    lessons_in = payload.get("lessons") or []
+
+    added = []
+    with db_cursor(commit=True) as cur:
+        for item in lessons_in:
+            date_str = (item.get("date") or "").strip()
+            time_str = (item.get("time") or "").strip()
+            duration_min = int(item.get("duration_min") or 30)
+            ext_name = (item.get("external_name") or "").strip() or None
+            ext_email = (item.get("external_email") or "").strip().lower() or None
+            studio_student_id = item.get("studio_student_id") or None
+            zoom_link = (item.get("zoom_link") or "").strip() or None
+
+            if not date_str or not time_str:
+                continue
+            try:
+                from datetime import date as _date
+                lesson_date = _date.fromisoformat(date_str)
+                datetime.strptime(time_str, "%H:%M")  # validate
+            except ValueError:
+                continue
+
+            payment_overrun = False
+            if studio_student_id:
+                studio_student_id = int(studio_student_id)
+                cur.execute(
+                    "SELECT name, email FROM studio_students WHERE id = %s AND teacher_id = %s",
+                    (studio_student_id, teacher["id"])
+                )
+                ss = cur.fetchone()
+                if ss:
+                    if not ext_name: ext_name = ss[0]
+                    if not ext_email: ext_email = ss[1]
+                bal = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
+                if bal["remaining"] <= 0:
+                    payment_overrun = True
+
+            cur.execute("""
+                INSERT INTO lessons
+                    (teacher_id, lesson_date, lesson_time, duration_min,
+                     external_name, external_email, studio_student_id,
+                     zoom_link, payment_overrun, status)
+                VALUES (%s, %s, %s::time, %s, %s, %s, %s, %s, %s, 'booked')
+                RETURNING id
+            """, (
+                teacher["id"], lesson_date, time_str, duration_min,
+                ext_name, ext_email, studio_student_id, zoom_link, payment_overrun
+            ))
+            added.append({
+                "id": cur.fetchone()[0],
+                "date": date_str,
+                "time": time_str,
+                "duration_min": duration_min,
+                "student_name": ext_name or "Student",
+                "email": ext_email,
+                "zoom_link": zoom_link,
+            })
+
+    # One email per unique student email address
+    from collections import defaultdict as _dd
+    by_email = _dd(list)
+    for item in added:
+        if item["email"]:
+            by_email[item["email"]].append(item)
+
+    for email, items in by_email.items():
+        student_name = items[0]["student_name"]
+        items.sort(key=lambda x: (x["date"], x["time"]))
+
+        rows_html = ""
+        rows_text = ""
+        for item in items:
+            d_obj = datetime.strptime(item["date"], "%Y-%m-%d")
+            date_label = d_obj.strftime("%A, %B %-d")
+            time_label = datetime.strptime(item["time"], "%H:%M").strftime("%-I:%M %p")
+            start_dt = datetime.combine(d_obj.date(), datetime.strptime(item["time"], "%H:%M").time())
+            end_dt = start_dt + timedelta(minutes=item["duration_min"])
+            gcal_title = f"Lesson+with+{teacher_name.replace(' ', '+')}"
+            gcal_url = (
+                f"https://calendar.google.com/calendar/render?action=TEMPLATE"
+                f"&text={gcal_title}"
+                f"&dates={start_dt.strftime('%Y%m%dT%H%M%S')}/{end_dt.strftime('%Y%m%dT%H%M%S')}"
+            )
+            if item["zoom_link"]:
+                import urllib.parse as _up
+                gcal_url += f"&location={_up.quote(item['zoom_link'], safe='')}"
+            rows_html += (
+                f"<tr><td style='padding:4px 14px 4px 0'>{date_label}</td>"
+                f"<td style='padding:4px 14px 4px 0'>{time_label}</td>"
+                f"<td style='padding:4px 14px 4px 0'>{item['duration_min']} min</td>"
+                f"<td style='padding:4px 0'><a href='{gcal_url}' style='color:#7c5cbf'>Add to Calendar</a></td></tr>"
+            )
+            rows_text += f"  • {date_label} at {time_label} ({item['duration_min']} min)\n"
+            if item["zoom_link"]:
+                rows_text += f"    Zoom: {item['zoom_link']}\n"
+
+        html = (
+            f"<p>Hi {student_name},</p>"
+            f"<p>The following lessons have been scheduled with {teacher_name}:</p>"
+            f"<table style='border-collapse:collapse;font-family:sans-serif;font-size:14px'>"
+            f"<tr style='color:#888;font-size:12px'><th style='text-align:left;padding:4px 14px 4px 0'>Date</th>"
+            f"<th style='text-align:left;padding:4px 14px 4px 0'>Time</th>"
+            f"<th style='text-align:left;padding:4px 14px 4px 0'>Duration</th><th></th></tr>"
+            f"{rows_html}</table>"
+            f"<p style='margin-top:16px'>— {teacher_name}</p>"
+        )
+        text = (
+            f"Hi {student_name},\n\n"
+            f"The following lessons have been scheduled with {teacher_name}:\n\n"
+            f"{rows_text}\n— {teacher_name}"
+        )
+        send_email(email, f"Lessons scheduled with {teacher_name}", html, text)
+
+    return {"status": "success", "added": len(added)}
 
 
 @app.delete("/studio-teacher/lesson/{lesson_id}")

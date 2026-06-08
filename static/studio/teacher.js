@@ -145,6 +145,53 @@ async function cancelLesson(lessonId) {
 }
 
 // ============================================================
+// DAY DETAIL MODAL
+// ============================================================
+
+let dayDetailDate = null;
+
+async function openDayDetail(dateStr) {
+    dayDetailDate = dateStr;
+    const modal = document.getElementById("day-detail-modal");
+    document.getElementById("dd-date-label").textContent = formatDateLabel(dateStr);
+    document.getElementById("dd-list").innerHTML = '<em class="empty-note">Loading…</em>';
+    modal.classList.remove("hidden");
+
+    const resp = await fetch(`${API}/studio-teacher/lessons-for-date?date=${dateStr}`, { credentials: "include" });
+    const lessons = await resp.json();
+
+    if (!lessons.length) {
+        document.getElementById("dd-list").innerHTML = '<em class="empty-note">No lessons scheduled.</em>';
+    } else {
+        document.getElementById("dd-list").innerHTML = lessons.map(l => `
+            <div class="lesson-card">
+                <div class="lesson-card-info">
+                    <strong>${escHtml(l.student_name)}</strong>
+                    <span class="hint">${formatTime12(l.time)} &middot; ${l.duration_min} min</span>
+                    ${l.zoom_link ? `<a class="zoom-link" href="${escHtml(l.zoom_link)}" target="_blank">Zoom</a>` : ""}
+                </div>
+                <div class="lesson-card-actions">
+                    <button class="subtle-btn" onclick="cancelLessonFromDetail(${l.id})">Cancel</button>
+                </div>
+            </div>
+        `).join("");
+    }
+
+    document.getElementById("dd-add-btn").onclick = () => {
+        modal.classList.add("hidden");
+        openLessonModal(dateStr);
+    };
+}
+
+async function cancelLessonFromDetail(lessonId) {
+    if (!confirm("Cancel this lesson?")) return;
+    await fetch(`${API}/studio-teacher/lesson/${lessonId}`, { method: "DELETE", credentials: "include" });
+    loadLessons();
+    loadCalendar(calYear, calMonth);
+    if (dayDetailDate) openDayDetail(dayDetailDate);
+}
+
+// ============================================================
 // SCHEDULE TAB — CALENDAR
 // ============================================================
 
@@ -226,11 +273,13 @@ function renderCalendar(year, month, availDays, lessonData) {
         if (isToday) cls += " cal-today";
         if (!avail) cls += " cal-unavailable";
 
+        const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const dot = info
-            ? `<span class="cal-dot ${info.has_yellow ? 'cal-dot-yellow' : 'cal-dot-green'}">${info.count}</span>`
+            ? `<span class="cal-dot ${info.has_yellow ? 'cal-dot-yellow' : 'cal-dot-green'}"
+                 onclick="event.stopPropagation();openDayDetail('${dateStr}')">${info.count}</span>`
             : "";
 
-        const onclick = avail ? `onclick="openLessonModal('${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}')"` : "";
+        const onclick = avail ? `onclick="openLessonModal('${dateStr}')"` : "";
         html += `<div class="${cls}" ${onclick}><span class="cal-day-num">${d}</span>${dot}</div>`;
     }
 
@@ -537,37 +586,38 @@ async function submitMultiweekModal() {
 
     btn.disabled = true;
     btn.textContent = "Scheduling…";
-    let errors = 0;
-    for (const dateStr of dates) {
-        try {
-            const res = await fetch(`${API}/studio-teacher/lesson`, {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    date: dateStr,
-                    time: timeVal,
-                    duration_min: dur,
-                    external_name: mwSelectedStudentId ? null : name,
-                    external_email: email,
-                    studio_student_id: mwSelectedStudentId,
-                    zoom_link: zoomLink,
-                }),
-            });
-            const data = await res.json();
-            if (data.status !== "success") errors++;
-        } catch (e) {
-            errors++;
+
+    const lessons = dates.map(dateStr => ({
+        date: dateStr,
+        time: timeVal,
+        duration_min: dur,
+        external_name: mwSelectedStudentId ? null : name,
+        external_email: email,
+        studio_student_id: mwSelectedStudentId,
+        zoom_link: zoomLink,
+    }));
+
+    try {
+        const res = await fetch(`${API}/studio-teacher/lessons-bulk`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lessons }),
+        });
+        const data = await res.json();
+        btn.disabled = false;
+        btn.textContent = "Schedule";
+        if (data.added < dates.length) {
+            msg.textContent = `${data.added}/${dates.length} lessons added.`;
+        } else {
+            document.getElementById("multiweek-modal").classList.add("hidden");
+            loadCalendar(calYear, calMonth);
+            loadLessons();
         }
-    }
-    btn.disabled = false;
-    btn.textContent = "Schedule";
-    if (errors) {
-        msg.textContent = `${dates.length - errors}/${dates.length} lessons added (${errors} failed).`;
-    } else {
-        document.getElementById("multiweek-modal").classList.add("hidden");
-        loadCalendar(calYear, calMonth);
-        loadLessons();
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = "Schedule";
+        msg.textContent = "Error scheduling lessons.";
     }
 }
 
@@ -702,7 +752,7 @@ async function confirmParsedLessons() {
     btn.disabled = true;
     btn.textContent = "Adding…";
 
-    let added = 0;
+    const lessons = [];
     for (const group of document.querySelectorAll(".parse-student-group")) {
         const name = group.querySelector(".pr-name")?.value?.trim();
         const email = group.querySelector(".pr-email")?.value?.trim().toLowerCase() || null;
@@ -712,23 +762,25 @@ async function confirmParsedLessons() {
             const dur = parseInt(row.querySelector(".pr-dur")?.value || "30");
             const zoom = row.querySelector(".pr-zoom")?.value?.trim() || null;
             if (!date || !time || !name) continue;
-            try {
-                const res = await fetch(`${API}/studio-teacher/lesson`, {
-                    method: "POST",
-                    credentials: "include",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ date, time, duration_min: dur,
-                        external_name: name, external_email: email, zoom_link: zoom }),
-                });
-                const data = await res.json();
-                if (data.status === "success") added++;
-            } catch (e) { /* continue */ }
+            lessons.push({ date, time, duration_min: dur, external_name: name, external_email: email, zoom_link: zoom });
         }
+    }
+
+    try {
+        const res = await fetch(`${API}/studio-teacher/lessons-bulk`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lessons }),
+        });
+        const data = await res.json();
+        document.getElementById("parse-msg").textContent = `${data.added || 0} lesson(s) added.`;
+    } catch (e) {
+        document.getElementById("parse-msg").textContent = "Error adding lessons.";
     }
 
     btn.disabled = false;
     btn.textContent = "Add All";
-    document.getElementById("parse-msg").textContent = `${added} lesson(s) added.`;
     document.getElementById("parse-preview-section").classList.add("hidden");
     loadCalendar(calYear, calMonth);
     loadLessons();
