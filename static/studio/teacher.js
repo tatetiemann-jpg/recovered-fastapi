@@ -676,7 +676,7 @@ function renderParsePreview(lessons) {
                     </div>
                 </div>
                 <div class="parse-student-lessons">
-                    <div class="parse-lesson-header hint">Date &nbsp;·&nbsp; Time &nbsp;·&nbsp; Duration &nbsp;·&nbsp; Zoom</div>
+                    <div class="parse-lesson-header hint"><span>Date</span><span>Time</span><span>Duration</span><span>Zoom</span><span></span></div>
                     ${lessonRows}
                 </div>
             </div>

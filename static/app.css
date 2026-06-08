@@ -4182,7 +4182,7 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 .parse-student-lessons { padding: var(--space-2) var(--space-3); }
 .parse-lesson-header {
   display: grid;
-  grid-template-columns: 140px 110px 100px 1fr 60px;
+  grid-template-columns: 130px 100px 100px 1fr 80px;
   gap: var(--space-2);
   font-size: 0.72rem;
   padding: var(--space-1) 0;
@@ -4190,16 +4190,25 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 }
 .parse-lesson-row {
   display: grid;
-  grid-template-columns: 140px 110px 100px 1fr 60px;
+  grid-template-columns: 130px 100px 100px 1fr 80px;
   gap: var(--space-2);
   align-items: center;
   padding: var(--space-1) 0;
   border-top: 1px solid var(--border);
+  min-width: 0;
 }
+.parse-lesson-row > * { min-width: 0; }
 .parse-lesson-row input,
 .parse-lesson-row select {
   width: 100%;
   font-size: 0.85rem;
+  min-width: 0;
+}
+.parse-lesson-row button {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  white-space: nowrap;
 }
 
 /* Stats row on student detail */
