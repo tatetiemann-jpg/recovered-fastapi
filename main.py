@@ -9378,8 +9378,14 @@ def studio_teacher_lessons_parse(payload: dict, request: Request):
             system=system_prompt,
             messages=[{"role": "user", "content": raw_text}]
         )
-        import json as _json
-        parsed = _json.loads(msg.content[0].text)
+        import json as _json, re as _re
+        raw = msg.content[0].text.strip()
+        # Strip markdown fences if present
+        raw = _re.sub(r'^```[a-z]*\n?', '', raw).rstrip('`').strip()
+        # Extract first JSON array from the response
+        m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        raw = m.group(0) if m else raw
+        parsed = _json.loads(raw)
         if not isinstance(parsed, list):
             parsed = []
     except Exception as e:
