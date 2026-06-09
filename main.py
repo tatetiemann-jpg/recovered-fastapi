@@ -9324,7 +9324,7 @@ def _send_payment_reminder_email(teacher_name: str, student_name: str, student_e
 
     html = (
         f"<p>Hi {recipient_name},</p>"
-        f"<p>This is a friendly payment reminder for {student_name}'s upcoming lessons:</p>"
+        f"<p>This is a friendly payment reminder for your upcoming lessons:</p>"
         f"<ul>{lines_html}</ul>"
         f"{total_line_html}"
         f"{handles_html}"
@@ -9333,7 +9333,7 @@ def _send_payment_reminder_email(teacher_name: str, student_name: str, student_e
     )
     text = (
         f"Hi {recipient_name},\n\n"
-        f"This is a friendly payment reminder for {student_name}'s upcoming lessons:\n\n"
+        f"This is a friendly payment reminder for your upcoming lessons:\n\n"
         f"{lines_text}\n"
         f"{total_line_text}"
         f"{handles_text}"
