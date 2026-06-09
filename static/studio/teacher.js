@@ -1334,9 +1334,8 @@ function openUpdatePaymentsModal(studentId) {
 
     const rowsEl = document.getElementById("up-rows");
     const existing = s.payments || [];
-    const durs = existing.length ? existing.map(p => p.duration_min) : [30];
 
-    rowsEl.innerHTML = durs.map(d => {
+    rowsEl.innerHTML = [30, 45, 60, 90].map(d => {
         const p = existing.find(e => e.duration_min === d);
         return `<div class="payment-input-row" data-dur="${d}">
             <label>${d} min lessons</label>
@@ -1349,21 +1348,6 @@ function openUpdatePaymentsModal(studentId) {
 }
 
 function initUpdatePaymentsModal() {
-    document.getElementById("up-add-row-btn")?.addEventListener("click", () => {
-        const rowsEl = document.getElementById("up-rows");
-        const existing = Array.from(rowsEl.querySelectorAll(".payment-input-row")).map(r => parseInt(r.dataset.dur));
-        const available = [30, 45, 60, 90].filter(d => !existing.includes(d));
-        if (!available.length) return;
-        const d = available[0];
-        const div = document.createElement("div");
-        div.className = "payment-input-row";
-        div.dataset.dur = d;
-        div.innerHTML = `<label>${d} min lessons</label>
-            <input type="number" min="0" class="up-paid-input" data-dur="${d}" value="0">
-            <span class="hint">lessons paid</span>`;
-        rowsEl.appendChild(div);
-    });
-
     document.getElementById("up-submit-btn")?.addEventListener("click", submitUpdatePayments);
     document.getElementById("up-cancel-btn")?.addEventListener("click", () => {
         document.getElementById("update-payments-modal").classList.add("hidden");

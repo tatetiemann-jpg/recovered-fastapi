@@ -9255,7 +9255,7 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
             SELECT COUNT(*) FROM lessons
             WHERE studio_student_id IN (
                 SELECT id FROM studio_students WHERE family_id = %s AND teacher_id = %s
-            ) AND duration_min = %s AND status = 'booked'
+            ) AND duration_min = %s AND status = 'booked' AND lesson_date >= CURRENT_DATE
         """, (family_id, teacher_id, duration_min))
     else:
         cur.execute("""
@@ -9267,6 +9267,7 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
         cur.execute("""
             SELECT COUNT(*) FROM lessons
             WHERE studio_student_id = %s AND duration_min = %s AND status = 'booked'
+              AND lesson_date >= CURRENT_DATE
         """, (student_id, duration_min))
 
     scheduled = cur.fetchone()[0]
@@ -9965,11 +9966,12 @@ def studio_teacher_students(request: Request):
         """, (teacher["id"],))
         pool_rows = cur.fetchall()
 
-        # scheduled counts per student (all-time booked, matching _studio_payment_balance)
+        # upcoming scheduled counts only — past lessons fall off the balance automatically
         cur.execute("""
             SELECT studio_student_id, duration_min, COUNT(*)
             FROM lessons
             WHERE teacher_id = %s AND studio_student_id IS NOT NULL AND status = 'booked'
+              AND lesson_date >= CURRENT_DATE
             GROUP BY studio_student_id, duration_min
         """, (teacher["id"],))
         scheduled_rows = cur.fetchall()
