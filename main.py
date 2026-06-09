@@ -9279,23 +9279,64 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
 
 def _send_payment_reminder_email(teacher_name: str, student_name: str, student_email: str,
                                   parent_name: str, parent_email: str,
-                                  scheduled: int, lessons_paid: int, duration_min: int):
+                                  line_items: list, payment_handles: dict = None):
+    """Send a payment reminder with line-item breakdown and exact dollar amounts.
+
+    line_items: [{duration_min, owed_count, rate_cents, owed_dollars}]
+    """
     recipient_email = parent_email or student_email
     recipient_name = parent_name or student_name
     if not recipient_email:
         return False
+
+    total = sum(item["owed_dollars"] for item in line_items)
     subject = f"Payment reminder — {student_name}"
+
+    lines_html = ""
+    lines_text = ""
+    for item in line_items:
+        dur = item["duration_min"]
+        owed_count = item["owed_count"]
+        rate_dollars = item["rate_cents"] / 100 if item["rate_cents"] else None
+        owed = item["owed_dollars"]
+        if rate_dollars:
+            lines_html += (
+                f"<li>{owed_count} × {dur}-min lesson{'s' if owed_count != 1 else ''}"
+                f" @ ${rate_dollars:.2f} = <strong>${owed:.2f}</strong></li>"
+            )
+            lines_text += f"  • {owed_count} × {dur}-min lessons @ ${rate_dollars:.2f} = ${owed:.2f}\n"
+        else:
+            lines_html += f"<li>{owed_count} × {dur}-min lesson{'s' if owed_count != 1 else ''} outstanding</li>"
+            lines_text += f"  • {owed_count} × {dur}-min lessons outstanding\n"
+
+    handles_html = ""
+    handles_text = ""
+    if payment_handles:
+        parts = [f"{m.title()}: <strong>{h}</strong>" for m, h in payment_handles.items() if h]
+        if parts:
+            handles_html = "<p>You can submit payment via: " + " · ".join(parts) + "</p>"
+            handles_text = "You can submit payment via: " + ", ".join(
+                p.replace("<strong>", "").replace("</strong>", "") for p in parts
+            ) + "\n\n"
+
+    total_line_html = f"<p><strong>Total owed: ${total:.2f}</strong></p>" if total else ""
+    total_line_text = f"Total owed: ${total:.2f}\n\n" if total else ""
+
     html = (
         f"<p>Hi {recipient_name},</p>"
-        f"<p>{student_name} has <strong>{scheduled}</strong> upcoming lessons scheduled "
-        f"({duration_min}-minute sessions) but only <strong>{lessons_paid}</strong> lesson(s) on file as paid.</p>"
-        f"<p>Please submit payment at your earliest convenience. Reply to this email if you have any questions.</p>"
+        f"<p>This is a friendly payment reminder for {student_name}'s upcoming lessons:</p>"
+        f"<ul>{lines_html}</ul>"
+        f"{total_line_html}"
+        f"{handles_html}"
+        f"<p>Please submit payment at your earliest convenience. Reply to this email with any questions.</p>"
         f"<p>— {teacher_name}</p>"
     )
     text = (
         f"Hi {recipient_name},\n\n"
-        f"{student_name} has {scheduled} upcoming lessons scheduled "
-        f"({duration_min}-minute sessions) but only {lessons_paid} lesson(s) on file as paid.\n\n"
+        f"This is a friendly payment reminder for {student_name}'s upcoming lessons:\n\n"
+        f"{lines_text}\n"
+        f"{total_line_text}"
+        f"{handles_text}"
         f"Please submit payment at your earliest convenience.\n\n— {teacher_name}"
     )
     return send_email(recipient_email, subject, html, text)
@@ -9954,17 +9995,28 @@ def studio_teacher_students(request: Request):
         fc_row = cur2.fetchone()
     free_cancels_allowed = fc_row[0] if fc_row else 0
 
+    # Build family-aggregate scheduled counts so all siblings share one pool view
+    scheduled_by_family = {}
+    for pool_r in student_rows:
+        _ss_id = pool_r[0]
+        _fam_id = pool_r[5]
+        if _fam_id:
+            for dur, cnt in scheduled_by_student.get(_ss_id, {}).items():
+                scheduled_by_family.setdefault(_fam_id, {})
+                scheduled_by_family[_fam_id][dur] = scheduled_by_family[_fam_id].get(dur, 0) + cnt
+
     out = []
     for r in student_rows:
         ss_id, name, email, p_name, p_email, fam_id, fam_name, fam_p_name, fam_p_email, free_cancels_used = r
 
         attendance = att_rows.get(ss_id, {"present": 0, "absent": 0})
 
-        sched = scheduled_by_student.get(ss_id, {})
         if fam_id:
             paid_map = pool_by_family.get(fam_id, {})
+            sched = scheduled_by_family.get(fam_id, {})
         else:
             paid_map = pool_by_student.get(ss_id, {})
+            sched = scheduled_by_student.get(ss_id, {})
 
         all_durs = set(sched.keys()) | set(paid_map.keys())
         payments = []
@@ -10088,6 +10140,25 @@ def studio_teacher_families(request: Request):
     return [{"id": r[0], "family_name": r[1], "parent_name": r[2], "parent_email": r[3]} for r in rows]
 
 
+@app.patch("/studio-teacher/family/{family_id}")
+def studio_teacher_update_family(family_id: int, payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    family_name = (payload.get("family_name") or "").strip()
+    if not family_name:
+        return {"status": "fail", "message": "Family name is required"}
+    parent_name = (payload.get("parent_name") or "").strip() or None
+    parent_email = (payload.get("parent_email") or "").strip().lower() or None
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE studio_families
+            SET family_name = %s, parent_name = %s, parent_email = %s
+            WHERE id = %s AND teacher_id = %s
+        """, (family_name, parent_name, parent_email, family_id, teacher["id"]))
+        if cur.rowcount == 0:
+            return {"status": "fail", "message": "Family not found"}
+    return {"status": "success"}
+
+
 @app.patch("/studio-teacher/student/{student_id}")
 def studio_teacher_update_student(student_id: int, payload: dict, request: Request):
     teacher = require_studio_teacher(request)
@@ -10163,26 +10234,76 @@ def studio_teacher_payment_reminder(student_id: int, request: Request):
     teacher = require_studio_teacher(request)
     with db_cursor() as cur:
         cur.execute(
-            "SELECT name, email, parent_name, parent_email FROM studio_students WHERE id = %s AND teacher_id = %s",
+            "SELECT name, email, parent_name, parent_email, family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
             (student_id, teacher["id"])
         )
         row = cur.fetchone()
         if not row:
             return {"status": "fail", "message": "Student not found"}
-        name, email, parent_name, parent_email = row
+        name, email, parent_name, parent_email, family_id = row
 
+        # Get all upcoming booked durations (family-aware)
+        if family_id:
+            cur.execute("""
+                SELECT DISTINCT duration_min FROM lessons
+                WHERE status = 'booked' AND lesson_date >= CURRENT_DATE
+                  AND studio_student_id IN (
+                      SELECT id FROM studio_students WHERE family_id = %s AND teacher_id = %s
+                  )
+            """, (family_id, teacher["id"]))
+        else:
+            cur.execute("""
+                SELECT DISTINCT duration_min FROM lessons
+                WHERE studio_student_id = %s AND status = 'booked' AND lesson_date >= CURRENT_DATE
+            """, (student_id,))
+        durations = [r[0] for r in cur.fetchall()]
+
+        # Teacher's lesson rates and payment handles
         cur.execute("""
-            SELECT DISTINCT duration_min FROM lessons
-            WHERE studio_student_id = %s AND status = 'booked' AND lesson_date >= CURRENT_DATE
-        """, (student_id,))
-        durations = [r[0] for r in cur.fetchall()] or [30]
-        dur = durations[0]
-        balance = _studio_payment_balance(cur, teacher["id"], student_id, dur)
+            SELECT lesson_rates, payment_venmo, payment_zelle, payment_cashapp, payment_paypal
+            FROM studio_teacher_settings WHERE teacher_id = %s
+        """, (teacher["id"],))
+        settings_row = cur.fetchone()
+        lesson_rates = (settings_row[0] or []) if settings_row else []
+        rate_map = {r["duration_min"]: r["rate_cents"] for r in lesson_rates}
+        payment_handles = {}
+        if settings_row:
+            for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], settings_row[1:]):
+                if val:
+                    payment_handles[method] = val
+
+        # Build line items for overdue durations
+        line_items = []
+        for dur in sorted(durations):
+            balance = _studio_payment_balance(cur, teacher["id"], student_id, dur)
+            owed_count = balance["scheduled"] - balance["lessons_paid"]
+            if owed_count <= 0:
+                continue
+            rate_cents = rate_map.get(dur, 0)
+            line_items.append({
+                "duration_min": dur,
+                "owed_count": owed_count,
+                "rate_cents": rate_cents,
+                "owed_dollars": owed_count * rate_cents / 100,
+            })
+
+        # Fallback: include a generic line if nothing is overdue but caller still wants a reminder
+        if not line_items and durations:
+            dur = durations[0]
+            balance = _studio_payment_balance(cur, teacher["id"], student_id, dur)
+            owed_count = max(0, balance["scheduled"] - balance["lessons_paid"])
+            rate_cents = rate_map.get(dur, 0)
+            line_items.append({
+                "duration_min": dur,
+                "owed_count": owed_count,
+                "rate_cents": rate_cents,
+                "owed_dollars": owed_count * rate_cents / 100,
+            })
 
     sent = _send_payment_reminder_email(
         teacher.get("fullname", "Your teacher"),
         name, email, parent_name, parent_email,
-        balance["scheduled"], balance["lessons_paid"], dur
+        line_items, payment_handles
     )
     return {"status": "success" if sent else "fail"}
 

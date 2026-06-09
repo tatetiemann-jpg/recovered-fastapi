@@ -1066,24 +1066,32 @@ function renderStudentList(students) {
 
     if (hasFamilies) {
         html += `<div class="student-section-header">Families</div>`;
-        familyList.forEach(fam => {
+        Object.entries(familiesWithMembers).forEach(([famIdStr, fam]) => {
+            const famId = parseInt(famIdStr);
             const count = fam.members.length;
-            // Pull parent info from allFamilies if available
-            const famData = allFamilies.find(f => f.family_name === fam.name) || {};
+            const famData = allFamilies.find(f => f.id === famId) || {};
             const parentLine = famData.parent_name
                 ? `${escHtml(famData.parent_name)}${famData.parent_email ? ` · ${escHtml(famData.parent_email)}` : ""}`
                 : (famData.parent_email ? escHtml(famData.parent_email) : "");
+            // Family-level payment badge (use first member since all share same pool)
+            const famPayBadge = fam.members.length ? paymentBadge(fam.members[0].payments) : "";
+            const firstMemberId = fam.members.length ? fam.members[0].id : null;
             html += `<div class="student-family-block">
                 <div class="student-family-header">
                     <div class="student-family-header-left">
                         <div class="student-family-name">${escHtml(fam.name)}</div>
                         ${parentLine ? `<div class="student-family-parent">Parent · ${parentLine}</div>` : ""}
+                        ${famPayBadge ? `<div style="margin-top:4px;">${famPayBadge}</div>` : ""}
                     </div>
-                    <div class="student-family-count">${count} student${count !== 1 ? "s" : ""}</div>
+                    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+                        ${firstMemberId ? `<button class="subtle-btn" onclick="openUpdatePaymentsModal(${firstMemberId});event.stopPropagation();">Update Payments</button>` : ""}
+                        <button class="subtle-btn" onclick="openEditFamilyModal(${famId});event.stopPropagation();">Edit</button>
+                        <span class="student-family-count">${count} student${count !== 1 ? "s" : ""}</span>
+                    </div>
                 </div>
                 <div class="student-family-children">`;
             if (count) {
-                fam.members.forEach(s => { html += renderStudentRow(s); });
+                fam.members.forEach(s => { html += renderStudentRow(s, true); });
             } else {
                 html += `<div class="empty-note" style="font-size:0.85rem;padding:var(--space-3);">No students yet — add a student and assign them to this family.</div>`;
             }
@@ -1099,10 +1107,12 @@ function renderStudentList(students) {
     el.innerHTML = html;
 }
 
-function renderStudentRow(s, familyName) {
-    const payBadge = paymentBadge(s.payments);
+function renderStudentRow(s, inFamily = false) {
     const att = s.attendance || { present: 0, absent: 0 };
-    const noEmailBadge = !s.email
+    // Payment badge and "no email" badge are shown only for solo students;
+    // families display these at the family block level.
+    const payBadge = inFamily ? "" : paymentBadge(s.payments);
+    const noEmailBadge = (!inFamily && !s.email && !s.parent_email)
         ? `<span class="pay-badge pay-warn" title="Add an email so this student can be messaged">No email</span>`
         : "";
     return `
@@ -1110,7 +1120,6 @@ function renderStudentRow(s, familyName) {
             <div>
                 <strong>${escHtml(s.name)}</strong>
                 ${s.email ? `<span class="hint"> · ${escHtml(s.email)}</span>` : ""}
-                ${s.parent_name ? `<br><span class="hint">Parent: ${escHtml(s.parent_name)}</span>` : ""}
             </div>
             <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
                 <span class="hint">${att.present} attended · ${att.absent} missed</span>
@@ -1291,7 +1300,9 @@ function openUpdatePaymentsModal(studentId) {
     const s = allStudents.find(s => s.id === studentId);
     if (!s) return;
 
-    document.getElementById("up-title").textContent = `Update Payments — ${s.name}`;
+    document.getElementById("up-title").textContent = s.family_name
+        ? `Update Payments — ${s.family_name} (Family)`
+        : `Update Payments — ${s.name}`;
     document.getElementById("up-msg").textContent = "";
 
     const rowsEl = document.getElementById("up-rows");
@@ -1500,6 +1511,63 @@ async function submitAddFamily() {
 }
 
 // ============================================================
+// EDIT FAMILY MODAL
+// ============================================================
+
+let editingFamilyId = null;
+
+function openEditFamilyModal(familyId) {
+    const f = allFamilies.find(f => f.id === familyId);
+    if (!f) return;
+    editingFamilyId = familyId;
+    document.getElementById("ef-name").value = f.family_name || "";
+    document.getElementById("ef-parent-name").value = f.parent_name || "";
+    document.getElementById("ef-parent-email").value = f.parent_email || "";
+    document.getElementById("ef-msg").textContent = "";
+    document.getElementById("edit-family-modal").classList.remove("hidden");
+}
+
+function initEditFamilyModal() {
+    document.getElementById("ef-submit-btn")?.addEventListener("click", submitEditFamily);
+    document.getElementById("ef-cancel-btn")?.addEventListener("click", () => {
+        document.getElementById("edit-family-modal").classList.add("hidden");
+    });
+}
+
+async function submitEditFamily() {
+    const btn = document.getElementById("ef-submit-btn");
+    const msg = document.getElementById("ef-msg");
+    const name = document.getElementById("ef-name").value.trim();
+    if (!name) { msg.textContent = "Family name is required."; return; }
+
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+        const res = await fetch(`${API}/studio-teacher/family/${editingFamilyId}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                family_name: name,
+                parent_name: document.getElementById("ef-parent-name").value.trim() || null,
+                parent_email: document.getElementById("ef-parent-email").value.trim().toLowerCase() || null,
+            }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            await loadStudents();
+            document.getElementById("edit-family-modal").classList.add("hidden");
+        } else {
+            msg.textContent = data.message || "Failed.";
+        }
+    } catch (e) {
+        msg.textContent = "Server error.";
+    }
+    btn.disabled = false;
+    btn.textContent = "Save Changes";
+}
+
+// ============================================================
 // MESSAGES TAB (reuse DM pattern from app.js)
 // ============================================================
 
@@ -1587,6 +1655,7 @@ function initModals() {
     initAvailabilityModal();
     initAddStudentModal();
     initAddFamilyModal();
+    initEditFamilyModal();
     initStudentDetailModal();
     initUpdatePaymentsModal();
 

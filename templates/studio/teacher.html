@@ -310,6 +310,30 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- EDIT FAMILY MODAL -->
+<!-- ============================================================ -->
+<div id="edit-family-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Edit Family</h3>
+
+        <label>Family name</label>
+        <input id="ef-name" type="text" placeholder="e.g. Smith Family">
+
+        <label>Parent name (optional)</label>
+        <input id="ef-parent-name" type="text" placeholder="Jane Smith">
+
+        <label>Parent email (optional)</label>
+        <input id="ef-parent-email" type="email" placeholder="jane@example.com">
+
+        <div class="modal-actions">
+            <button id="ef-submit-btn">Save Changes</button>
+            <button id="ef-cancel-btn">Cancel</button>
+        </div>
+        <p id="ef-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- STUDENT DETAIL MODAL -->
 <!-- ============================================================ -->
 <div id="student-detail-modal" class="modal-overlay hidden">
