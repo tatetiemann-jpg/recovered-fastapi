@@ -1294,6 +1294,12 @@ function initStudentDetailModal() {
     });
 
     document.getElementById("sd-reminder-btn")?.addEventListener("click", async () => {
+        const s = allStudents.find(s => s.id === activeStudentId);
+        const isFullyPaid = !s?.payments?.length || s.payments.every(p => p.remaining >= 0);
+        if (isFullyPaid) {
+            document.getElementById("sd-msg").textContent = "Student is fully paid — no reminder needed.";
+            return;
+        }
         const btn = document.getElementById("sd-reminder-btn");
         btn.disabled = true;
         btn.textContent = "Sending…";
@@ -1304,7 +1310,7 @@ function initStudentDetailModal() {
             });
             const data = await res.json();
             document.getElementById("sd-msg").textContent = data.status === "success"
-                ? "Reminder sent!" : "Failed to send reminder.";
+                ? "Reminder sent!" : (data.message || "Failed to send reminder.");
         } catch (e) {
             document.getElementById("sd-msg").textContent = "Server error.";
         }

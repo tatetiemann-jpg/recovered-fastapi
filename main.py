@@ -10308,18 +10308,8 @@ def studio_teacher_payment_reminder(student_id: int, request: Request):
                 "owed_dollars": owed_count * rate_cents / 100,
             })
 
-        # Fallback: include a generic line if nothing is overdue but caller still wants a reminder
-        if not line_items and durations:
-            dur = durations[0]
-            balance = _studio_payment_balance(cur, teacher["id"], student_id, dur)
-            owed_count = max(0, balance["scheduled"] - balance["lessons_paid"])
-            rate_cents = rate_map.get(dur, 0)
-            line_items.append({
-                "duration_min": dur,
-                "owed_count": owed_count,
-                "rate_cents": rate_cents,
-                "owed_dollars": owed_count * rate_cents / 100,
-            })
+        if not line_items:
+            return {"status": "fail", "message": "Student is fully paid — no reminder needed."}
 
     sent = _send_payment_reminder_email(
         teacher.get("fullname", "Your teacher"),
