@@ -398,6 +398,25 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- REMIND ALL MODAL -->
+<!-- ============================================================ -->
+<div id="remind-all-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Send Payment Reminders</h3>
+        <p>Send emails to: <strong id="remind-recipient-count">0</strong> recipient(s) with outstanding balances.</p>
+        <details id="remind-recipients-details" style="margin:var(--space-3) 0;">
+            <summary style="cursor:pointer;font-size:0.9rem;color:var(--text-muted);">View / edit recipients</summary>
+            <div id="remind-recipients-list" style="margin-top:var(--space-2);display:flex;flex-direction:column;gap:var(--space-2);"></div>
+        </details>
+        <div class="modal-actions">
+            <button id="remind-all-confirm-btn">Send Reminders</button>
+            <button id="remind-all-cancel-btn" class="subtle-btn">Cancel</button>
+        </div>
+        <p id="remind-all-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- UPDATE PAYMENTS MODAL -->
 <!-- ============================================================ -->
 <div id="update-payments-modal" class="modal-overlay hidden">

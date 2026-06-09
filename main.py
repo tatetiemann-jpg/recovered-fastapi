@@ -10341,9 +10341,14 @@ def studio_teacher_payment_reminder(student_id: int, request: Request):
 
 
 @app.post("/studio-teacher/payment-reminder-all")
-def studio_teacher_payment_reminder_all(request: Request):
-    """Send payment reminders to every student/family with an outstanding balance."""
+def studio_teacher_payment_reminder_all(payload: dict, request: Request):
+    """Send payment reminders to students/families with an outstanding balance.
+
+    Optional payload: {"student_ids": [1, 2, 3]} — limits to those billing units.
+    If omitted, all overdue units are contacted.
+    """
     teacher = require_studio_teacher(request)
+    filter_ids = set(payload.get("student_ids") or [])
     teacher_name = teacher.get("fullname") or "Your teacher"
 
     with db_cursor() as cur:
@@ -10417,6 +10422,11 @@ def studio_teacher_payment_reminder_all(request: Request):
 
     with db_cursor() as cur:
         for key, unit in billing_units.items():
+            # If caller specified a filter, skip units not in it
+            representative_id = unit["member_ids"][0]
+            if filter_ids and representative_id not in filter_ids:
+                continue
+
             # Collect all durations with upcoming lessons across all members
             all_durs = set()
             for mid in unit["member_ids"]:
@@ -10426,8 +10436,6 @@ def studio_teacher_payment_reminder_all(request: Request):
                 continue  # no upcoming lessons, skip
 
             # Build line items for overdue durations
-            # Use first member_id to drive _studio_payment_balance (it handles family pooling)
-            representative_id = unit["member_ids"][0]
             line_items = []
             for dur in sorted(all_durs):
                 bal = _studio_payment_balance(cur, teacher["id"], representative_id, dur)

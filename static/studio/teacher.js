@@ -1458,32 +1458,113 @@ function addFamilyChildRow(name = "", email = "") {
     list.appendChild(row);
 }
 
+function buildRemindAllRecipients() {
+    const recipients = [];
+    const familiesSeen = new Set();
+
+    for (const s of allStudents) {
+        const hasDebt = s.payments && s.payments.some(p => p.remaining < 0);
+        if (!hasDebt) continue;
+
+        if (s.family_id) {
+            if (familiesSeen.has(s.family_id)) continue;
+            familiesSeen.add(s.family_id);
+            const contactEmail = s.parent_email || s.email;
+            if (!contactEmail) continue;
+            recipients.push({
+                representativeId: s.id,
+                label: s.family_name || s.name,
+                sublabel: s.parent_name ? `Parent: ${s.parent_name}` : null,
+                email: contactEmail,
+            });
+        } else {
+            const contactEmail = s.parent_email || s.email;
+            if (!contactEmail) continue;
+            recipients.push({
+                representativeId: s.id,
+                label: s.name,
+                sublabel: s.parent_name ? `Parent: ${s.parent_name}` : null,
+                email: contactEmail,
+            });
+        }
+    }
+    return recipients;
+}
+
+function updateRemindCount() {
+    const checked = document.querySelectorAll(".remind-recipient-check:checked").length;
+    document.getElementById("remind-recipient-count").textContent = checked;
+}
+
 function initRemindAllBtn() {
-    document.getElementById("remind-all-btn")?.addEventListener("click", async () => {
-        const btn = document.getElementById("remind-all-btn");
-        if (!confirm("Send payment reminders to all students with an outstanding balance?")) return;
+    document.getElementById("remind-all-btn")?.addEventListener("click", () => {
+        const recipients = buildRemindAllRecipients();
+        const listEl = document.getElementById("remind-recipients-list");
+        const modal = document.getElementById("remind-all-modal");
+
+        if (!recipients.length) {
+            alert("All students are paid up — no reminders needed.");
+            return;
+        }
+
+        listEl.innerHTML = recipients.map(r => `
+            <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;">
+                <input type="checkbox" class="remind-recipient-check" data-id="${r.representativeId}" checked>
+                <span>
+                    <strong>${escHtml(r.label)}</strong>
+                    ${r.sublabel ? `<span class="hint"> · ${escHtml(r.sublabel)}</span>` : ""}
+                    <span class="hint"> — ${escHtml(r.email)}</span>
+                </span>
+            </label>
+        `).join("");
+
+        listEl.querySelectorAll(".remind-recipient-check").forEach(cb => {
+            cb.addEventListener("change", updateRemindCount);
+        });
+
+        document.getElementById("remind-recipient-count").textContent = recipients.length;
+        document.getElementById("remind-all-msg").textContent = "";
+        modal.classList.remove("hidden");
+    });
+
+    document.getElementById("remind-all-cancel-btn")?.addEventListener("click", () => {
+        document.getElementById("remind-all-modal").classList.add("hidden");
+    });
+
+    document.getElementById("remind-all-confirm-btn")?.addEventListener("click", async () => {
+        const btn = document.getElementById("remind-all-confirm-btn");
+        const msg = document.getElementById("remind-all-msg");
+        const studentIds = Array.from(document.querySelectorAll(".remind-recipient-check:checked"))
+            .map(cb => parseInt(cb.dataset.id));
+
+        if (!studentIds.length) {
+            msg.textContent = "No recipients selected.";
+            return;
+        }
+
         btn.disabled = true;
         btn.textContent = "Sending…";
         try {
             const res = await fetch(`${API}/studio-teacher/payment-reminder-all`, {
                 method: "POST",
                 credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ student_ids: studentIds }),
             });
             const data = await res.json();
             if (data.status === "success") {
-                if (data.sent === 0) {
-                    alert("All students are paid up — no reminders sent.");
-                } else {
-                    alert(`Sent ${data.sent} payment reminder${data.sent !== 1 ? "s" : ""}.`);
-                }
+                msg.textContent = `Sent ${data.sent} reminder${data.sent !== 1 ? "s" : ""}.`;
+                setTimeout(() => {
+                    document.getElementById("remind-all-modal").classList.add("hidden");
+                }, 1200);
             } else {
-                alert("Failed to send reminders.");
+                msg.textContent = "Failed to send reminders.";
             }
         } catch (e) {
-            alert("Server error.");
+            msg.textContent = "Server error.";
         }
         btn.disabled = false;
-        btn.textContent = "Send Payment Reminders";
+        btn.textContent = "Send Reminders";
     });
 }
 
