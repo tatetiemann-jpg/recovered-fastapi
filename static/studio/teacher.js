@@ -1223,6 +1223,27 @@ function initStudentDetailModal() {
         document.getElementById("sd-edit-form").classList.add("hidden");
     });
 
+    document.getElementById("sd-delete-btn")?.addEventListener("click", async () => {
+        const s = allStudents.find(s => s.id === activeStudentId);
+        if (!s) return;
+        if (!confirm(`Delete ${s.name}? This cannot be undone.`)) return;
+        try {
+            const res = await fetch(`${API}/studio-teacher/student/${activeStudentId}`, {
+                method: "DELETE",
+                credentials: "include",
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById("student-detail-modal").classList.add("hidden");
+                await loadStudents();
+            } else {
+                document.getElementById("sd-edit-msg").textContent = data.message || "Failed to delete.";
+            }
+        } catch (e) {
+            document.getElementById("sd-edit-msg").textContent = "Server error.";
+        }
+    });
+
     document.getElementById("sd-edit-save-btn")?.addEventListener("click", async () => {
         const btn = document.getElementById("sd-edit-save-btn");
         const msg = document.getElementById("sd-edit-msg");

@@ -10183,6 +10183,27 @@ def studio_teacher_update_student(student_id: int, payload: dict, request: Reque
     return {"status": "success"}
 
 
+@app.delete("/studio-teacher/student/{student_id}")
+def studio_teacher_delete_student(student_id: int, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor(commit=True) as cur:
+        # Nullify lessons so history is preserved but student link is removed
+        cur.execute("""
+            UPDATE lessons SET studio_student_id = NULL
+            WHERE studio_student_id = %s AND teacher_id = %s
+        """, (student_id, teacher["id"]))
+        cur.execute("""
+            DELETE FROM studio_payment_pools
+            WHERE student_id = %s AND teacher_id = %s
+        """, (student_id, teacher["id"]))
+        cur.execute("""
+            DELETE FROM studio_students WHERE id = %s AND teacher_id = %s
+        """, (student_id, teacher["id"]))
+        if cur.rowcount == 0:
+            return {"status": "fail", "message": "Student not found"}
+    return {"status": "success"}
+
+
 @app.get("/studio-teacher/student/{student_id}/payment-balance")
 def studio_teacher_payment_balance(student_id: int, request: Request, duration_min: int = 30):
     teacher = require_studio_teacher(request)
