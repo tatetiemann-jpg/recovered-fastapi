@@ -2021,22 +2021,18 @@ async function loadInvitations() {
         const accepted = data.filter(i => i.status === "accepted");
         const expired = data.filter(i => i.status === "expired");
 
+        const makeGroup = (label, items, open = false) => {
+            if (!items.length) return "";
+            return `<details class="invite-group" ${open ? "open" : ""}>
+                <summary class="invite-group-summary">${label} <span class="invite-group-count">${items.length}</span></summary>
+                <div class="invite-group-body">${items.map(renderInviteRow).join("")}</div>
+            </details>`;
+        };
+
         let html = "";
-
-        if (pending.length > 0) {
-            html += `<h3 class="invite-section-heading">Pending</h3>`;
-            html += pending.map(renderInviteRow).join("");
-        }
-
-        if (accepted.length > 0) {
-            html += `<h3 class="invite-section-heading">Accepted</h3>`;
-            html += accepted.map(renderInviteRow).join("");
-        }
-
-        if (expired.length > 0) {
-            html += `<h3 class="invite-section-heading">Expired</h3>`;
-            html += expired.map(renderInviteRow).join("");
-        }
+        html += makeGroup("Pending", pending, true);
+        html += makeGroup("Accepted", accepted, false);
+        html += makeGroup("Expired", expired, false);
 
         box.innerHTML = html;
 

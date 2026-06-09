@@ -3089,9 +3089,44 @@ tbody tr:hover td { background: var(--accent-soft); }
     font-weight: 600;
     color: var(--text-muted);
 }
-.invite-section-heading:first-child {
-    margin-top: 0;
+.invite-section-heading:first-child { margin-top: 0; }
+
+.invite-group {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-2);
+    overflow: hidden;
 }
+.invite-group-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--bg-elevated);
+    list-style: none;
+}
+.invite-group-summary::-webkit-details-marker { display: none; }
+.invite-group-summary::before {
+    content: "▶";
+    font-size: 0.65rem;
+    color: var(--muted);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+details[open] .invite-group-summary::before { transform: rotate(90deg); }
+.invite-group-count {
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: var(--border);
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+.invite-group-body { padding: 0 var(--space-1); }
 
 /* ======================================================
    THEME PICKER
