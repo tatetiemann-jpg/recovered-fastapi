@@ -10340,6 +10340,127 @@ def studio_teacher_payment_reminder(student_id: int, request: Request):
     return {"status": "success" if sent else "fail"}
 
 
+@app.post("/studio-teacher/payment-reminder-all")
+def studio_teacher_payment_reminder_all(request: Request):
+    """Send payment reminders to every student/family with an outstanding balance."""
+    teacher = require_studio_teacher(request)
+    teacher_name = teacher.get("fullname") or "Your teacher"
+
+    with db_cursor() as cur:
+        # Fetch teacher's rates and payment handles once
+        cur.execute("""
+            SELECT lesson_rates, payment_venmo, payment_zelle, payment_cashapp, payment_paypal
+            FROM studio_teacher_settings WHERE teacher_id = %s
+        """, (teacher["id"],))
+        s_row = cur.fetchone()
+        rate_map = {r["duration_min"]: r["rate_cents"] for r in (s_row[0] or [])} if s_row else {}
+        payment_handles = {}
+        if s_row:
+            for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], s_row[1:]):
+                if val:
+                    payment_handles[method] = val
+
+        # All students with their family info
+        cur.execute("""
+            SELECT ss.id, ss.name, ss.email, ss.parent_name, ss.parent_email, ss.family_id,
+                   sf.family_name, sf.parent_name, sf.parent_email
+            FROM studio_students ss
+            LEFT JOIN studio_families sf ON sf.id = ss.family_id
+            WHERE ss.teacher_id = %s
+        """, (teacher["id"],))
+        students = cur.fetchall()
+
+        # All upcoming booked durations per student
+        cur.execute("""
+            SELECT studio_student_id, duration_min
+            FROM lessons
+            WHERE teacher_id = %s AND status = 'booked' AND lesson_date >= CURRENT_DATE
+              AND studio_student_id IS NOT NULL
+        """, (teacher["id"],))
+        upcoming = cur.fetchall()
+
+    # Build set of (student_id, duration_min) pairs that have upcoming lessons
+    upcoming_by_student = {}
+    for ss_id, dur in upcoming:
+        upcoming_by_student.setdefault(ss_id, set()).add(dur)
+
+    # Group by billing unit: family_id (for family members) or student_id (for solos)
+    # Each billing unit gets at most one email
+    billing_units = {}  # key: ("family", fam_id) or ("student", ss_id)
+    for row in students:
+        ss_id, name, email, p_name, p_email, fam_id, fam_name, fam_p_name, fam_p_email = row
+        if fam_id:
+            key = ("family", fam_id)
+            if key not in billing_units:
+                billing_units[key] = {
+                    "student_name": fam_name or name,
+                    "email": None,
+                    "parent_name": fam_p_name or p_name,
+                    "parent_email": fam_p_email or p_email,
+                    "member_ids": [],
+                    "family_id": fam_id,
+                }
+            billing_units[key]["member_ids"].append(ss_id)
+        else:
+            key = ("student", ss_id)
+            billing_units[key] = {
+                "student_name": name,
+                "email": email,
+                "parent_name": p_name,
+                "parent_email": p_email,
+                "member_ids": [ss_id],
+                "family_id": None,
+            }
+
+    sent_count = 0
+    already_paid = 0
+
+    with db_cursor() as cur:
+        for key, unit in billing_units.items():
+            # Collect all durations with upcoming lessons across all members
+            all_durs = set()
+            for mid in unit["member_ids"]:
+                all_durs |= upcoming_by_student.get(mid, set())
+
+            if not all_durs:
+                continue  # no upcoming lessons, skip
+
+            # Build line items for overdue durations
+            # Use first member_id to drive _studio_payment_balance (it handles family pooling)
+            representative_id = unit["member_ids"][0]
+            line_items = []
+            for dur in sorted(all_durs):
+                bal = _studio_payment_balance(cur, teacher["id"], representative_id, dur)
+                owed_count = bal["scheduled"] - bal["lessons_paid"]
+                if owed_count <= 0:
+                    continue
+                rate_cents = rate_map.get(dur, 0)
+                line_items.append({
+                    "duration_min": dur,
+                    "owed_count": owed_count,
+                    "rate_cents": rate_cents,
+                    "owed_dollars": owed_count * rate_cents / 100,
+                })
+
+            if not line_items:
+                already_paid += 1
+                continue
+
+            ok = _send_payment_reminder_email(
+                teacher_name,
+                unit["student_name"],
+                unit["email"],
+                unit["parent_name"],
+                unit["parent_email"],
+                line_items,
+                payment_handles,
+            )
+            if ok:
+                sent_count += 1
+
+    return {"status": "success", "sent": sent_count, "already_paid": already_paid}
+
+
 @app.post("/studio-teacher/invite")
 def studio_teacher_invite(payload: dict, request: Request):
     """Studio teacher invites a studio_member to join their studio."""

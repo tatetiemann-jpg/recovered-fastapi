@@ -1458,6 +1458,35 @@ function addFamilyChildRow(name = "", email = "") {
     list.appendChild(row);
 }
 
+function initRemindAllBtn() {
+    document.getElementById("remind-all-btn")?.addEventListener("click", async () => {
+        const btn = document.getElementById("remind-all-btn");
+        if (!confirm("Send payment reminders to all students with an outstanding balance?")) return;
+        btn.disabled = true;
+        btn.textContent = "Sending…";
+        try {
+            const res = await fetch(`${API}/studio-teacher/payment-reminder-all`, {
+                method: "POST",
+                credentials: "include",
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                if (data.sent === 0) {
+                    alert("All students are paid up — no reminders sent.");
+                } else {
+                    alert(`Sent ${data.sent} payment reminder${data.sent !== 1 ? "s" : ""}.`);
+                }
+            } else {
+                alert("Failed to send reminders.");
+            }
+        } catch (e) {
+            alert("Server error.");
+        }
+        btn.disabled = false;
+        btn.textContent = "Send Payment Reminders";
+    });
+}
+
 function initAddFamilyModal() {
     document.getElementById("add-family-btn")?.addEventListener("click", () => {
         document.getElementById("af-name").value = "";
@@ -1665,6 +1694,7 @@ function initModals() {
     initParseModal();
     initAvailabilityModal();
     initAddStudentModal();
+    initRemindAllBtn();
     initAddFamilyModal();
     initEditFamilyModal();
     initStudentDetailModal();
