@@ -290,6 +290,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"[ERROR] {request.method} {request.url.path}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "message": "Something went wrong. Please try again."},
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -331,6 +342,11 @@ def _init_pool():
         host=os.getenv("POSTGRES_HOST"),
         port=os.getenv("POSTGRES_PORT"),
         sslmode=os.getenv("POSTGRES_SSL"),
+        connect_timeout=10,      # fail fast if Neon is cold-starting
+        keepalives=1,            # TCP keepalives so the OS detects dead connections
+        keepalives_idle=60,      # start probing after 60 s of inactivity
+        keepalives_interval=10,  # retry every 10 s
+        keepalives_count=5,      # give up after 5 failed probes
     )
 
 
@@ -364,6 +380,8 @@ def db_cursor(commit: bool = False):
     """
     Borrow a connection from the pool, yield a cursor, return connection
     when done. Commits only if requested; rolls back on exceptions.
+    Stale/broken connections (Neon idle-timeout) are discarded so the pool
+    never re-serves a dead connection.
     """
     conn = get_conn()
     try:
@@ -375,11 +393,21 @@ def db_cursor(commit: bool = False):
             # Important: always end the transaction even for read-only queries.
             # Otherwise the connection stays in "idle in transaction" state.
             conn.rollback()
+    except (psycopg2.OperationalError, psycopg2.InterfaceError):
+        # Connection is broken — discard it from the pool so it is never reused.
+        try:
+            conn.rollback()
+            _connection_pool.putconn(conn, close=True)
+            conn = None
+        except Exception:
+            pass
+        raise
     except Exception:
         conn.rollback()
         raise
     finally:
-        release_conn(conn)
+        if conn is not None:
+            release_conn(conn)
 
 
 # ========================================================
