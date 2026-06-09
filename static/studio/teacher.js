@@ -1068,22 +1068,32 @@ function renderStudentList(students) {
         html += `<div class="student-section-header">Families</div>`;
         familyList.forEach(fam => {
             const count = fam.members.length;
+            // Pull parent info from allFamilies if available
+            const famData = allFamilies.find(f => f.family_name === fam.name) || {};
+            const parentLine = famData.parent_name
+                ? `${escHtml(famData.parent_name)}${famData.parent_email ? ` · ${escHtml(famData.parent_email)}` : ""}`
+                : (famData.parent_email ? escHtml(famData.parent_email) : "");
             html += `<div class="student-family-block">
-                <div class="student-family-header"><strong>${escHtml(fam.name)}</strong>
-                    <span class="hint" style="font-weight:400"> · ${count} student${count !== 1 ? "s" : ""}</span>
-                </div>`;
+                <div class="student-family-header">
+                    <div class="student-family-header-left">
+                        <div class="student-family-name">${escHtml(fam.name)}</div>
+                        ${parentLine ? `<div class="student-family-parent">Parent · ${parentLine}</div>` : ""}
+                    </div>
+                    <div class="student-family-count">${count} student${count !== 1 ? "s" : ""}</div>
+                </div>
+                <div class="student-family-children">`;
             if (count) {
                 fam.members.forEach(s => { html += renderStudentRow(s); });
             } else {
-                html += `<div class="empty-note" style="font-size:0.85rem;padding:var(--space-2) 0;">No students yet — add a student and assign them to this family.</div>`;
+                html += `<div class="empty-note" style="font-size:0.85rem;padding:var(--space-3);">No students yet — add a student and assign them to this family.</div>`;
             }
-            html += `</div>`;
+            html += `</div></div>`;
         });
     }
 
     if (solos.length) {
         html += `<div class="student-section-header" style="margin-top:${hasFamilies ? 'var(--space-4)' : '0'}">Individual Students</div>`;
-        solos.forEach(s => { html += renderStudentRow(s); });
+        solos.forEach(s => { html += `<div class="student-solo-card">${renderStudentRow(s)}</div>`; });
     }
 
     el.innerHTML = html;

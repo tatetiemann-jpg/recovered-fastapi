@@ -4136,31 +4136,70 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   flex-wrap: wrap;
+  transition: background 0.12s;
 }
 .student-row:last-child { border-bottom: none; }
-.student-row:hover { background: var(--bg-sunken); border-radius: var(--radius); padding-left: var(--space-2); }
-.student-family-block {
-  margin-bottom: var(--space-4);
+.student-row:hover { background: var(--bg-sunken); }
+
+/* Solo student card */
+.student-solo-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
 }
+.student-solo-card .student-row {
+  padding: var(--space-3);
+  border-bottom: none;
+}
+.student-solo-card .student-row:hover { background: var(--bg-sunken); }
+
+/* Family block card */
+.student-family-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+}
+.student-family-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.student-family-header-left { flex: 1; min-width: 0; }
+.student-family-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.student-family-parent {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.student-family-count {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.student-family-children { padding: 0; }
+
 .student-section-header {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
-  padding: var(--space-2) 0 var(--space-1);
+  padding: var(--space-3) 0 var(--space-2);
   font-weight: 600;
-}
-.student-family-header {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
-  padding: var(--space-2) 0 var(--space-1);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-1);
 }
 
 /* Payment badges */
