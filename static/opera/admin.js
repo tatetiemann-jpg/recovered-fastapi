@@ -2182,13 +2182,14 @@ async function sendInvite() {
                 : "Invitation created, but email may not have been delivered.";
             msg.classList.add("success-msg");
 
-            // Clear form, refresh list
+            // Clear form, close modal, refresh list
             ["invite-email", "invite-fullname-hint", "invite-org-name", "invite-org-logo"].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = "";
             });
             const orgSlugEl = document.getElementById("invite-org-slug");
             if (orgSlugEl) { orgSlugEl.value = ""; delete orgSlugEl.dataset.manuallyEdited; }
+            document.getElementById("invite-modal")?.classList.add("hidden");
             loadInvitations();
         } else {
             msg.textContent = data.message || "Failed to send invitation.";
@@ -2226,51 +2227,62 @@ async function cancelInvite(email) {
     }
 }
 
+function setInviteRolePill(role) {
+    document.querySelectorAll("#invite-role-pills .chip").forEach(c => {
+        c.classList.toggle("active", c.dataset.role === role);
+    });
+    const select = document.getElementById("invite-role");
+    if (select) select.value = role;
+    onInviteRoleChange();
+}
+
+function initInviteRolePills() {
+    if (USER_ROLE !== "system_admin") return;
+    document.getElementById("invite-role-pills")?.classList.remove("hidden");
+    // Pills replace the dropdown for system_admin
+    document.querySelectorAll("#invite-role-pills .chip").forEach(pill => {
+        pill.addEventListener("click", () => setInviteRolePill(pill.dataset.role));
+    });
+    // Set initial state
+    setInviteRolePill("head_admin");
+}
+
 function onInviteRoleChange() {
     const select = document.getElementById("invite-role");
     if (!select) return;
 
     if (USER_ROLE === "system_admin") {
-        // system_admin can invite: Opera Admin, Choir Admin, Studio Teacher
-        ["orchestra_admin", "student", "teacher"].forEach(val => {
-            const opt = select.querySelector(`option[value="${val}"]`);
-            if (opt) opt.style.display = "none";
-        });
-        const headAdminOpt = select.querySelector('option[value="head_admin"]');
-        if (headAdminOpt) headAdminOpt.style.display = "";
-        const adminOpt = select.querySelector('option[value="admin"]');
-        if (adminOpt) { adminOpt.style.display = ""; adminOpt.textContent = "Choir Admin"; }
-        const studioTeacherOpt = select.querySelector('option[value="studio_teacher"]');
-        if (studioTeacherOpt) studioTeacherOpt.style.display = "";
-
-        // Default to head_admin if no valid selection
-        if (!["head_admin", "admin", "studio_teacher"].includes(select.value)) {
-            select.value = "head_admin";
-        }
-
         const role = select.value;
         const orgSection = document.getElementById("invite-org-section");
         const orgTypeRow = document.getElementById("invite-org-type-row");
         const orgHint = document.getElementById("invite-org-hint");
         const orgTypeEl = document.getElementById("invite-org-type");
+        const lessonsRow = document.getElementById("invite-lessons-toggle-row");
+        const lessonsHint = document.getElementById("invite-lessons-toggle-hint");
 
         orgSection?.classList.remove("hidden");
+        if (orgTypeRow) orgTypeRow.classList.add("hidden");
+        document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
+
+        // Lesson booking toggle only for Choir Admin
+        const isChoirAdmin = role === "admin";
+        lessonsRow?.classList.toggle("hidden", !isChoirAdmin);
+        lessonsHint?.classList.toggle("hidden", !isChoirAdmin);
+        if (!isChoirAdmin) {
+            const cb = document.getElementById("invite-lessons-enabled");
+            if (cb) cb.checked = false;
+            document.getElementById("invite-lesson-config")?.classList.add("hidden");
+        }
 
         if (role === "head_admin") {
-            if (orgTypeRow) orgTypeRow.classList.add("hidden");
             if (orgTypeEl) orgTypeEl.value = "opera";
             if (orgHint) orgHint.textContent = "Enter a name and ID for their organization. If the ID already exists the invite will join that org; otherwise a new org is created automatically.";
-            document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
         } else if (role === "admin") {
-            if (orgTypeRow) orgTypeRow.classList.add("hidden");
             if (orgTypeEl) orgTypeEl.value = "choir";
             if (orgHint) orgHint.textContent = "Enter a name and ID for the choir they'll administer. A new org is created if the ID doesn't exist yet.";
-            document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
         } else if (role === "studio_teacher") {
-            if (orgTypeRow) orgTypeRow.classList.add("hidden");
             if (orgTypeEl) orgTypeEl.value = "studio";
             if (orgHint) orgHint.textContent = "Enter a name and ID for their private studio. A new studio org is created if the ID doesn't exist yet.";
-            document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
         }
         return;
     }
@@ -3797,7 +3809,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             e.target.classList.add("hidden");
     });
 
-    // --- Invitations (wired up; data loads when tab is activated) ---
+    // --- Invitations ---
+    document.getElementById("open-invite-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("invite-modal")?.classList.remove("hidden");
+    });
+    document.getElementById("close-invite-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("invite-modal")?.classList.add("hidden");
+    });
     document.getElementById("send-invite-btn")?.addEventListener("click", sendInvite);
     document.getElementById("invite-role")?.addEventListener("change", onInviteRoleChange);
     document.querySelectorAll('input[name="invite-teacher-type"]').forEach(radio => {
@@ -3819,7 +3837,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("invite-lessons-enabled")?.addEventListener("change", (e) => {
         document.getElementById("invite-lesson-config")?.classList.toggle("hidden", !e.target.checked);
     });
-    onInviteRoleChange();
+    initInviteRolePills();
 
     // --- Productions ---
     document.getElementById("add-prod-role-btn")?.addEventListener("click", addProdRole);

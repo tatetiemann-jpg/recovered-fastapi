@@ -78,177 +78,15 @@
     <section class="tab-panel" data-tab-panel="invitations">
 
         <div class="box">
-            <h2>Send Invitation</h2>
-            <p class="hint">Invite a teacher or admin to join. They'll receive an email with a link to set up their account.</p>
-
-            <label for="invite-email">Email</label>
-            <div class="field-row">
-                <input id="invite-email" type="email" placeholder="them@example.com">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+                <h2 style="margin:0;">Invitations</h2>
+                <button id="open-invite-modal-btn">+ Send Invitation</button>
             </div>
-
-            <label for="invite-fullname-hint">Full name (optional)</label>
-            <div class="field-row">
-                <input id="invite-fullname-hint" placeholder="First Last">
-            </div>
-
-            <label for="invite-role">Role</label>
-            <select id="invite-role">
-                <option value="teacher">Teacher</option>
-                <option value="studio_teacher">Studio Teacher</option>
-                <option value="admin">Admin</option>
-                <option value="orchestra_admin">Orchestra Admin</option>
-                <option value="head_admin">Opera Admin</option>
-                <option value="student">Vocalist</option>
-            </select>
-
-            <div id="invite-org-section" class="hidden">
-                <label>Organization</label>
-                <p class="hint" id="invite-org-hint">Enter a name and ID for their organization. If the ID already exists the invite will join that org; otherwise a new org is created automatically.</p>
-                <div id="invite-org-type-row" class="hidden">
-                    <label for="invite-org-type">Organization Type</label>
-                    <select id="invite-org-type">
-                        <option value="opera">Opera / Music School</option>
-                        <option value="choir">Choir</option>
-                        <option value="studio">Private Studio</option>
-                    </select>
-                </div>
-                <label for="invite-org-name">Organization Name</label>
-                <input type="text" id="invite-org-name" placeholder="e.g. Grace Lutheran Choir">
-                <label for="invite-org-slug">Organization ID</label>
-                <input type="text" id="invite-org-slug" placeholder="e.g. grace-lutheran (auto-filled)">
-                <label for="invite-org-logo">Logo URL <span class="hint" style="font-weight:400;">(optional)</span></label>
-                <input type="url" id="invite-org-logo" placeholder="https://yoursite.com/logo.png">
-                <p class="hint" style="margin-top:0;">Paste a direct image URL. Shown in member dashboards next to the org name.</p>
-
-                <div class="checkbox-row lesson-config-toggle">
-                    <label class="inline-check">
-                        <input type="checkbox" id="invite-lessons-enabled"> Enable lesson booking
-                    </label>
-                </div>
-                <p class="hint">Allow members to book individual lessons with teachers in this org.</p>
-
-                <div id="invite-lesson-config" class="lesson-config-panel hidden">
-                    <p class="panel-heading">Lesson Settings</p>
-
-                    <label>Lesson Duration(s)</label>
-                    <div class="checkbox-row">
-                        <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="30" checked> 30 min</label>
-                        <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="45"> 45 min</label>
-                        <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="60"> 60 min</label>
-                        <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="90"> 90 min</label>
-                    </div>
-
-                    <label for="invite-lesson-max-per-day">Max Lessons Per Day (per student)</label>
-                    <select id="invite-lesson-max-per-day">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                    </select>
-
-                    <label for="invite-lesson-max-per-teacher">Max Total Lessons With Same Teacher</label>
-                    <select id="invite-lesson-max-per-teacher">
-                        <option value="3">3</option>
-                        <option value="5" selected>5</option>
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="999">Unlimited</option>
-                    </select>
-
-                    <label for="invite-lesson-open-hour">Booking Window Opens (hour of previous evening)</label>
-                    <select id="invite-lesson-open-hour">
-                        <option value="18">6:00 PM</option>
-                        <option value="19">7:00 PM</option>
-                        <option value="20">8:00 PM</option>
-                        <option value="21" selected>9:00 PM</option>
-                        <option value="22">10:00 PM</option>
-                    </select>
-
-                    <label for="invite-lesson-close-hour">Booking Window Closes (hour of lesson day)</label>
-                    <select id="invite-lesson-close-hour">
-                        <option value="12">12:00 PM (noon)</option>
-                        <option value="14">2:00 PM</option>
-                        <option value="16">4:00 PM</option>
-                        <option value="18" selected>6:00 PM</option>
-                    </select>
-
-                    <label for="invite-lesson-cancel-notice">Cancellation Notice Required</label>
-                    <select id="invite-lesson-cancel-notice">
-                        <option value="30">30 minutes</option>
-                        <option value="60" selected>1 hour</option>
-                        <option value="120">2 hours</option>
-                        <option value="1440">24 hours</option>
-                    </select>
-
-                    <div class="checkbox-row">
-                        <label class="inline-check">
-                            <input type="checkbox" id="invite-lesson-lunch-break" checked> Block lunch break (1 PM &ndash; 2 PM)
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div id="invite-admin-role-section" class="hidden">
-                <label for="invite-admin-role">Production Role</label>
-                <select id="invite-admin-role">
-                    <optgroup label="Opera Admin Roles">
-                        <option value="director">Director</option>
-                        <option value="assistant_director">Assistant Director</option>
-                        <option value="stage_manager">Stage Manager</option>
-                        <option value="assistant_stage_manager">Assistant Stage Manager</option>
-                    </optgroup>
-                    <optgroup label="Orchestra Admin Roles">
-                        <option value="conductor">Conductor</option>
-                        <option value="assistant_conductor">Assistant Conductor</option>
-                        <option value="orchestra_manager">Orchestra Manager</option>
-                    </optgroup>
-                </select>
-            </div>
-
-            <div id="invite-teacher-type-section" class="hidden">
-                <label>Teacher Type</label>
-                <div class="checkbox-row">
-                    <label class="inline-check">
-                        <input type="radio" name="invite-teacher-type" value="vocal" checked> Vocal
-                    </label>
-                    <label class="inline-check">
-                        <input type="radio" name="invite-teacher-type" value="instrumental"> Instrumental
-                    </label>
-                </div>
-                <div id="invite-instruments-section" class="hidden">
-                    <label for="invite-instruments">Instruments (comma-separated)</label>
-                    <input type="text" id="invite-instruments" placeholder="e.g. violin, cello, piano">
-                </div>
-            </div>
-
-            <div class="modal-actions">
-                <button id="send-invite-btn">Send Invitation</button>
-            </div>
-
-            <p id="invite-msg"></p>
-        </div>
-
-        <div class="box">
-            <h2>Invitations</h2>
             <div id="invitations-list">
                 <em class="empty-note">Loading…</em>
             </div>
         </div>
 
-        <div class="box" style="margin-top:var(--space-4);">
-            <h2>Org Transfer Requests</h2>
-            <p class="hint">Vocalists requesting to transfer into your organization. Approving moves them immediately.</p>
-            <div id="requests-list">
-                <em class="empty-note">Loading…</em>
-            </div>
-        </div>
-
-        <div class="box" style="margin-top:var(--space-4);">
-            <h2>Teachers</h2>
-            <p class="hint">Fix a teacher's type or instruments if they were set up incorrectly.</p>
-            <div id="teachers-admin-list">
-                <em class="empty-note">Loading…</em>
-            </div>
-        </div>
 
     </section>
 
@@ -791,6 +629,142 @@
 
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=3"></script>
+<!-- SEND INVITATION MODAL -->
+<div id="invite-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3>Send Invitation</h3>
+        <p class="hint">They'll receive an email with a link to set up their account.</p>
+
+        <label for="invite-email">Email</label>
+        <div class="field-row">
+            <input id="invite-email" type="email" placeholder="them@example.com">
+        </div>
+
+        <label for="invite-fullname-hint">Full name (optional)</label>
+        <div class="field-row">
+            <input id="invite-fullname-hint" placeholder="First Last">
+        </div>
+
+        <label>Role</label>
+        <div id="invite-role-pills" class="chip-group hidden">
+            <button type="button" class="chip active" data-role="head_admin">Opera Admin</button>
+            <button type="button" class="chip" data-role="admin">Choir Admin</button>
+            <button type="button" class="chip" data-role="studio_teacher">Studio Teacher</button>
+        </div>
+        <select id="invite-role" class="hidden">
+            <option value="head_admin">Opera Admin</option>
+            <option value="admin">Choir Admin</option>
+            <option value="studio_teacher">Studio Teacher</option>
+            <option value="teacher">Teacher</option>
+            <option value="orchestra_admin">Orchestra Admin</option>
+            <option value="student">Vocalist</option>
+        </select>
+
+        <div id="invite-org-section" class="hidden">
+            <label>Organization</label>
+            <p class="hint" id="invite-org-hint"></p>
+            <div id="invite-org-type-row" class="hidden">
+                <label for="invite-org-type">Organization Type</label>
+                <select id="invite-org-type">
+                    <option value="opera">Opera / Music School</option>
+                    <option value="choir">Choir</option>
+                    <option value="studio">Private Studio</option>
+                </select>
+            </div>
+            <label for="invite-org-name">Organization Name</label>
+            <input type="text" id="invite-org-name" placeholder="e.g. Grace Lutheran Choir">
+            <label for="invite-org-slug">Organization ID</label>
+            <input type="text" id="invite-org-slug" placeholder="e.g. grace-lutheran (auto-filled)">
+            <label for="invite-org-logo">Logo URL <span class="hint" style="font-weight:400;">(optional)</span></label>
+            <input type="url" id="invite-org-logo" placeholder="https://yoursite.com/logo.png">
+            <p class="hint" style="margin-top:0;">Paste a direct image URL. Shown in member dashboards next to the org name.</p>
+
+            <div id="invite-lessons-toggle-row" class="checkbox-row lesson-config-toggle hidden">
+                <label class="inline-check">
+                    <input type="checkbox" id="invite-lessons-enabled"> Enable lesson booking
+                </label>
+            </div>
+            <p id="invite-lessons-toggle-hint" class="hint hidden">Allow members to book individual lessons with teachers in this org.</p>
+
+            <div id="invite-lesson-config" class="lesson-config-panel hidden">
+                <p class="panel-heading">Lesson Settings</p>
+                <label>Lesson Duration(s)</label>
+                <div class="checkbox-row">
+                    <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="30" checked> 30 min</label>
+                    <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="45"> 45 min</label>
+                    <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="60"> 60 min</label>
+                    <label class="inline-check"><input type="checkbox" name="invite-lesson-duration" value="90"> 90 min</label>
+                </div>
+                <label for="invite-lesson-max-per-day">Max Lessons Per Day (per student)</label>
+                <select id="invite-lesson-max-per-day">
+                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+                </select>
+                <label for="invite-lesson-max-per-teacher">Max Total Lessons With Same Teacher</label>
+                <select id="invite-lesson-max-per-teacher">
+                    <option value="3">3</option><option value="5" selected>5</option>
+                    <option value="10">10</option><option value="20">20</option><option value="999">Unlimited</option>
+                </select>
+                <label for="invite-lesson-open-hour">Booking Window Opens (hour of previous evening)</label>
+                <select id="invite-lesson-open-hour">
+                    <option value="18">6:00 PM</option><option value="19">7:00 PM</option>
+                    <option value="20">8:00 PM</option><option value="21" selected>9:00 PM</option>
+                    <option value="22">10:00 PM</option>
+                </select>
+                <label for="invite-lesson-close-hour">Booking Window Closes (hour of lesson day)</label>
+                <select id="invite-lesson-close-hour">
+                    <option value="12">12:00 PM (noon)</option><option value="14">2:00 PM</option>
+                    <option value="16">4:00 PM</option><option value="18" selected>6:00 PM</option>
+                </select>
+                <label for="invite-lesson-cancel-notice">Cancellation Notice Required</label>
+                <select id="invite-lesson-cancel-notice">
+                    <option value="30">30 minutes</option><option value="60" selected>1 hour</option>
+                    <option value="120">2 hours</option><option value="1440">24 hours</option>
+                </select>
+                <div class="checkbox-row">
+                    <label class="inline-check">
+                        <input type="checkbox" id="invite-lesson-lunch-break" checked> Block lunch break (1 PM &ndash; 2 PM)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div id="invite-admin-role-section" class="hidden">
+            <label for="invite-admin-role">Production Role</label>
+            <select id="invite-admin-role">
+                <optgroup label="Opera Admin Roles">
+                    <option value="director">Director</option>
+                    <option value="assistant_director">Assistant Director</option>
+                    <option value="stage_manager">Stage Manager</option>
+                    <option value="assistant_stage_manager">Assistant Stage Manager</option>
+                </optgroup>
+                <optgroup label="Orchestra Admin Roles">
+                    <option value="conductor">Conductor</option>
+                    <option value="assistant_conductor">Assistant Conductor</option>
+                    <option value="orchestra_manager">Orchestra Manager</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div id="invite-teacher-type-section" class="hidden">
+            <label>Teacher Type</label>
+            <div class="checkbox-row">
+                <label class="inline-check"><input type="radio" name="invite-teacher-type" value="vocal" checked> Vocal</label>
+                <label class="inline-check"><input type="radio" name="invite-teacher-type" value="instrumental"> Instrumental</label>
+            </div>
+            <div id="invite-instruments-section" class="hidden">
+                <label for="invite-instruments">Instruments (comma-separated)</label>
+                <input type="text" id="invite-instruments" placeholder="e.g. violin, cello, piano">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button id="send-invite-btn">Send Invitation</button>
+            <button type="button" id="close-invite-modal-btn" class="subtle-btn">Cancel</button>
+        </div>
+        <p id="invite-msg"></p>
+    </div>
+</div>
+
 <script src="/static/themes.js"></script>
 <script src="/static/app.js?v=3"></script>
 <script src="/static/opera/admin.js"></script>
