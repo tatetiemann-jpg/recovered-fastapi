@@ -2073,6 +2073,55 @@ def admin_cancel_invitation(payload: dict, request: Request):
     return {"status": "success"}
 
 
+@app.post("/admin/resend-invitation")
+def admin_resend_invitation(payload: dict, request: Request):
+    """Regenerate a fresh token and re-send the invite email for a pending or expired invitation."""
+    user = require_user(request, role="admin")
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return {"status": "fail", "message": "Missing email."}
+
+    new_token = secrets.token_urlsafe(32)
+    new_expires = datetime.now(EST) + timedelta(days=INVITE_TOKEN_DAYS)
+
+    with db_cursor(commit=True) as cur:
+        if user["role"] == "system_admin":
+            cur.execute("""
+                UPDATE invitations SET token = %s, expires_at = %s, accepted_at = NULL
+                WHERE id = (
+                    SELECT id FROM invitations
+                    WHERE invited_by = %s AND email = %s
+                    ORDER BY created_at DESC LIMIT 1
+                )
+                RETURNING role, fullname_hint, org_id
+            """, (new_token, new_expires, user["id"], email))
+        else:
+            cur.execute("""
+                UPDATE invitations SET token = %s, expires_at = %s, accepted_at = NULL
+                WHERE id = (
+                    SELECT id FROM invitations
+                    WHERE org_id = %s AND email = %s
+                    ORDER BY created_at DESC LIMIT 1
+                )
+                RETURNING role, fullname_hint, org_id
+            """, (new_token, new_expires, user["org_id"], email))
+        row = cur.fetchone()
+
+    if not row:
+        return {"status": "fail", "message": "Invitation not found."}
+
+    role, fullname_hint, org_id = row
+    with db_cursor() as cur:
+        cur.execute("SELECT name FROM organizations WHERE id = %s", (org_id,))
+        org_row = cur.fetchone()
+    org_name = org_row[0] if org_row else ""
+
+    invite_url = f"{APP_URL}/accept-invite?token={new_token}"
+    html, text = render_invite_email(invite_url, role, fullname_hint or "", user.get("fullname", ""), org_name)
+    sent = send_email(email, "You've been invited to CountrPnt", html, text)
+    return {"status": "success", "email_sent": sent}
+
+
 @app.get("/auth/invite-info")
 def invite_info(token: str):
     """Public: given a token, return info needed to render the accept-invite page."""

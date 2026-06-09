@@ -2036,9 +2036,12 @@ async function loadInvitations() {
 
         box.innerHTML = html;
 
-        // Wire up cancel buttons
+        // Wire up cancel and resend buttons
         box.querySelectorAll(".cancel-invite-btn").forEach(btn => {
             btn.addEventListener("click", () => cancelInvite(btn.dataset.email));
+        });
+        box.querySelectorAll(".resend-invite-btn").forEach(btn => {
+            btn.addEventListener("click", () => resendInvite(btn, btn.dataset.email));
         });
     } catch (e) {
         console.error(e);
@@ -2071,6 +2074,10 @@ function renderInviteRow(i) {
         ? `<button class="cancel-invite-btn subtle-btn" data-email="${escapeHtml(i.email)}">Cancel</button>`
         : "";
 
+    const resendBtn = (i.status === "pending" || i.status === "expired")
+        ? `<button class="resend-invite-btn subtle-btn" data-email="${escapeHtml(i.email)}">Resend</button>`
+        : "";
+
     return `
         <div class="invite-row">
             <div class="invite-main">
@@ -2078,7 +2085,7 @@ function renderInviteRow(i) {
                 <div class="invite-meta">${metaLine}</div>
                 ${statusBadge}
             </div>
-            <div class="invite-actions">${cancelBtn}</div>
+            <div class="invite-actions">${resendBtn}${cancelBtn}</div>
         </div>
     `;
 }
@@ -2198,6 +2205,30 @@ async function sendInvite() {
     } finally {
         btn.disabled = false;
         btn.textContent = "Send Invitation";
+    }
+}
+
+async function resendInvite(btn, email) {
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    try {
+        const res = await fetch(`${API}/admin/resend-invitation`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            btn.textContent = "Sent!";
+            setTimeout(() => loadInvitations(), 1200);
+        } else {
+            btn.textContent = "Failed";
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.textContent = "Error";
+        btn.disabled = false;
     }
 }
 
