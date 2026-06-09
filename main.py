@@ -9545,10 +9545,29 @@ def studio_teacher_add_lesson(payload: dict, request: Request):
             sr = cur.fetchone()
             if sr:
                 bal = _studio_payment_balance(cur, teacher["id"], studio_student_id, duration_min)
+                owed_count = max(0, bal["scheduled"] - bal["lessons_paid"])
+                cur.execute(
+                    "SELECT lesson_rates, payment_venmo, payment_zelle, payment_cashapp, payment_paypal FROM studio_teacher_settings WHERE teacher_id = %s",
+                    (teacher["id"],)
+                )
+                s_row = cur.fetchone()
+                rate_map = {r["duration_min"]: r["rate_cents"] for r in (s_row[0] or [])} if s_row else {}
+                payment_handles = {}
+                if s_row:
+                    for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], s_row[1:]):
+                        if val:
+                            payment_handles[method] = val
+                rate_cents = rate_map.get(duration_min, 0)
+                line_items = [{
+                    "duration_min": duration_min,
+                    "owed_count": owed_count,
+                    "rate_cents": rate_cents,
+                    "owed_dollars": owed_count * rate_cents / 100,
+                }]
                 _send_payment_reminder_email(
                     teacher.get("fullname", "Your teacher"),
                     sr[0], sr[1], sr[2], sr[3],
-                    bal["scheduled"], bal["lessons_paid"], duration_min
+                    line_items, payment_handles
                 )
 
     if ext_email:
