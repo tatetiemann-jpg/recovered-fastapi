@@ -2088,21 +2088,13 @@ def admin_resend_invitation(payload: dict, request: Request):
         if user["role"] == "system_admin":
             cur.execute("""
                 UPDATE invitations SET token = %s, expires_at = %s, accepted_at = NULL
-                WHERE id = (
-                    SELECT id FROM invitations
-                    WHERE invited_by = %s AND email = %s
-                    ORDER BY id DESC LIMIT 1
-                )
+                WHERE invited_by = %s AND email = %s
                 RETURNING role, fullname_hint, org_id
             """, (new_token, new_expires, user["id"], email))
         else:
             cur.execute("""
                 UPDATE invitations SET token = %s, expires_at = %s, accepted_at = NULL
-                WHERE id = (
-                    SELECT id FROM invitations
-                    WHERE org_id = %s AND email = %s
-                    ORDER BY id DESC LIMIT 1
-                )
+                WHERE org_id = %s AND email = %s
                 RETURNING role, fullname_hint, org_id
             """, (new_token, new_expires, user["org_id"], email))
         row = cur.fetchone()
