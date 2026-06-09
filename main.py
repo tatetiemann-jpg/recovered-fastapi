@@ -2091,7 +2091,7 @@ def admin_resend_invitation(payload: dict, request: Request):
                 WHERE id = (
                     SELECT id FROM invitations
                     WHERE invited_by = %s AND email = %s
-                    ORDER BY created_at DESC LIMIT 1
+                    ORDER BY id DESC LIMIT 1
                 )
                 RETURNING role, fullname_hint, org_id
             """, (new_token, new_expires, user["id"], email))
@@ -2101,7 +2101,7 @@ def admin_resend_invitation(payload: dict, request: Request):
                 WHERE id = (
                     SELECT id FROM invitations
                     WHERE org_id = %s AND email = %s
-                    ORDER BY created_at DESC LIMIT 1
+                    ORDER BY id DESC LIMIT 1
                 )
                 RETURNING role, fullname_hint, org_id
             """, (new_token, new_expires, user["org_id"], email))
