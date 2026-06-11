@@ -220,6 +220,39 @@ async def lifespan(app: FastAPI):
             """)
             cur.execute("ALTER TABLE studio_teacher_settings ADD COLUMN IF NOT EXISTS free_cancels_per_student INTEGER NOT NULL DEFAULT 0;")
             cur.execute("ALTER TABLE studio_students ADD COLUMN IF NOT EXISTS free_cancels_used INTEGER NOT NULL DEFAULT 0;")
+            cur.execute("ALTER TABLE studio_teacher_settings ADD COLUMN IF NOT EXISTS packages_enabled BOOLEAN NOT NULL DEFAULT FALSE;")
+            cur.execute("ALTER TABLE studio_teacher_settings ADD COLUMN IF NOT EXISTS package_size INTEGER NOT NULL DEFAULT 4;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS studio_payment_transactions (
+                    id SERIAL PRIMARY KEY,
+                    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    family_id  INTEGER REFERENCES studio_families(id) ON DELETE CASCADE,
+                    student_id INTEGER REFERENCES studio_students(id) ON DELETE CASCADE,
+                    duration_min  INTEGER NOT NULL,
+                    lessons_count INTEGER NOT NULL DEFAULT 1,
+                    is_package    BOOLEAN NOT NULL DEFAULT FALSE,
+                    package_size  INTEGER,
+                    amount_cents  INTEGER,
+                    note          TEXT,
+                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            # Migrate existing pool balances into transactions once (skip if already done)
+            cur.execute("""
+                INSERT INTO studio_payment_transactions
+                    (teacher_id, family_id, student_id, duration_min, lessons_count, note, created_at)
+                SELECT p.teacher_id, p.family_id, p.student_id, p.duration_min, p.lessons_paid,
+                       'Opening balance', NOW()
+                FROM studio_payment_pools p
+                WHERE p.lessons_paid > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM studio_payment_transactions t
+                      WHERE t.teacher_id = p.teacher_id
+                        AND t.duration_min = p.duration_min
+                        AND (t.family_id  IS NOT DISTINCT FROM p.family_id)
+                        AND (t.student_id IS NOT DISTINCT FROM p.student_id)
+                  )
+            """)
             # Cancel future booked lessons whose recurring slot has been deactivated
             cur.execute("""
                 UPDATE lessons
@@ -9199,7 +9232,8 @@ def studio_teacher_settings_get(request: Request):
     with db_cursor() as cur:
         cur.execute("""
             SELECT payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                   lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student
+                   lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student,
+                   packages_enabled, package_size
             FROM studio_teacher_settings WHERE teacher_id = %s
         """, (teacher["id"],))
         row = cur.fetchone()
@@ -9207,7 +9241,7 @@ def studio_teacher_settings_get(request: Request):
         return {"payment_zelle": None, "payment_venmo": None,
                 "payment_cashapp": None, "payment_paypal": None,
                 "lesson_rates": [], "cancel_hours": None, "cancel_charge": False,
-                "free_cancels_per_student": 0}
+                "free_cancels_per_student": 0, "packages_enabled": False, "package_size": 4}
     return {
         "payment_zelle":              row[0],
         "payment_venmo":              row[1],
@@ -9217,6 +9251,8 @@ def studio_teacher_settings_get(request: Request):
         "cancel_hours":               row[5],
         "cancel_charge":              row[6],
         "free_cancels_per_student":   row[7] or 0,
+        "packages_enabled":           row[8] or False,
+        "package_size":               row[9] or 4,
     }
 
 
@@ -9234,8 +9270,12 @@ def studio_teacher_settings_update(payload: dict, request: Request):
         try:
             dur = int(r.get("duration_min", 0))
             rate_cents = int(round(float(r.get("rate", 0)) * 100))
+            pkg_rate_cents = None
+            if r.get("package_rate") not in (None, "", 0):
+                pkg_rate_cents = int(round(float(r.get("package_rate", 0)) * 100))
             if dur > 0:
-                rates.append({"duration_min": dur, "rate_cents": rate_cents})
+                rates.append({"duration_min": dur, "rate_cents": rate_cents,
+                               "package_rate_cents": pkg_rate_cents})
         except (ValueError, TypeError):
             pass
     cancel_hours = payload.get("cancel_hours")
@@ -9245,12 +9285,18 @@ def studio_teacher_settings_update(payload: dict, request: Request):
         cancel_hours = None
     cancel_charge = bool(payload.get("cancel_charge", False))
     free_cancels = int(payload.get("free_cancels_per_student") or 0)
+    packages_enabled = bool(payload.get("packages_enabled", False))
+    try:
+        package_size = max(1, int(payload.get("package_size") or 4))
+    except (ValueError, TypeError):
+        package_size = 4
     with db_cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO studio_teacher_settings
                 (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                 lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student,
+                 packages_enabled, package_size)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (teacher_id) DO UPDATE SET
                 payment_zelle             = EXCLUDED.payment_zelle,
                 payment_venmo             = EXCLUDED.payment_venmo,
@@ -9259,9 +9305,11 @@ def studio_teacher_settings_update(payload: dict, request: Request):
                 lesson_rates              = EXCLUDED.lesson_rates,
                 cancel_hours              = EXCLUDED.cancel_hours,
                 cancel_charge             = EXCLUDED.cancel_charge,
-                free_cancels_per_student  = EXCLUDED.free_cancels_per_student
+                free_cancels_per_student  = EXCLUDED.free_cancels_per_student,
+                packages_enabled          = EXCLUDED.packages_enabled,
+                package_size              = EXCLUDED.package_size
         """, (teacher["id"], zelle, venmo, cashapp, paypal, _json.dumps(rates),
-              cancel_hours, cancel_charge, free_cancels))
+              cancel_hours, cancel_charge, free_cancels, packages_enabled, package_size))
     return {"status": "success"}
 
 
@@ -9303,7 +9351,10 @@ def _resolve_studio_student(cur, teacher_id: int, name: str, email: str | None) 
 
 
 def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min: int) -> dict:
-    """Returns {lessons_paid, scheduled, remaining} for a student's billing group."""
+    """Returns {lessons_paid, scheduled, remaining} for a student's billing group.
+    lessons_paid is the SUM of all payment transactions for this billing unit + duration.
+    scheduled counts upcoming booked lessons only (>= today).
+    """
     cur.execute(
         "SELECT family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
         (student_id, teacher_id)
@@ -9315,11 +9366,11 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
 
     if family_id:
         cur.execute("""
-            SELECT lessons_paid FROM studio_payment_pools
-            WHERE family_id = %s AND duration_min = %s AND teacher_id = %s
-        """, (family_id, duration_min, teacher_id))
-        pool_row = cur.fetchone()
-        lessons_paid = pool_row[0] if pool_row else 0
+            SELECT COALESCE(SUM(lessons_count), 0)
+            FROM studio_payment_transactions
+            WHERE teacher_id = %s AND family_id = %s AND duration_min = %s
+        """, (teacher_id, family_id, duration_min))
+        lessons_paid = cur.fetchone()[0]
         cur.execute("""
             SELECT COUNT(*) FROM lessons
             WHERE studio_student_id IN (
@@ -9328,11 +9379,11 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
         """, (family_id, teacher_id, duration_min))
     else:
         cur.execute("""
-            SELECT lessons_paid FROM studio_payment_pools
-            WHERE student_id = %s AND duration_min = %s AND teacher_id = %s
-        """, (student_id, duration_min, teacher_id))
-        pool_row = cur.fetchone()
-        lessons_paid = pool_row[0] if pool_row else 0
+            SELECT COALESCE(SUM(lessons_count), 0)
+            FROM studio_payment_transactions
+            WHERE teacher_id = %s AND student_id = %s AND duration_min = %s
+        """, (teacher_id, student_id, duration_min))
+        lessons_paid = cur.fetchone()[0]
         cur.execute("""
             SELECT COUNT(*) FROM lessons
             WHERE studio_student_id = %s AND duration_min = %s AND status = 'booked'
@@ -9341,9 +9392,9 @@ def _studio_payment_balance(cur, teacher_id: int, student_id: int, duration_min:
 
     scheduled = cur.fetchone()[0]
     return {
-        "lessons_paid": lessons_paid,
-        "scheduled": scheduled,
-        "remaining": lessons_paid - scheduled,
+        "lessons_paid": int(lessons_paid),
+        "scheduled": int(scheduled),
+        "remaining": int(lessons_paid) - int(scheduled),
     }
 
 
@@ -10047,10 +10098,12 @@ def studio_teacher_students(request: Request):
         """, (teacher["id"],))
         att_rows = {r[0]: {"present": r[1], "absent": r[2]} for r in cur.fetchall()}
 
+        # lessons_paid = SUM of all transactions per billing unit + duration
         cur.execute("""
-            SELECT student_id, family_id, duration_min, lessons_paid
-            FROM studio_payment_pools
+            SELECT student_id, family_id, duration_min, COALESCE(SUM(lessons_count), 0)
+            FROM studio_payment_transactions
             WHERE teacher_id = %s
+            GROUP BY student_id, family_id, duration_min
         """, (teacher["id"],))
         pool_rows = cur.fetchall()
 
@@ -10068,22 +10121,24 @@ def studio_teacher_students(request: Request):
     pool_by_family = {}
     for pool_sid, pool_fid, pool_dur, pool_paid in pool_rows:
         if pool_sid:
-            pool_by_student.setdefault(pool_sid, {})[pool_dur] = pool_paid
+            pool_by_student.setdefault(pool_sid, {})[pool_dur] = int(pool_paid)
         elif pool_fid:
-            pool_by_family.setdefault(pool_fid, {})[pool_dur] = pool_paid
+            pool_by_family.setdefault(pool_fid, {})[pool_dur] = int(pool_paid)
 
     scheduled_by_student = {}
     for ss_id, dur, cnt in scheduled_rows:
         scheduled_by_student.setdefault(ss_id, {})[dur] = cnt
 
-    # Get teacher's free cancel allowance once
+    # Get teacher settings once
     with db_cursor() as cur2:
         cur2.execute(
-            "SELECT free_cancels_per_student FROM studio_teacher_settings WHERE teacher_id = %s",
+            "SELECT free_cancels_per_student, packages_enabled, package_size FROM studio_teacher_settings WHERE teacher_id = %s",
             (teacher["id"],)
         )
         fc_row = cur2.fetchone()
     free_cancels_allowed = fc_row[0] if fc_row else 0
+    packages_enabled = bool(fc_row[1]) if fc_row else False
+    package_size = fc_row[2] if fc_row else 4
 
     # Build family-aggregate scheduled counts so all siblings share one pool view
     scheduled_by_family = {}
@@ -10132,6 +10187,8 @@ def studio_teacher_students(request: Request):
             "payments": payments,
             "free_cancels_used": free_cancels_used or 0,
             "free_cancels_allowed": free_cancels_allowed,
+            "packages_enabled": packages_enabled,
+            "package_size": package_size or 4,
         })
     return out
 
@@ -10536,6 +10593,99 @@ def studio_teacher_payment_reminder_all(payload: dict, request: Request):
                 sent_count += 1
 
     return {"status": "success", "sent": sent_count, "already_paid": already_paid}
+
+
+@app.get("/studio-teacher/student/{student_id}/payment-transactions")
+def studio_teacher_get_transactions(student_id: int, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT id, family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
+            (student_id, teacher["id"])
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Student not found"}
+        _, family_id = row
+        if family_id:
+            cur.execute("""
+                SELECT id, student_id, duration_min, lessons_count, is_package,
+                       package_size, amount_cents, note, created_at
+                FROM studio_payment_transactions
+                WHERE teacher_id = %s AND family_id = %s
+                ORDER BY created_at DESC
+            """, (teacher["id"], family_id))
+        else:
+            cur.execute("""
+                SELECT id, student_id, duration_min, lessons_count, is_package,
+                       package_size, amount_cents, note, created_at
+                FROM studio_payment_transactions
+                WHERE teacher_id = %s AND student_id = %s
+                ORDER BY created_at DESC
+            """, (teacher["id"], student_id))
+        rows = cur.fetchall()
+    txns = []
+    for r in rows:
+        txns.append({
+            "id": r[0], "student_id": r[1], "duration_min": r[2],
+            "lessons_count": r[3], "is_package": r[4], "package_size": r[5],
+            "amount_cents": r[6], "note": r[7],
+            "created_at": r[8].isoformat() if r[8] else None,
+        })
+    return {"status": "success", "transactions": txns}
+
+
+@app.post("/studio-teacher/student/{student_id}/payment-transaction")
+def studio_teacher_add_transaction(student_id: int, payload: dict, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT family_id FROM studio_students WHERE id = %s AND teacher_id = %s",
+            (student_id, teacher["id"])
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"status": "fail", "message": "Student not found"}
+        family_id = row[0]
+    try:
+        duration_min = int(payload["duration_min"])
+        lessons_count = int(payload["lessons_count"])
+    except (KeyError, ValueError, TypeError):
+        return {"status": "fail", "message": "duration_min and lessons_count are required integers"}
+    is_package = bool(payload.get("is_package", False))
+    package_size = int(payload.get("package_size") or 0) or None
+    amount_cents = None
+    if payload.get("amount_cents") is not None:
+        try:
+            amount_cents = int(payload["amount_cents"])
+        except (ValueError, TypeError):
+            pass
+    note = (payload.get("note") or "").strip() or None
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO studio_payment_transactions
+                (teacher_id, family_id, student_id, duration_min, lessons_count,
+                 is_package, package_size, amount_cents, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (teacher["id"], family_id, student_id, duration_min, lessons_count,
+              is_package, package_size, amount_cents, note))
+        new_id = cur.fetchone()[0]
+    return {"status": "success", "id": new_id}
+
+
+@app.delete("/studio-teacher/payment-transaction/{txn_id}")
+def studio_teacher_delete_transaction(txn_id: int, request: Request):
+    teacher = require_studio_teacher(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM studio_payment_transactions WHERE id = %s AND teacher_id = %s RETURNING id",
+            (txn_id, teacher["id"])
+        )
+        deleted = cur.fetchone()
+    if not deleted:
+        return {"status": "fail", "message": "Transaction not found"}
+    return {"status": "success"}
 
 
 @app.post("/studio-teacher/invite")

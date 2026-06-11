@@ -82,21 +82,38 @@ async function loadStudioSettingsFields() {
 
         // Rates — check the box and fill the price for each stored duration
         const rateMap = {};
-        (s.lesson_rates || []).forEach(r => { rateMap[r.duration_min] = r.rate_cents; });
+        const pkgRateMap = {};
+        (s.lesson_rates || []).forEach(r => {
+            rateMap[r.duration_min] = r.rate_cents;
+            if (r.package_rate_cents != null) pkgRateMap[r.duration_min] = r.package_rate_cents;
+        });
         document.querySelectorAll(".edit-rate-check").forEach(cb => {
             const dur = parseInt(cb.dataset.dur);
             const wrap = cb.closest(".rate-row").querySelector(".rate-price-wrap");
             const input = wrap.querySelector(".edit-rate-input");
+            const pkgInput = wrap.querySelector(".edit-pkg-rate-input");
             if (rateMap[dur] !== undefined) {
                 cb.checked = true;
                 wrap.classList.remove("hidden");
                 input.value = (rateMap[dur] / 100).toFixed(0);
+                if (pkgInput) pkgInput.value = pkgRateMap[dur] != null ? (pkgRateMap[dur] / 100).toFixed(0) : "";
             } else {
                 cb.checked = false;
                 wrap.classList.add("hidden");
                 input.value = "";
+                if (pkgInput) pkgInput.value = "";
             }
         });
+
+        // Packages
+        const pkgsToggle = document.getElementById("edit-packages-enabled");
+        const pkgSizeWrap = document.getElementById("edit-package-size-wrap");
+        if (pkgsToggle) {
+            pkgsToggle.checked = !!s.packages_enabled;
+            if (pkgSizeWrap) pkgSizeWrap.classList.toggle("hidden", !s.packages_enabled);
+        }
+        const pkgSizeEl = document.getElementById("edit-package-size");
+        if (pkgSizeEl) pkgSizeEl.value = s.package_size || 4;
     } catch (e) {
         console.error("Failed to load studio settings:", e);
     }
@@ -107,9 +124,14 @@ async function saveStudioSettings() {
     document.querySelectorAll(".edit-rate-check:checked").forEach(cb => {
         const dur = parseInt(cb.dataset.dur);
         const rateInput = cb.closest(".rate-row").querySelector(".edit-rate-input");
+        const pkgRateInput = cb.closest(".rate-row").querySelector(".edit-pkg-rate-input");
         const rate = parseFloat(rateInput?.value || "0") || 0;
-        lesson_rates.push({ duration_min: dur, rate });
+        const pkgRate = pkgRateInput?.value ? (parseFloat(pkgRateInput.value) || null) : null;
+        lesson_rates.push({ duration_min: dur, rate, package_rate: pkgRate });
     });
+
+    const packagesEnabled = document.getElementById("edit-packages-enabled")?.checked || false;
+    const packageSize = parseInt(document.getElementById("edit-package-size")?.value || "4") || 4;
 
     const payload = {
         payment_venmo:   document.getElementById("edit-pay-venmo")?.value.trim()   || null,
@@ -120,6 +142,8 @@ async function saveStudioSettings() {
         cancel_hours: parseInt(document.getElementById("edit-cancel-hours")?.value || "0") || null,
         cancel_charge: document.getElementById("edit-cancel-charge")?.checked || false,
         free_cancels_per_student: parseInt(document.getElementById("edit-cancel-free-count")?.value || "0") || 0,
+        packages_enabled: packagesEnabled,
+        package_size: packageSize,
     };
 
     const msgEl = document.getElementById("studio-settings-msg");
@@ -1084,7 +1108,8 @@ function renderStudentList(students) {
                         ${famPayBadge ? `<div style="margin-top:4px;">${famPayBadge}</div>` : ""}
                     </div>
                     <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
-                        ${firstMemberId ? `<button class="subtle-btn" onclick="openUpdatePaymentsModal(${firstMemberId});event.stopPropagation();">Update Payments</button>` : ""}
+                        ${firstMemberId ? `<button class="subtle-btn" onclick="openRecordPaymentModal(${firstMemberId});event.stopPropagation();">Record Payment</button>` : ""}
+                        ${firstMemberId ? `<button class="subtle-btn" onclick="openPaymentHistoryModal(${firstMemberId});event.stopPropagation();">Payment History</button>` : ""}
                         <button class="subtle-btn" onclick="openEditFamilyModal(${famId});event.stopPropagation();">Edit</button>
                         <span class="student-family-count">${count} student${count !== 1 ? "s" : ""}</span>
                     </div>
@@ -1289,8 +1314,14 @@ function initStudentDetailModal() {
         openEmailModal({ mode: "student", studentId: s.id, studentName: s.name });
     });
 
-    document.getElementById("sd-update-payments-btn")?.addEventListener("click", () => {
-        openUpdatePaymentsModal(activeStudentId);
+    document.getElementById("sd-record-payment-btn")?.addEventListener("click", () => {
+        document.getElementById("student-detail-modal").classList.add("hidden");
+        openRecordPaymentModal(activeStudentId);
+    });
+
+    document.getElementById("sd-payment-history-btn")?.addEventListener("click", () => {
+        document.getElementById("student-detail-modal").classList.add("hidden");
+        openPaymentHistoryModal(activeStudentId);
     });
 
     document.getElementById("sd-reminder-btn")?.addEventListener("click", async () => {
@@ -1320,67 +1351,95 @@ function initStudentDetailModal() {
 }
 
 // ============================================================
-// UPDATE PAYMENTS MODAL
+// RECORD PAYMENT MODAL
 // ============================================================
 
-function openUpdatePaymentsModal(studentId) {
+let recordPaymentStudentId = null;
+
+function openRecordPaymentModal(studentId) {
+    recordPaymentStudentId = studentId;
     const s = allStudents.find(s => s.id === studentId);
     if (!s) return;
 
-    document.getElementById("up-title").textContent = s.family_name
-        ? `Update Payments — ${s.family_name} (Family)`
-        : `Update Payments — ${s.name}`;
-    document.getElementById("up-msg").textContent = "";
+    const label = s.family_name ? `${s.family_name} (Family)` : s.name;
+    document.getElementById("rp-title").textContent = `Record Payment — ${label}`;
+    document.getElementById("rp-subtitle").textContent = "Add a payment event to the student's transaction log.";
+    document.getElementById("rp-count").value = "1";
+    document.getElementById("rp-amount").value = "";
+    document.getElementById("rp-note").value = "";
+    document.getElementById("rp-is-package").checked = false;
+    document.getElementById("rp-msg").textContent = "";
 
-    const rowsEl = document.getElementById("up-rows");
-    const existing = s.payments || [];
+    // Show package row if teacher has packages enabled
+    const teacherHasPackages = allStudents.some(st => st.packages_enabled);
+    document.getElementById("rp-package-row").classList.toggle("hidden", !teacherHasPackages);
 
-    rowsEl.innerHTML = [30, 45, 60, 90].map(d => {
-        const p = existing.find(e => e.duration_min === d);
-        return `<div class="payment-input-row" data-dur="${d}">
-            <label>${d} min lessons</label>
-            <input type="number" min="0" class="up-paid-input" data-dur="${d}" value="${p ? p.lessons_paid : 0}">
-            <span class="hint">lessons paid</span>
-        </div>`;
-    }).join("");
-
-    document.getElementById("update-payments-modal").classList.remove("hidden");
+    document.getElementById("record-payment-modal").classList.remove("hidden");
 }
 
-function initUpdatePaymentsModal() {
-    document.getElementById("up-submit-btn")?.addEventListener("click", submitUpdatePayments);
-    document.getElementById("up-cancel-btn")?.addEventListener("click", () => {
-        document.getElementById("update-payments-modal").classList.add("hidden");
+function initRecordPaymentModal() {
+    document.getElementById("rp-submit-btn")?.addEventListener("click", submitRecordPayment);
+    document.getElementById("rp-cancel-btn")?.addEventListener("click", () => {
+        document.getElementById("record-payment-modal").classList.add("hidden");
+        openStudentDetail(recordPaymentStudentId);
+    });
+    document.getElementById("rp-is-package")?.addEventListener("change", function () {
+        const s = allStudents.find(s => s.id === recordPaymentStudentId);
+        const dur = parseInt(document.getElementById("rp-duration").value);
+        document.getElementById("rp-count-label").textContent = this.checked
+            ? "Number of packages purchased" : "Number of lessons paid";
+        if (this.checked && s) {
+            const pkgSize = s.package_size || 4;
+            document.getElementById("rp-count").value = "1";
+            document.getElementById("rp-count").title = `1 package = ${pkgSize} lessons`;
+        }
     });
 }
 
-async function submitUpdatePayments() {
-    const btn = document.getElementById("up-submit-btn");
-    const msg = document.getElementById("up-msg");
-    const payments = [];
-    document.querySelectorAll(".up-paid-input").forEach(inp => {
-        payments.push({ duration_min: parseInt(inp.dataset.dur), lessons_paid: parseInt(inp.value) || 0 });
-    });
+async function submitRecordPayment() {
+    const btn = document.getElementById("rp-submit-btn");
+    const msg = document.getElementById("rp-msg");
+    const dur = parseInt(document.getElementById("rp-duration").value);
+    const isPackage = document.getElementById("rp-is-package").checked;
+    const countRaw = parseInt(document.getElementById("rp-count").value) || 0;
+    const amountRaw = parseFloat(document.getElementById("rp-amount").value);
+    const note = document.getElementById("rp-note").value.trim();
+
+    if (countRaw <= 0) {
+        msg.textContent = "Please enter a valid count.";
+        return;
+    }
+
+    const s = allStudents.find(s => s.id === recordPaymentStudentId);
+    const pkgSize = s?.package_size || 4;
+    const lessonsCount = isPackage ? countRaw * pkgSize : countRaw;
+    const amountCents = !isNaN(amountRaw) && amountRaw > 0 ? Math.round(amountRaw * 100) : null;
 
     btn.disabled = true;
     btn.textContent = "Saving…";
     try {
-        const res = await fetch(`${API}/studio-teacher/student/${activeStudentId}/payments`, {
-            method: "PATCH",
+        const res = await fetch(`${API}/studio-teacher/student/${recordPaymentStudentId}/payment-transaction`, {
+            method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ payments }),
+            body: JSON.stringify({
+                duration_min: dur,
+                lessons_count: lessonsCount,
+                is_package: isPackage,
+                package_size: isPackage ? pkgSize : null,
+                amount_cents: amountCents,
+                note: note || null,
+            }),
         });
         const data = await res.json();
         if (data.status === "success") {
             msg.textContent = "Saved!";
             await loadStudents();
-            // Re-open detail with refreshed data
             setTimeout(() => {
-                document.getElementById("update-payments-modal").classList.add("hidden");
+                document.getElementById("record-payment-modal").classList.add("hidden");
                 msg.textContent = "";
-                openStudentDetail(activeStudentId);
-            }, 800);
+                openStudentDetail(recordPaymentStudentId);
+            }, 600);
         } else {
             msg.textContent = data.message || "Failed.";
         }
@@ -1389,6 +1448,81 @@ async function submitUpdatePayments() {
     }
     btn.disabled = false;
     btn.textContent = "Save";
+}
+
+// ============================================================
+// PAYMENT HISTORY MODAL
+// ============================================================
+
+let paymentHistoryStudentId = null;
+
+async function openPaymentHistoryModal(studentId) {
+    paymentHistoryStudentId = studentId;
+    const s = allStudents.find(s => s.id === studentId);
+    const label = s?.family_name ? `${s.family_name} (Family)` : (s?.name || "Student");
+    document.getElementById("ph-title").textContent = `Payment History — ${label}`;
+    document.getElementById("ph-subtitle").textContent = "All recorded payment transactions.";
+    document.getElementById("ph-msg").textContent = "";
+    document.getElementById("ph-list").innerHTML = `<em class="hint">Loading…</em>`;
+    document.getElementById("payment-history-modal").classList.remove("hidden");
+    await refreshPaymentHistory(studentId);
+}
+
+async function refreshPaymentHistory(studentId) {
+    const list = document.getElementById("ph-list");
+    try {
+        const res = await fetch(`${API}/studio-teacher/student/${studentId}/payment-transactions`, { credentials: "include" });
+        const data = await res.json();
+        if (data.status !== "success") { list.innerHTML = `<em class="hint">Could not load history.</em>`; return; }
+        const txns = data.transactions;
+        if (!txns.length) { list.innerHTML = `<em class="hint">No transactions yet.</em>`; return; }
+        list.innerHTML = txns.map(t => {
+            const date = t.created_at ? new Date(t.created_at).toLocaleDateString() : "—";
+            const pkgTag = t.is_package ? ` (pkg ×${t.package_size || "?"})` : "";
+            const amtStr = t.amount_cents != null ? ` · $${(t.amount_cents / 100).toFixed(2)} paid` : "";
+            const noteStr = t.note ? ` · ${escHtml(t.note)}` : "";
+            return `<div class="payment-txn-row" style="display:flex;justify-content:space-between;align-items:center;padding:var(--space-2) 0;border-bottom:1px solid var(--border);">
+                <div>
+                    <strong>+${t.lessons_count} lesson${t.lessons_count !== 1 ? "s" : ""}</strong> (${t.duration_min} min${pkgTag})
+                    <span class="hint">${amtStr}${noteStr}</span><br>
+                    <span class="hint" style="font-size:0.8rem;">${date}</span>
+                </div>
+                <button class="subtle-btn" style="color:var(--color-error,#dc2626);font-size:0.8rem;" onclick="deleteTransaction(${t.id})">Remove</button>
+            </div>`;
+        }).join("");
+    } catch (e) {
+        list.innerHTML = `<em class="hint">Server error.</em>`;
+    }
+}
+
+async function deleteTransaction(txnId) {
+    if (!confirm("Remove this payment record?")) return;
+    try {
+        const res = await fetch(`${API}/studio-teacher/payment-transaction/${txnId}`, {
+            method: "DELETE",
+            credentials: "include",
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            await loadStudents();
+            await refreshPaymentHistory(paymentHistoryStudentId);
+        } else {
+            document.getElementById("ph-msg").textContent = data.message || "Failed.";
+        }
+    } catch (e) {
+        document.getElementById("ph-msg").textContent = "Server error.";
+    }
+}
+
+function initPaymentHistoryModal() {
+    document.getElementById("ph-add-btn")?.addEventListener("click", () => {
+        document.getElementById("payment-history-modal").classList.add("hidden");
+        openRecordPaymentModal(paymentHistoryStudentId);
+    });
+    document.getElementById("ph-close-btn")?.addEventListener("click", () => {
+        document.getElementById("payment-history-modal").classList.add("hidden");
+        openStudentDetail(paymentHistoryStudentId);
+    });
 }
 
 // ============================================================
@@ -1779,7 +1913,8 @@ function initModals() {
     initAddFamilyModal();
     initEditFamilyModal();
     initStudentDetailModal();
-    initUpdatePaymentsModal();
+    initRecordPaymentModal();
+    initPaymentHistoryModal();
 
     // Close modals on overlay click
     document.querySelectorAll(".modal-overlay").forEach(overlay => {

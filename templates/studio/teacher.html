@@ -388,7 +388,8 @@
 
         <div class="modal-actions" style="flex-wrap:wrap;gap:var(--space-2);">
             <button id="sd-message-btn">Message Student</button>
-            <button id="sd-update-payments-btn">Update Payments</button>
+            <button id="sd-record-payment-btn">Record Payment</button>
+            <button id="sd-payment-history-btn" class="subtle-btn">Payment History</button>
             <button id="sd-edit-btn" class="subtle-btn">Edit Student</button>
             <button id="sd-reminder-btn" class="subtle-btn">Send Payment Reminder</button>
             <button id="sd-close-btn">Close</button>
@@ -419,16 +420,58 @@
 <!-- ============================================================ -->
 <!-- UPDATE PAYMENTS MODAL -->
 <!-- ============================================================ -->
-<div id="update-payments-modal" class="modal-overlay hidden">
+<!-- ============================================================ -->
+<!-- RECORD PAYMENT MODAL -->
+<!-- ============================================================ -->
+<div id="record-payment-modal" class="modal-overlay hidden">
     <div class="modal-card">
-        <h3 id="up-title">Update Payments</h3>
-        <p class="hint">Enter the number of upcoming lessons that have been prepaid for each duration.</p>
-        <div id="up-rows"></div>
-        <div class="modal-actions">
-            <button id="up-submit-btn">Save</button>
-            <button id="up-cancel-btn">Cancel</button>
+        <h3 id="rp-title">Record Payment</h3>
+        <p class="hint" id="rp-subtitle"></p>
+
+        <label>Duration</label>
+        <select id="rp-duration">
+            <option value="30">30 min</option>
+            <option value="45">45 min</option>
+            <option value="60">60 min</option>
+            <option value="90">90 min</option>
+        </select>
+
+        <div id="rp-package-row" class="hidden">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" id="rp-is-package"> Package purchase
+            </label>
         </div>
-        <p id="up-msg" class="hint"></p>
+
+        <label id="rp-count-label">Number of lessons paid</label>
+        <input type="number" id="rp-count" min="1" value="1" style="width:100px">
+
+        <label>Amount paid (optional, $)</label>
+        <input type="number" id="rp-amount" min="0" step="0.01" placeholder="e.g. 120.00">
+
+        <label>Note (optional)</label>
+        <input type="text" id="rp-note" placeholder="e.g. Venmo on June 1">
+
+        <div class="modal-actions">
+            <button id="rp-submit-btn">Save</button>
+            <button id="rp-cancel-btn" class="subtle-btn">Cancel</button>
+        </div>
+        <p id="rp-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- PAYMENT HISTORY MODAL -->
+<!-- ============================================================ -->
+<div id="payment-history-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-large">
+        <h3 id="ph-title">Payment History</h3>
+        <p class="hint" id="ph-subtitle"></p>
+        <div id="ph-list" style="margin: var(--space-3) 0;"></div>
+        <div class="modal-actions">
+            <button id="ph-add-btn">+ Record Payment</button>
+            <button id="ph-close-btn" class="subtle-btn">Close</button>
+        </div>
+        <p id="ph-msg" class="hint"></p>
     </div>
 </div>
 
