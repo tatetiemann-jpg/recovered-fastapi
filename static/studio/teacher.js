@@ -231,7 +231,7 @@ function renderLessonList(containerId, lessons, emptyMsg) {
                     <span class="hint">${dateStr} · ${l.time} · ${l.duration_min} min</span>
                     ${zoom}
                 </div>
-                <div class="lesson-card-actions" style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+                <div class="lesson-card-actions">
                     ${attBtns}
                     <button class="subtle-btn" onclick="cancelLesson(${l.id})">Cancel</button>
                 </div>
@@ -1107,7 +1107,7 @@ function renderStudentList(students) {
                         ${parentLine ? `<div class="student-family-parent">Parent · ${parentLine}</div>` : ""}
                         ${famPayBadge ? `<div style="margin-top:4px;">${famPayBadge}</div>` : ""}
                     </div>
-                    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+                    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;justify-content:flex-end;">
                         ${firstMemberId ? `<button class="subtle-btn" onclick="openRecordPaymentModal(${firstMemberId});event.stopPropagation();">Record Payment</button>` : ""}
                         ${firstMemberId ? `<button class="subtle-btn" onclick="openPaymentHistoryModal(${firstMemberId});event.stopPropagation();">Payment History</button>` : ""}
                         <button class="subtle-btn" onclick="openEditFamilyModal(${famId});event.stopPropagation();">Edit</button>
@@ -1146,7 +1146,7 @@ function renderStudentRow(s, inFamily = false) {
                 <strong>${escHtml(s.name)}</strong>
                 ${s.email ? `<span class="hint"> · ${escHtml(s.email)}</span>` : ""}
             </div>
-            <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+            <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;min-width:0;justify-content:flex-end;">
                 <span class="hint">${att.present} attended · ${att.absent} missed</span>
                 ${payBadge}
                 ${noEmailBadge}
