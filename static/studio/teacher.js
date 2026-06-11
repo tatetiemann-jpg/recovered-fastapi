@@ -15,6 +15,7 @@ let lessonModalWeekday = null;
 let selectedStudentId = null; // for lesson modal
 let mwSelectedStudentId = null; // for multi-week modal
 let activeStudentId = null; // for student detail modal
+let teacherRates = {};     // { duration_min: { rate_cents, package_rate_cents } }
 
 // ============================================================
 // INIT
@@ -27,6 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initCalendarNav();
     initModals();
     initEmailModal();
+    loadTeacherRates();
 });
 
 async function loadMe() {
@@ -64,6 +66,17 @@ function initLogout() {
     });
 }
 
+async function loadTeacherRates() {
+    try {
+        const res = await fetch(`${API}/studio-teacher/settings`, { credentials: "include" });
+        const s = await res.json();
+        teacherRates = {};
+        (s.lesson_rates || []).forEach(r => {
+            teacherRates[r.duration_min] = { rate_cents: r.rate_cents, package_rate_cents: r.package_rate_cents ?? null };
+        });
+    } catch (e) {}
+}
+
 async function loadStudioSettingsFields() {
     try {
         const res = await fetch(`${API}/studio-teacher/settings`, { credentials: "include" });
@@ -83,9 +96,11 @@ async function loadStudioSettingsFields() {
         // Rates — check the box and fill the price for each stored duration
         const rateMap = {};
         const pkgRateMap = {};
+        teacherRates = {};
         (s.lesson_rates || []).forEach(r => {
             rateMap[r.duration_min] = r.rate_cents;
             if (r.package_rate_cents != null) pkgRateMap[r.duration_min] = r.package_rate_cents;
+            teacherRates[r.duration_min] = { rate_cents: r.rate_cents, package_rate_cents: r.package_rate_cents ?? null };
         });
         document.querySelectorAll(".edit-rate-check").forEach(cb => {
             const dur = parseInt(cb.dataset.dur);
@@ -161,6 +176,7 @@ async function saveStudioSettings() {
             msgEl.textContent = "Studio settings saved.";
             msgEl.className = "hint success-msg";
             setTimeout(() => { if (msgEl) { msgEl.textContent = ""; msgEl.className = "hint"; } }, 2000);
+            loadTeacherRates(); // keep auto-fill in sync
         }
     } catch (e) {
         console.error("Failed to save studio settings:", e);
@@ -1370,13 +1386,35 @@ function openRecordPaymentModal(studentId) {
     document.getElementById("rp-amount").value = "";
     document.getElementById("rp-note").value = "";
     document.getElementById("rp-is-package").checked = false;
+    document.getElementById("rp-count-label").textContent = "Number of lessons paid";
     document.getElementById("rp-msg").textContent = "";
 
-    // Show package row if teacher has packages enabled
     const teacherHasPackages = allStudents.some(st => st.packages_enabled);
     document.getElementById("rp-package-row").classList.toggle("hidden", !teacherHasPackages);
 
     document.getElementById("record-payment-modal").classList.remove("hidden");
+    autofillPaymentAmount();
+}
+
+function autofillPaymentAmount() {
+    const s = allStudents.find(s => s.id === recordPaymentStudentId);
+    const dur = parseInt(document.getElementById("rp-duration").value);
+    const isPackage = document.getElementById("rp-is-package").checked;
+    const count = parseInt(document.getElementById("rp-count").value) || 0;
+    const pkgSize = s?.package_size || 4;
+    const rates = teacherRates[dur];
+    if (!rates || count <= 0) { document.getElementById("rp-amount").value = ""; return; }
+
+    let totalCents;
+    if (isPackage && rates.package_rate_cents != null) {
+        totalCents = count * pkgSize * rates.package_rate_cents;
+    } else if (!isPackage && rates.rate_cents) {
+        totalCents = count * rates.rate_cents;
+    } else {
+        document.getElementById("rp-amount").value = "";
+        return;
+    }
+    document.getElementById("rp-amount").value = (totalCents / 100).toFixed(2);
 }
 
 function initRecordPaymentModal() {
@@ -1385,16 +1423,23 @@ function initRecordPaymentModal() {
         document.getElementById("record-payment-modal").classList.add("hidden");
         openStudentDetail(recordPaymentStudentId);
     });
+
+    const recalc = () => autofillPaymentAmount();
+
+    document.getElementById("rp-duration")?.addEventListener("change", recalc);
+    document.getElementById("rp-count")?.addEventListener("input", recalc);
     document.getElementById("rp-is-package")?.addEventListener("change", function () {
         const s = allStudents.find(s => s.id === recordPaymentStudentId);
-        const dur = parseInt(document.getElementById("rp-duration").value);
+        const pkgSize = s?.package_size || 4;
         document.getElementById("rp-count-label").textContent = this.checked
             ? "Number of packages purchased" : "Number of lessons paid";
-        if (this.checked && s) {
-            const pkgSize = s.package_size || 4;
+        if (this.checked) {
             document.getElementById("rp-count").value = "1";
             document.getElementById("rp-count").title = `1 package = ${pkgSize} lessons`;
+        } else {
+            document.getElementById("rp-count").title = "";
         }
+        autofillPaymentAmount();
     });
 }
 
