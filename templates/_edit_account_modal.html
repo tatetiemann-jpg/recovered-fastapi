@@ -47,14 +47,30 @@
             <hr style="margin:var(--space-4) 0;border:none;border-top:1px solid var(--border);">
             <h3>Your Lesson Rates</h3>
             <p class="hint">Select the lesson lengths you offer and set your rate for each.</p>
+
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-3);margin-bottom:var(--space-3);">
+                <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;">
+                    <input type="checkbox" id="edit-packages-enabled"
+                           onchange="
+                               document.getElementById('edit-package-size-wrap').classList.toggle('hidden',!this.checked);
+                               document.querySelectorAll('.edit-pkg-rate-wrap').forEach(el => el.classList.toggle('hidden',!this.checked));
+                           ">
+                    Offer lesson packages
+                </label>
+                <div id="edit-package-size-wrap" class="hidden" style="display:flex;align-items:center;gap:var(--space-2);">
+                    <label style="white-space:nowrap;">Lessons per package</label>
+                    <input id="edit-package-size" type="number" min="2" step="1" placeholder="4" style="width:70px;">
+                </div>
+            </div>
+
             <div id="edit-rate-rows" style="display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:var(--space-3);">
                 <label class="rate-row">
                     <input type="checkbox" class="edit-rate-check" data-dur="30"> 30 min
                     <span class="rate-price-wrap hidden">
                         <span style="margin-left:var(--space-3);">$</span>
                         <input type="number" class="edit-rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
-                        <span class="hint" style="margin-left:var(--space-3);">pkg $</span>
-                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;" title="Package price per lesson (optional)"> <span class="hint">/ lesson</span>
+                        <span class="edit-pkg-rate-wrap hidden"><span class="hint" style="margin-left:var(--space-3);">pkg $</span>
+                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;"> <span class="hint">/ lesson</span></span>
                     </span>
                 </label>
                 <label class="rate-row">
@@ -62,8 +78,8 @@
                     <span class="rate-price-wrap hidden">
                         <span style="margin-left:var(--space-3);">$</span>
                         <input type="number" class="edit-rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
-                        <span class="hint" style="margin-left:var(--space-3);">pkg $</span>
-                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;" title="Package price per lesson (optional)"> <span class="hint">/ lesson</span>
+                        <span class="edit-pkg-rate-wrap hidden"><span class="hint" style="margin-left:var(--space-3);">pkg $</span>
+                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;"> <span class="hint">/ lesson</span></span>
                     </span>
                 </label>
                 <label class="rate-row">
@@ -71,8 +87,8 @@
                     <span class="rate-price-wrap hidden">
                         <span style="margin-left:var(--space-3);">$</span>
                         <input type="number" class="edit-rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
-                        <span class="hint" style="margin-left:var(--space-3);">pkg $</span>
-                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;" title="Package price per lesson (optional)"> <span class="hint">/ lesson</span>
+                        <span class="edit-pkg-rate-wrap hidden"><span class="hint" style="margin-left:var(--space-3);">pkg $</span>
+                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;"> <span class="hint">/ lesson</span></span>
                     </span>
                 </label>
                 <label class="rate-row">
@@ -80,8 +96,8 @@
                     <span class="rate-price-wrap hidden">
                         <span style="margin-left:var(--space-3);">$</span>
                         <input type="number" class="edit-rate-input" min="0" step="1" placeholder="0" style="width:70px;"> <span class="hint">/ lesson</span>
-                        <span class="hint" style="margin-left:var(--space-3);">pkg $</span>
-                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;" title="Package price per lesson (optional)"> <span class="hint">/ lesson</span>
+                        <span class="edit-pkg-rate-wrap hidden"><span class="hint" style="margin-left:var(--space-3);">pkg $</span>
+                        <input type="number" class="edit-pkg-rate-input" min="0" step="1" placeholder="pkg rate" style="width:80px;"> <span class="hint">/ lesson</span></span>
                     </span>
                 </label>
             </div>
@@ -123,22 +139,6 @@
                 <input id="edit-cancel-free-count" type="number" min="0" step="1" placeholder="0" style="width:60px;">
                 <span class="hint">free cancellation(s)</span>
             </div>
-            <hr style="margin:var(--space-4) 0;border:none;border-top:1px solid var(--border);">
-            <h3>Packages <span class="hint" style="font-size:0.85rem;font-weight:400;">(optional)</span></h3>
-            <p class="hint">Offer a discount when students purchase multiple lessons at once.</p>
-            <div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3);">
-                <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;">
-                    <input type="checkbox" id="edit-packages-enabled"
-                           onchange="document.getElementById('edit-package-size-wrap').classList.toggle('hidden',!this.checked)">
-                    Enable packages
-                </label>
-            </div>
-            <div id="edit-package-size-wrap" class="hidden" style="display:flex;align-items:center;gap:var(--space-2);">
-                <label>Lessons per package</label>
-                <input id="edit-package-size" type="number" min="2" step="1" placeholder="4" style="width:70px;">
-                <span class="hint">(set per-duration package price in the rates table above)</span>
-            </div>
-
             <p id="studio-settings-msg" class="hint" style="margin-top:var(--space-2);"></p>
         </div>
 

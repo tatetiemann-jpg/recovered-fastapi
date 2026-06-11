@@ -136,12 +136,16 @@
         // Collect studio teacher settings if applicable
         let studioSettings = null;
         if (inviteInfo.role === "studio_teacher") {
+            const packagesEnabled = document.getElementById("packages-enabled")?.checked || false;
+            const packageSize = parseInt(document.getElementById("package-size")?.value || "4") || 4;
             const lesson_rates = [];
             document.querySelectorAll(".rate-check:checked").forEach(cb => {
                 const dur = parseInt(cb.dataset.dur);
                 const rateInput = cb.closest(".rate-row").querySelector(".rate-input");
+                const pkgRateInput = cb.closest(".rate-row").querySelector(".pkg-rate-input");
                 const rate = parseFloat(rateInput?.value || "0") || 0;
-                lesson_rates.push({ duration_min: dur, rate });
+                const pkgRate = pkgRateInput?.value ? (parseFloat(pkgRateInput.value) || null) : null;
+                lesson_rates.push({ duration_min: dur, rate, package_rate: pkgRate });
             });
             studioSettings = {
                 payment_venmo:   document.getElementById("pay-venmo")?.value.trim() || null,
@@ -152,6 +156,8 @@
                 cancel_hours: parseInt(document.getElementById("cancel-hours")?.value || "0") || null,
                 cancel_charge: document.getElementById("cancel-charge")?.checked || false,
                 free_cancels_per_student: parseInt(document.getElementById("cancel-free-count")?.value || "0") || 0,
+                packages_enabled: packagesEnabled,
+                package_size: packageSize,
             };
         }
 

@@ -111,6 +111,8 @@ async function loadStudioSettingsFields() {
         if (pkgsToggle) {
             pkgsToggle.checked = !!s.packages_enabled;
             if (pkgSizeWrap) pkgSizeWrap.classList.toggle("hidden", !s.packages_enabled);
+            document.querySelectorAll(".edit-pkg-rate-wrap").forEach(el =>
+                el.classList.toggle("hidden", !s.packages_enabled));
         }
         const pkgSizeEl = document.getElementById("edit-package-size");
         if (pkgSizeEl) pkgSizeEl.value = s.package_size || 4;
