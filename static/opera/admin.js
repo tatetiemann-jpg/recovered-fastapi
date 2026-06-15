@@ -2449,15 +2449,8 @@ async function loadOrchestraSections() {
 
         // Auto-init standard sections on first load if none exist
         if (!orchestraSections.length) {
-            const defaultSections = [];
-            let sortOrder = 0;
-            (typeof ORCHESTRA_INSTRUMENTS !== "undefined" ? ORCHESTRA_INSTRUMENTS : []).forEach(({ items }) => {
-                items.forEach(name => {
-                    const key = name.toLowerCase();
-                    const chair_count = (typeof ORCHESTRA_DEFAULT_COUNTS !== "undefined" && ORCHESTRA_DEFAULT_COUNTS[key]) || 5;
-                    defaultSections.push({ name, instrument: key, sort_order: sortOrder++, chair_count });
-                });
-            });
+            const defaultSections = (typeof ORCHESTRA_DEFAULT_SECTIONS !== "undefined" ? ORCHESTRA_DEFAULT_SECTIONS : [])
+                .map((s, i) => ({ ...s, sort_order: i }));
             await fetch(`${API}/admin/orchestra-sections/init-defaults`, {
                 method: "POST",
                 credentials: "include",
@@ -3001,18 +2994,25 @@ function openAssignSeatModal(operaId, sectionId, chairNumber, currentMemberId) {
     document.getElementById("assign-seat-chair").value = chairNumber;
     document.getElementById("seat-msg").textContent = "";
 
-    // Populate member dropdown — filter to members matching section's instrument
+    // Populate member dropdown — filter to members matching section's instrument (including doublings)
     const memberSelect = document.getElementById("assign-seat-member");
     memberSelect.innerHTML = `<option value="">— Unassigned —</option>`;
     const sectionInstrument = sec?.instrument?.toLowerCase() || "";
     const filtered = sectionInstrument
-        ? orchestraMembers.filter(m => (m.instrument || "").toLowerCase() === sectionInstrument)
+        ? orchestraMembers.filter(m => {
+            const mi = (m.instrument || "").toLowerCase();
+            return mi === sectionInstrument ||
+                   (typeof INSTRUMENT_FAMILY !== "undefined" && INSTRUMENT_FAMILY[mi] === sectionInstrument);
+        })
         : orchestraMembers;
 
     filtered.forEach(m => {
         const opt = document.createElement("option");
         opt.value = m.id;
-        opt.textContent = `${m.name} (${m.instrument || "?"})`;
+        const mi = (m.instrument || "").toLowerCase();
+        // Only show instrument label when it's a doubling (differs from section instrument)
+        const label = (mi && mi !== sectionInstrument) ? `${m.name} (${m.instrument})` : m.name;
+        opt.textContent = label;
         if (String(m.id) === String(currentMemberId)) opt.selected = true;
         memberSelect.appendChild(opt);
     });

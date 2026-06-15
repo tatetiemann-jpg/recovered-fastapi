@@ -3,21 +3,57 @@
 // ===============================
 const API = "https://countrpnt.com";
 
-// Orchestral instruments list (shared between signup and admin section modal)
+// Orchestral instruments — used for signup dropdown and Add Section modal
+// Includes specific doublings so members can identify their exact instrument
 const ORCHESTRA_INSTRUMENTS = [
-    { group: "Strings",    items: ["Violin I", "Violin II", "Viola", "Cello", "Double Bass"] },
-    { group: "Woodwinds",  items: ["Flute", "Oboe", "Clarinet", "Bassoon"] },
-    { group: "Brass",      items: ["French Horn", "Trumpet", "Trombone", "Tuba"] },
-    { group: "Percussion", items: ["Timpani", "Percussion"] },
-    { group: "Other",      items: ["Harp", "Piano"] },
+    { group: "Strings",          items: ["Violin", "Viola", "Cello", "Double Bass"] },
+    { group: "Woodwinds",        items: ["Flute", "Piccolo", "Oboe", "English Horn", "Clarinet", "Bass Clarinet", "Bassoon", "Contrabassoon"] },
+    { group: "Brass",            items: ["French Horn", "Trumpet", "Bass Trumpet", "Trombone", "Bass Trombone", "Tuba"] },
+    { group: "Percussion",       items: ["Timpani", "Snare Drum", "Bass Drum", "Cymbals", "Marimba", "Xylophone", "Vibraphone", "Glockenspiel", "Chimes", "Tambourine"] },
+    { group: "Keyboard & Other", items: ["Harp", "Piano", "Celesta", "Organ"] },
 ];
 
-// Standard chair counts per section for auto-population
-const ORCHESTRA_DEFAULT_COUNTS = {
-    "violin i": 16, "violin ii": 14, "viola": 12, "cello": 10, "double bass": 8,
-    "flute": 3, "oboe": 3, "clarinet": 3, "bassoon": 3,
-    "french horn": 4, "trumpet": 3, "trombone": 3, "tuba": 1,
-    "timpani": 1, "percussion": 2, "harp": 2, "piano": 1,
+// Default seating sections for new orchestras — doublings fold into their parent section
+const ORCHESTRA_DEFAULT_SECTIONS = [
+    { name: "Violin I",    instrument: "violin",      chair_count: 16 },
+    { name: "Violin II",   instrument: "violin",      chair_count: 14 },
+    { name: "Viola",       instrument: "viola",       chair_count: 12 },
+    { name: "Cello",       instrument: "cello",       chair_count: 10 },
+    { name: "Double Bass", instrument: "double bass", chair_count: 8  },
+    { name: "Flute",       instrument: "flute",       chair_count: 3  },
+    { name: "Oboe",        instrument: "oboe",        chair_count: 3  },
+    { name: "Clarinet",    instrument: "clarinet",    chair_count: 3  },
+    { name: "Bassoon",     instrument: "bassoon",     chair_count: 3  },
+    { name: "French Horn", instrument: "french horn", chair_count: 6  },
+    { name: "Trumpet",     instrument: "trumpet",     chair_count: 4  },
+    { name: "Trombone",    instrument: "trombone",    chair_count: 3  },
+    { name: "Tuba",        instrument: "tuba",        chair_count: 1  },
+    { name: "Percussion",  instrument: "percussion",  chair_count: 3  },
+    { name: "Harp",        instrument: "harp",        chair_count: 2  },
+    { name: "Piano",       instrument: "piano",       chair_count: 1  },
+];
+
+// Maps specific doublings to their parent section instrument key
+// Used to show doublers in the correct section during seat assignment
+const INSTRUMENT_FAMILY = {
+    "piccolo":      "flute",
+    "english horn": "oboe",
+    "bass clarinet":"clarinet",
+    "contrabassoon":"bassoon",
+    "bass trumpet": "trumpet",
+    "bass trombone":"trombone",
+    "snare drum":   "percussion",
+    "bass drum":    "percussion",
+    "cymbals":      "percussion",
+    "marimba":      "percussion",
+    "xylophone":    "percussion",
+    "vibraphone":   "percussion",
+    "glockenspiel": "percussion",
+    "chimes":       "percussion",
+    "tambourine":   "percussion",
+    "timpani":      "percussion",
+    "celesta":      "piano",
+    "organ":        "piano",
 };
 
 function populateInstrumentSelect(selectId, otherRowId) {
