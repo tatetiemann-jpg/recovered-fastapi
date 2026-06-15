@@ -1422,7 +1422,10 @@ function renderScheduledRehearsals() {
 
     // Empty state
     if (scheduledAllRehearsals.length === 0) {
-        operaTabsBox.innerHTML = `<em class="empty-note">No operas have rehearsals yet.</em>`;
+        const emptyMsg = (typeof ORG_TYPE !== "undefined" && ORG_TYPE === "orchestra")
+            ? "No rehearsals scheduled yet."
+            : "No operas have rehearsals yet.";
+        operaTabsBox.innerHTML = `<em class="empty-note">${emptyMsg}</em>`;
         upcomingBox.innerHTML = "";
         pastBox.innerHTML = "";
         pastToggle.textContent = "▶ Show past rehearsals (0)";
@@ -2450,7 +2453,9 @@ async function loadOrchestraSections() {
             let sortOrder = 0;
             (typeof ORCHESTRA_INSTRUMENTS !== "undefined" ? ORCHESTRA_INSTRUMENTS : []).forEach(({ items }) => {
                 items.forEach(name => {
-                    defaultSections.push({ name, instrument: name.toLowerCase(), sort_order: sortOrder++ });
+                    const key = name.toLowerCase();
+                    const chair_count = (typeof ORCHESTRA_DEFAULT_COUNTS !== "undefined" && ORCHESTRA_DEFAULT_COUNTS[key]) || 5;
+                    defaultSections.push({ name, instrument: key, sort_order: sortOrder++, chair_count });
                 });
             });
             await fetch(`${API}/admin/orchestra-sections/init-defaults`, {
@@ -3970,6 +3975,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Always orchestra rehearsal type — hide the kind toggle and vocal fields
         document.getElementById("rehearsal-kind-row")?.classList.add("hidden");
         document.getElementById("rehearsal-vocal-fields")?.classList.add("hidden");
+        // Relabel "Opera" → "Program" in the new rehearsal modal
+        const rehearsalOperaLabel = document.querySelector('label[for="rehearsal-opera"]');
+        if (rehearsalOperaLabel) rehearsalOperaLabel.textContent = "Program";
     }
 
     // orchestra_admin sees Rehearsals and Orchestra only (no Invitations)

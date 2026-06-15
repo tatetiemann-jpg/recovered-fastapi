@@ -5,11 +5,20 @@ const API = "https://countrpnt.com";
 
 // Orchestral instruments list (shared between signup and admin section modal)
 const ORCHESTRA_INSTRUMENTS = [
-    { group: "Strings",    items: ["Violin", "Viola", "Cello", "Bass"] },
-    { group: "Woodwinds",  items: ["Flute/Piccolo", "Oboe", "Clarinet", "Bassoon"] },
-    { group: "Brass",      items: ["Trumpet", "French Horn", "Trombone", "Tuba"] },
-    { group: "Percussion", items: [] },
+    { group: "Strings",    items: ["Violin I", "Violin II", "Viola", "Cello", "Double Bass"] },
+    { group: "Woodwinds",  items: ["Flute", "Oboe", "Clarinet", "Bassoon"] },
+    { group: "Brass",      items: ["French Horn", "Trumpet", "Trombone", "Tuba"] },
+    { group: "Percussion", items: ["Timpani", "Percussion"] },
+    { group: "Other",      items: ["Harp", "Piano"] },
 ];
+
+// Standard chair counts per section for auto-population
+const ORCHESTRA_DEFAULT_COUNTS = {
+    "violin i": 16, "violin ii": 14, "viola": 12, "cello": 10, "double bass": 8,
+    "flute": 3, "oboe": 3, "clarinet": 3, "bassoon": 3,
+    "french horn": 4, "trumpet": 3, "trombone": 3, "tuba": 1,
+    "timpani": 1, "percussion": 2, "harp": 2, "piano": 1,
+};
 
 function populateInstrumentSelect(selectId, otherRowId) {
     const select = document.getElementById(selectId);

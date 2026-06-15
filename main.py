@@ -2120,10 +2120,10 @@ def admin_invitations(request: Request):
                        u.fullname AS invited_by_name
                 FROM invitations i
                 LEFT JOIN users u ON u.id = i.invited_by
-                WHERE i.org_id = %s
+                WHERE i.org_id = %s AND i.email != %s
                 ORDER BY i.created_at DESC
                 LIMIT 100
-            """, (user["org_id"],))
+            """, (user["org_id"], user["email"]))
         rows = cur.fetchall()
 
     now = datetime.now(EST)
@@ -6034,10 +6034,11 @@ def init_default_sections(payload: dict, request: Request):
             instrument = (s.get("instrument") or "").strip().lower()
             if not name or not instrument:
                 continue
+            chair_count = max(1, int(s.get("chair_count") or 5))
             cur.execute("""
                 INSERT INTO orchestra_sections (org_id, name, instrument, sort_order, chair_count)
-                VALUES (%s, %s, %s, %s, 5)
-            """, (org_id, name, instrument, i))
+                VALUES (%s, %s, %s, %s, %s)
+            """, (org_id, name, instrument, i, chair_count))
 
     return {"status": "success"}
 
