@@ -647,9 +647,10 @@
 
         <label>Role</label>
         <div id="invite-role-pills" class="chip-group hidden">
-            <button type="button" class="chip active" data-role="head_admin">Opera Admin</button>
-            <button type="button" class="chip" data-role="admin">Choir Admin</button>
-            <button type="button" class="chip" data-role="studio_teacher">Studio Teacher</button>
+            <button type="button" class="chip active" data-role="head_admin" data-org-type="opera">Opera Admin</button>
+            <button type="button" class="chip" data-role="head_admin" data-org-type="orchestra">Orchestra Admin</button>
+            <button type="button" class="chip" data-role="admin" data-org-type="choir">Choir Admin</button>
+            <button type="button" class="chip" data-role="studio_teacher" data-org-type="studio">Studio Teacher</button>
         </div>
         <select id="invite-role" class="hidden">
             <option value="head_admin">Opera Admin</option>

@@ -2254,24 +2254,27 @@ async function cancelInvite(email) {
     }
 }
 
-function setInviteRolePill(role) {
-    document.querySelectorAll("#invite-role-pills .chip").forEach(c => {
-        c.classList.toggle("active", c.dataset.role === role);
-    });
+function setInviteRolePill(pill) {
+    document.querySelectorAll("#invite-role-pills .chip").forEach(c => c.classList.remove("active"));
+    pill.classList.add("active");
+    const role = pill.dataset.role;
+    const orgType = pill.dataset.orgType || "opera";
     const select = document.getElementById("invite-role");
     if (select) select.value = role;
+    const orgTypeEl = document.getElementById("invite-org-type");
+    if (orgTypeEl) orgTypeEl.value = orgType;
     onInviteRoleChange();
 }
 
 function initInviteRolePills() {
     if (USER_ROLE !== "system_admin") return;
     document.getElementById("invite-role-pills")?.classList.remove("hidden");
-    // Pills replace the dropdown for system_admin
     document.querySelectorAll("#invite-role-pills .chip").forEach(pill => {
-        pill.addEventListener("click", () => setInviteRolePill(pill.dataset.role));
+        pill.addEventListener("click", () => setInviteRolePill(pill));
     });
-    // Set initial state
-    setInviteRolePill("head_admin");
+    // Set initial state to first pill
+    const firstPill = document.querySelector("#invite-role-pills .chip");
+    if (firstPill) setInviteRolePill(firstPill);
 }
 
 function onInviteRoleChange() {
@@ -2288,7 +2291,7 @@ function onInviteRoleChange() {
         const lessonsHint = document.getElementById("invite-lessons-toggle-hint");
 
         orgSection?.classList.remove("hidden");
-        if (orgTypeRow) orgTypeRow.classList.add("hidden");
+        if (orgTypeRow) orgTypeRow.classList.add("hidden"); // always hidden — org type comes from the pill
         document.getElementById("invite-teacher-type-section")?.classList.add("hidden");
 
         // Lesson booking toggle only for Choir Admin
@@ -2301,20 +2304,14 @@ function onInviteRoleChange() {
             document.getElementById("invite-lesson-config")?.classList.add("hidden");
         }
 
-        if (role === "head_admin") {
-            if (orgTypeRow) orgTypeRow.classList.remove("hidden");
-            if (orgTypeEl) orgTypeEl.value = "opera";
-            if (orgHint) orgHint.textContent = "Enter a name and ID for their organization. If the ID already exists the invite will join that org; otherwise a new org is created automatically.";
-        } else if (role === "admin") {
-            if (orgTypeEl) orgTypeEl.value = "choir";
-            if (orgHint) orgHint.textContent = "Enter a name and ID for the choir they'll administer. A new org is created if the ID doesn't exist yet.";
-        } else if (role === "studio_teacher") {
-            if (orgTypeEl) orgTypeEl.value = "studio";
-            if (orgHint) orgHint.textContent = "Enter a name and ID for their private studio. A new studio org is created if the ID doesn't exist yet.";
-        } else if (role === "orchestra_admin") {
-            if (orgTypeEl) orgTypeEl.value = "orchestra";
-            if (orgHint) orgHint.textContent = "Enter a name and ID for the orchestra they'll administer. A new org is created if the ID doesn't exist yet.";
-        }
+        const orgType = orgTypeEl?.value || "opera";
+        const orgHints = {
+            opera:      "Enter a name and ID for their opera organization. If the ID already exists the invite will join that org; otherwise a new one is created automatically.",
+            orchestra:  "Enter a name and ID for their orchestra. If the ID already exists the invite will join that org; otherwise a new one is created automatically.",
+            choir:      "Enter a name and ID for the choir they'll administer. A new org is created if the ID doesn't exist yet.",
+            studio:     "Enter a name and ID for their private studio. A new studio org is created if the ID doesn't exist yet.",
+        };
+        if (orgHint) orgHint.textContent = orgHints[orgType] || orgHints.opera;
         return;
     }
 
