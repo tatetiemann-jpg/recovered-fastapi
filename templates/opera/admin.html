@@ -23,8 +23,9 @@
         <button class="tab-btn" data-tab="rehearsals">Rehearsals</button>
         <button class="tab-btn" data-tab="casting">Productions</button>
         <button class="tab-btn tab-btn--hidden" data-tab="orchestra">Orchestra</button>
-        <button class="tab-btn" data-tab="messages">Messages <span id="msg-badge" class="msg-badge hidden">0</span><span id="dm-badge" class="msg-badge hidden">0</span></button>
         <button class="tab-btn" data-tab="invitations">Invitations</button>
+        <button class="tab-btn tab-btn--hidden" data-tab="orgs">Organizations</button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="msg-badge" class="msg-badge hidden">0</span><span id="dm-badge" class="msg-badge hidden">0</span></button>
     </nav>
 
     <!-- REHEARSALS (scheduled list + new rehearsal button) -->
@@ -87,6 +88,20 @@
             </div>
         </div>
 
+
+    </section>
+
+    <!-- ORGANIZATIONS (system_admin only) -->
+    <section class="tab-panel" data-tab-panel="orgs">
+
+        <div class="box">
+            <div class="section-header">
+                <h2>Organizations</h2>
+            </div>
+            <div id="orgs-list">
+                <em class="empty-note">Loading…</em>
+            </div>
+        </div>
 
     </section>
 

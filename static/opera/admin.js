@@ -17,7 +17,7 @@
 
 const output = document.getElementById("output");
 const ADMIN_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const VALID_TABS = ["rehearsals", "casting", "invitations", "orchestra", "messages"];
+const VALID_TABS = ["rehearsals", "casting", "invitations", "orgs", "orchestra", "messages"];
 
 // Voice compatibility (which voice types can sing which roles)
 const VOICE_COMPATIBILITY = {
@@ -78,6 +78,7 @@ function setActiveTab(tabName) {
 
     // Lazy-load data only when the relevant tab becomes active
     if (tabName === "invitations") { loadInvitations(); loadOrgTransferRequests(); loadTeachersList(); }
+    if (tabName === "orgs") loadOrgs();
     if (tabName === "orchestra") loadOrchestra();
     if (tabName === "messages") loadMessagesTab();
 }
@@ -1996,6 +1997,37 @@ async function saveTeacherEdit() {
     } else {
         msgEl.className = "msg";
         msgEl.textContent = data.message || "Failed to save.";
+    }
+}
+
+// -----------------------------------------------------------
+// ORGANIZATIONS (system_admin only)
+// -----------------------------------------------------------
+
+const ORG_TYPE_LABELS = { opera: "Opera", choir: "Choir", studio: "Studio", orchestra: "Orchestra" };
+
+async function loadOrgs() {
+    const box = document.getElementById("orgs-list");
+    if (!box) return;
+    box.innerHTML = "<em class='empty-note'>Loading…</em>";
+    try {
+        const res = await fetch(`${API}/admin/orgs`, { credentials: "include" });
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+            box.innerHTML = "<em class='empty-note'>No organizations found.</em>";
+            return;
+        }
+        box.innerHTML = data.map(o => `
+            <div class="list-row" style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-2);flex-wrap:wrap;">
+                <div>
+                    <strong>${o.name}</strong>
+                    <span class="hint" style="margin-left:var(--space-1);">${ORG_TYPE_LABELS[o.org_type] || o.org_type}</span>
+                </div>
+                <div class="hint" style="white-space:nowrap;">${o.member_count} member${o.member_count !== 1 ? "s" : ""} &middot; /${o.slug}</div>
+            </div>
+        `).join("");
+    } catch {
+        box.innerHTML = "<em class='empty-note'>Failed to load organizations.</em>";
     }
 }
 
@@ -3923,11 +3955,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const isOrchestraOrg = ORG_TYPE === "orchestra";
 
-    // system_admin only needs Invitations — hide everything else
+    // system_admin sees Invitations, Orgs, Messages — hide everything else
     if (USER_ROLE === "system_admin") {
         ["rehearsals", "casting", "orchestra"].forEach(tab => {
             document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("tab-btn--hidden");
         });
+        document.querySelector('.tab-btn[data-tab="orgs"]')?.classList.remove("tab-btn--hidden");
         setActiveTab("invitations");
     }
 

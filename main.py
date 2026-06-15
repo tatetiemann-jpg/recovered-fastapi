@@ -2076,6 +2076,25 @@ def admin_invite(payload: dict, request: Request):
     return {"status": "success", "email_sent": sent}
 
 
+@app.get("/admin/orgs")
+def admin_orgs(request: Request):
+    """List all organizations — system_admin only."""
+    user = require_user(request, role="admin")
+    if user["role"] != "system_admin":
+        return {"status": "fail", "message": "Forbidden"}
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT o.id, o.name, o.slug, COALESCE(o.org_type, 'opera') AS org_type,
+                   COUNT(u.id) AS member_count
+            FROM organizations o
+            LEFT JOIN users u ON u.org_id = o.id
+            GROUP BY o.id, o.name, o.slug, o.org_type
+            ORDER BY o.name
+        """)
+        rows = cur.fetchall()
+    return [{"id": r[0], "name": r[1], "slug": r[2], "org_type": r[3], "member_count": r[4]} for r in rows]
+
+
 @app.get("/admin/invitations")
 def admin_invitations(request: Request):
     """List pending and recent invitations for the admin's org."""
