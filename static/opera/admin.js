@@ -1255,7 +1255,7 @@ async function createRehearsal() {
         body: JSON.stringify({
             opera_id: Number(rehearsalOpera.value),
             attendance_type: attendanceType,
-            rehearsal_type: USER_ROLE === "orchestra_admin"
+            rehearsal_type: (USER_ROLE === "orchestra_admin" || ORG_TYPE === "orchestra")
                 ? "orchestra"
                 : (["head_admin", "system_admin"].includes(USER_ROLE)
                     ? (document.getElementById("rehearsal-kind")?.value || "vocal")
@@ -1339,7 +1339,7 @@ async function createBulkAdminRehearsal() {
     const leaderChecks = document.querySelectorAll(".rehearsal-leader-check:checked");
     const leader_ids = Array.from(leaderChecks).map(cb => Number(cb.value));
 
-    const rehearsal_type = USER_ROLE === "orchestra_admin"
+    const rehearsal_type = (USER_ROLE === "orchestra_admin" || ORG_TYPE === "orchestra")
         ? "orchestra"
         : (["head_admin", "system_admin"].includes(USER_ROLE)
             ? (document.getElementById("rehearsal-kind")?.value || "vocal")
@@ -2302,6 +2302,7 @@ function onInviteRoleChange() {
         }
 
         if (role === "head_admin") {
+            if (orgTypeRow) orgTypeRow.classList.remove("hidden");
             if (orgTypeEl) orgTypeEl.value = "opera";
             if (orgHint) orgHint.textContent = "Enter a name and ID for their organization. If the ID already exists the invite will join that org; otherwise a new org is created automatically.";
         } else if (role === "admin") {
@@ -2310,35 +2311,58 @@ function onInviteRoleChange() {
         } else if (role === "studio_teacher") {
             if (orgTypeEl) orgTypeEl.value = "studio";
             if (orgHint) orgHint.textContent = "Enter a name and ID for their private studio. A new studio org is created if the ID doesn't exist yet.";
+        } else if (role === "orchestra_admin") {
+            if (orgTypeEl) orgTypeEl.value = "orchestra";
+            if (orgHint) orgHint.textContent = "Enter a name and ID for the orchestra they'll administer. A new org is created if the ID doesn't exist yet.";
         }
         return;
     }
 
-    // head_admin and below: hide head_admin and student options, restore admin label
-    ["head_admin", "student"].forEach(val => {
-        const opt = select.querySelector(`option[value="${val}"]`);
-        if (opt) opt.style.display = "none";
-    });
-    const adminOptReset = select.querySelector('option[value="admin"]');
-    if (adminOptReset) adminOptReset.textContent = "Admin";
+    const isOrchestraOrg = ORG_TYPE === "orchestra";
 
-    // Show admin and orchestra_admin for head_admin only
-    const canInviteAdmin = USER_ROLE === "head_admin";
-    const adminOpt = select.querySelector('option[value="admin"]');
-    if (adminOpt) adminOpt.style.display = canInviteAdmin ? "" : "none";
-    const orchAdminOpt = select.querySelector('option[value="orchestra_admin"]');
-    if (orchAdminOpt) orchAdminOpt.style.display = canInviteAdmin ? "" : "none";
+    if (isOrchestraOrg) {
+        // Orchestra org: only show orchestra_admin and orchestra_member
+        ["head_admin", "admin", "teacher", "studio_teacher", "student"].forEach(val => {
+            const opt = select.querySelector(`option[value="${val}"]`);
+            if (opt) opt.style.display = "none";
+        });
+        const orchAdminOpt = select.querySelector('option[value="orchestra_admin"]');
+        if (orchAdminOpt) orchAdminOpt.style.display = USER_ROLE === "head_admin" ? "" : "none";
+        const orchMemberOpt = select.querySelector('option[value="orchestra_member"]');
+        if (orchMemberOpt) orchMemberOpt.style.display = "";
+        // Default to orchestra_member if nothing valid selected
+        const validOrchRoles = new Set(["orchestra_admin", "orchestra_member"]);
+        if (!validOrchRoles.has(select.value)) select.value = "orchestra_member";
+    } else {
+        // head_admin and below: hide head_admin and student options, restore admin label
+        ["head_admin", "student"].forEach(val => {
+            const opt = select.querySelector(`option[value="${val}"]`);
+            if (opt) opt.style.display = "none";
+        });
+        const adminOptReset = select.querySelector('option[value="admin"]');
+        if (adminOptReset) adminOptReset.textContent = "Admin";
+
+        // Show admin and orchestra_admin for head_admin only
+        const canInviteAdmin = USER_ROLE === "head_admin";
+        const adminOpt = select.querySelector('option[value="admin"]');
+        if (adminOpt) adminOpt.style.display = canInviteAdmin ? "" : "none";
+        const orchAdminOpt = select.querySelector('option[value="orchestra_admin"]');
+        if (orchAdminOpt) orchAdminOpt.style.display = canInviteAdmin ? "" : "none";
+        // Hide orchestra_member in non-orchestra orgs
+        const orchMemberOpt = select.querySelector('option[value="orchestra_member"]');
+        if (orchMemberOpt) orchMemberOpt.style.display = "none";
+    }
 
     const role = select.value;
 
     // Org section: system_admin only (handled above)
     document.getElementById("invite-org-section")?.classList.add("hidden");
 
-    // Hide studio_teacher option for non-system-admin (head_admin can still see it)
+    // Hide studio_teacher option for non-system-admin and non-head_admin
     const studioOpt = select.querySelector('option[value="studio_teacher"]');
-    if (studioOpt) studioOpt.style.display = USER_ROLE === "head_admin" ? "" : "none";
+    if (studioOpt) studioOpt.style.display = (USER_ROLE === "head_admin" && !isOrchestraOrg) ? "" : "none";
 
-    // Teacher type section: only shown when inviting an opera teacher
+    // Teacher type section: only shown when inviting a teacher in non-orchestra org
     const teacherTypeSection = document.getElementById("invite-teacher-type-section");
     if (teacherTypeSection) {
         teacherTypeSection.classList.toggle("hidden", role !== "teacher");
@@ -3900,6 +3924,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshMsgBadge();
     refreshDmBadge();
 
+    const isOrchestraOrg = ORG_TYPE === "orchestra";
+
     // system_admin only needs Invitations — hide everything else
     if (USER_ROLE === "system_admin") {
         ["rehearsals", "casting", "orchestra"].forEach(tab => {
@@ -3908,13 +3934,25 @@ document.addEventListener("DOMContentLoaded", async () => {
         setActiveTab("invitations");
     }
 
-    // orchestra_admin sees Rehearsals and Orchestra only
+    // Standalone orchestra org: hide Productions, force orchestra rehearsal type
+    if (isOrchestraOrg) {
+        document.querySelector('.tab-btn[data-tab="casting"]')?.classList.add("tab-btn--hidden");
+        // Always orchestra rehearsal type — hide the kind toggle and vocal fields
+        document.getElementById("rehearsal-kind-row")?.classList.add("hidden");
+        document.getElementById("rehearsal-vocal-fields")?.classList.add("hidden");
+    }
+
+    // orchestra_admin sees Rehearsals and Orchestra only (no Invitations)
     if (USER_ROLE === "orchestra_admin") {
         ["casting", "invitations"].forEach(tab => {
             document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("tab-btn--hidden");
         });
-        // Hide vocal-only fields from the rehearsal form
         document.getElementById("rehearsal-vocal-fields")?.classList.add("hidden");
+        setActiveTab(isOrchestraOrg ? "orchestra" : "rehearsals");
+    }
+
+    // head_admin in orchestra org lands on Orchestra tab
+    if (USER_ROLE === "head_admin" && isOrchestraOrg) {
         setActiveTab("orchestra");
     }
 
@@ -3923,8 +3961,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelector('.tab-btn[data-tab="invitations"]')
         ?.classList.toggle("tab-btn--hidden", !canSeeInvitations);
 
-    // Orchestra tab: head_admin and orchestra_admin only
-    const canSeeOrchestra = ["head_admin", "orchestra_admin"].includes(USER_ROLE);
+    // Orchestra tab: always visible in orchestra org; otherwise head_admin and orchestra_admin only
+    const canSeeOrchestra = isOrchestraOrg || ["head_admin", "orchestra_admin"].includes(USER_ROLE);
     document.querySelector('.tab-btn[data-tab="orchestra"]')
         ?.classList.toggle("tab-btn--hidden", !canSeeOrchestra);
 

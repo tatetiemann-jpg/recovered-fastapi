@@ -1289,6 +1289,12 @@ def admin_page(request: Request):
     return templates.TemplateResponse(request, "opera/admin.html")
 
 
+@app.get("/orchestra-admin", response_class=HTMLResponse)
+def orchestra_admin_page(request: Request):
+    """Alias for standalone orchestra orgs — serves the same admin dashboard."""
+    return templates.TemplateResponse(request, "opera/admin.html")
+
+
 @app.get("/teacher", response_class=HTMLResponse)
 def teacher_page(request: Request):
     return templates.TemplateResponse(request, "opera/teacher.html")
@@ -1927,12 +1933,25 @@ def admin_invite(payload: dict, request: Request):
     #   admin          → can invite teacher only
     #   orchestra_admin → can invite teacher only
     org_type = admin_user.get("org_type", "opera")
-    allowed_by_role = {
-        "system_admin":    {"head_admin", "admin", "student", "teacher", "studio_teacher"},
-        "head_admin":      {"admin", "orchestra_admin", "teacher", "studio_teacher"},
-        "admin":           {"teacher", "student", "choir_member", "ensemble_member"} if org_type == "choir" else {"teacher"},
-        "orchestra_admin": {"teacher"},
-    }
+    if org_type == "orchestra":
+        allowed_by_role = {
+            "system_admin":    {"head_admin", "orchestra_admin", "orchestra_member"},
+            "head_admin":      {"orchestra_admin", "orchestra_member"},
+            "orchestra_admin": {"orchestra_member"},
+        }
+    elif org_type == "choir":
+        allowed_by_role = {
+            "system_admin": {"head_admin", "admin", "student", "teacher", "studio_teacher"},
+            "head_admin":   {"admin", "orchestra_admin", "teacher", "studio_teacher"},
+            "admin":        {"teacher", "choir_member", "ensemble_member"},
+        }
+    else:
+        allowed_by_role = {
+            "system_admin":    {"head_admin", "admin", "student", "teacher", "studio_teacher"},
+            "head_admin":      {"admin", "orchestra_admin", "teacher", "studio_teacher"},
+            "admin":           {"teacher"},
+            "orchestra_admin": {"teacher"},
+        }
     allowed = allowed_by_role.get(admin_user["role"], set())
     if role not in allowed:
         return {"status": "fail", "message": f"Your role cannot invite '{role}'."}
@@ -1956,7 +1975,7 @@ def admin_invite(payload: dict, request: Request):
     org_logo_url = (payload.get("org_logo_url") or "").strip() or None
 
     new_org_type = (payload.get("org_type") or "opera").strip()
-    if new_org_type not in ("opera", "choir", "studio"):
+    if new_org_type not in ("opera", "choir", "studio", "orchestra"):
         new_org_type = "opera"
 
     # Lesson configuration fields (only used when creating/updating an org)
