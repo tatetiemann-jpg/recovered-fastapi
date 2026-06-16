@@ -10159,10 +10159,12 @@ def studio_teacher_students(request: Request):
     pool_by_student = {}
     pool_by_family = {}
     for pool_sid, pool_fid, pool_dur, pool_paid in pool_rows:
-        if pool_sid:
-            pool_by_student.setdefault(pool_sid, {})[pool_dur] = int(pool_paid)
-        elif pool_fid:
-            pool_by_family.setdefault(pool_fid, {})[pool_dur] = int(pool_paid)
+        if pool_fid:
+            fam_durs = pool_by_family.setdefault(pool_fid, {})
+            fam_durs[pool_dur] = fam_durs.get(pool_dur, 0) + int(pool_paid)
+        elif pool_sid:
+            stu_durs = pool_by_student.setdefault(pool_sid, {})
+            stu_durs[pool_dur] = stu_durs.get(pool_dur, 0) + int(pool_paid)
 
     scheduled_by_student = {}
     for ss_id, dur, cnt in scheduled_rows:

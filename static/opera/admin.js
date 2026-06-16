@@ -2302,7 +2302,12 @@ function setInviteRolePill(pill) {
 }
 
 function initInviteRolePills() {
-    if (USER_ROLE !== "system_admin") return;
+    if (USER_ROLE !== "system_admin") {
+        // Non-system-admin users pick from the plain dropdown, not pills
+        document.getElementById("invite-role")?.classList.remove("hidden");
+        onInviteRoleChange();
+        return;
+    }
     document.getElementById("invite-role-pills")?.classList.remove("hidden");
     document.querySelectorAll("#invite-role-pills .chip").forEach(pill => {
         pill.addEventListener("click", () => setInviteRolePill(pill));
