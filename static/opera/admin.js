@@ -2128,7 +2128,11 @@ function renderInviteRow(i) {
 async function sendInvite() {
     const email = document.getElementById("invite-email").value.trim().toLowerCase();
     const fullnameHint = document.getElementById("invite-fullname-hint").value.trim();
-    const role = document.getElementById("invite-role").value;
+    const selectedRole = document.getElementById("invite-role").value;
+    // Conductor/Assistant Conductor are top-level picks but are orchestra_admin
+    // accounts under the hood, with admin_role set to the specific sub-role.
+    const isConductorPick = selectedRole === "conductor" || selectedRole === "assistant_conductor";
+    const role = isConductorPick ? "orchestra_admin" : selectedRole;
 
 
     const msg = document.getElementById("invite-msg");
@@ -2155,8 +2159,8 @@ async function sendInvite() {
     const teacherType = document.querySelector('input[name="invite-teacher-type"]:checked')?.value || "vocal";
     const teacherInstruments = document.getElementById("invite-instruments")?.value.trim() || "";
 
-    // Admin sub-role (only relevant when role === "admin" or "orchestra_admin")
-    const adminRole = document.getElementById("invite-admin-role")?.value || "";
+    // Admin sub-role (relevant when role === "admin", or a conductor pick was made)
+    const adminRole = isConductorPick ? selectedRole : (document.getElementById("invite-admin-role")?.value || "");
 
     // Org fields (relevant when system_admin invites head_admin / admin / student)
     const orgName = document.getElementById("invite-org-name")?.value.trim() || "";
@@ -2356,19 +2360,22 @@ function onInviteRoleChange() {
     }
 
     const isOrchestraOrg = ORG_TYPE === "orchestra";
+    const canInviteOrchAdmin = USER_ROLE === "head_admin";
 
     if (isOrchestraOrg) {
-        // Orchestra org: only show orchestra_admin and orchestra_member
+        // Orchestra org: only show conductor / assistant conductor / instrumentalist
         ["head_admin", "admin", "teacher", "studio_teacher", "student"].forEach(val => {
             const opt = select.querySelector(`option[value="${val}"]`);
             if (opt) opt.style.display = "none";
         });
-        const orchAdminOpt = select.querySelector('option[value="orchestra_admin"]');
-        if (orchAdminOpt) orchAdminOpt.style.display = USER_ROLE === "head_admin" ? "" : "none";
+        ["conductor", "assistant_conductor"].forEach(val => {
+            const opt = select.querySelector(`option[value="${val}"]`);
+            if (opt) opt.style.display = canInviteOrchAdmin ? "" : "none";
+        });
         const orchMemberOpt = select.querySelector('option[value="orchestra_member"]');
         if (orchMemberOpt) orchMemberOpt.style.display = "";
         // Default to orchestra_member if nothing valid selected
-        const validOrchRoles = new Set(["orchestra_admin", "orchestra_member"]);
+        const validOrchRoles = new Set(["conductor", "assistant_conductor", "orchestra_member"]);
         if (!validOrchRoles.has(select.value)) select.value = "orchestra_member";
     } else {
         // head_admin and below: hide head_admin and student options, restore admin label
@@ -2379,12 +2386,13 @@ function onInviteRoleChange() {
         const adminOptReset = select.querySelector('option[value="admin"]');
         if (adminOptReset) adminOptReset.textContent = "Admin";
 
-        // Show admin and orchestra_admin for head_admin only
-        const canInviteAdmin = USER_ROLE === "head_admin";
+        // Show admin and conductor/assistant conductor for head_admin only
         const adminOpt = select.querySelector('option[value="admin"]');
-        if (adminOpt) adminOpt.style.display = canInviteAdmin ? "" : "none";
-        const orchAdminOpt = select.querySelector('option[value="orchestra_admin"]');
-        if (orchAdminOpt) orchAdminOpt.style.display = canInviteAdmin ? "" : "none";
+        if (adminOpt) adminOpt.style.display = canInviteOrchAdmin ? "" : "none";
+        ["conductor", "assistant_conductor"].forEach(val => {
+            const opt = select.querySelector(`option[value="${val}"]`);
+            if (opt) opt.style.display = canInviteOrchAdmin ? "" : "none";
+        });
         // Hide orchestra_member in non-orchestra orgs
         const orchMemberOpt = select.querySelector('option[value="orchestra_member"]');
         if (orchMemberOpt) orchMemberOpt.style.display = "none";
@@ -2405,23 +2413,14 @@ function onInviteRoleChange() {
         teacherTypeSection.classList.toggle("hidden", role !== "teacher");
     }
 
-    // Admin sub-role section: shown when inviting opera admin or orchestra admin
+    // Admin sub-role section: only relevant for the generic opera/choir "admin" role
+    // (conductor/assistant conductor are now their own top-level role options)
     const adminRoleSection = document.getElementById("invite-admin-role-section");
     const adminRoleSelect = document.getElementById("invite-admin-role");
     if (adminRoleSection && adminRoleSelect) {
-        const isAdminInvite = role === "admin" || role === "orchestra_admin";
+        const isAdminInvite = role === "admin";
         adminRoleSection.classList.toggle("hidden", !isAdminInvite);
-
-        if (isAdminInvite) {
-            // Show only relevant optgroups based on role
-            const operaGroup = adminRoleSelect.querySelector("optgroup:first-of-type");
-            const orchGroup = adminRoleSelect.querySelector("optgroup:last-of-type");
-            if (operaGroup) operaGroup.style.display = role === "admin" ? "" : "none";
-            if (orchGroup) orchGroup.style.display = role === "orchestra_admin" ? "" : "none";
-            // Set a valid default for the selected role type
-            if (role === "admin") adminRoleSelect.value = "director";
-            else adminRoleSelect.value = "conductor";
-        }
+        if (isAdminInvite) adminRoleSelect.value = "director";
     }
 }
 
@@ -2515,8 +2514,9 @@ let orchestraExpandedContainer = null;
 function renderOrchestraProductionList() {
     const list = document.getElementById("orchestra-productions-list");
     if (!list) return;
+    const isOrchestraOrg = typeof ORG_TYPE !== "undefined" && ORG_TYPE === "orchestra";
     if (!orchestraOperas.length) {
-        list.innerHTML = `<em class="empty-note">No productions yet.</em>`;
+        list.innerHTML = `<em class="empty-note">${isOrchestraOrg ? "No concerts yet." : "No productions yet."}</em>`;
         return;
     }
     list.innerHTML = "";
@@ -3265,6 +3265,39 @@ async function createProduction() {
     }
 }
 
+async function createConcert() {
+    const title = (document.getElementById("concert-title")?.value || "").trim();
+    const startDate = document.getElementById("concert-start-date")?.value || null;
+    const endDate = document.getElementById("concert-end-date")?.value || null;
+    const msg = document.getElementById("concert-msg");
+    msg.textContent = "";
+
+    if (!title) { msg.textContent = "Title is required."; return; }
+
+    try {
+        const res = await fetch(`${API}/admin/productions`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, start_date: startDate, end_date: endDate, num_casts: 1, roles: [] }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            document.getElementById("concert-title").value = "";
+            document.getElementById("concert-start-date").value = "";
+            document.getElementById("concert-end-date").value = "";
+            document.getElementById("concert-create-modal")?.classList.add("hidden");
+            await loadOrchestraOperas();
+            renderOrchestraProductionList();
+        } else {
+            msg.textContent = data.message || "Failed to create concert.";
+        }
+    } catch (e) {
+        console.error(e);
+        msg.textContent = "Server error.";
+    }
+}
+
 async function openEditProductionModal(prodId) {
     const p = productionsList.find(x => x.id === prodId);
     if (!p) return;
@@ -3899,6 +3932,19 @@ document.addEventListener("DOMContentLoaded", async () => {
             e.target.classList.add("hidden");
     });
 
+    // --- New Concert modal (standalone orchestra orgs) ---
+    document.getElementById("new-concert-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("concert-create-modal")?.classList.remove("hidden"));
+    document.getElementById("close-concert-create-btn")
+        ?.addEventListener("click", () =>
+            document.getElementById("concert-create-modal")?.classList.add("hidden"));
+    document.getElementById("concert-create-modal")?.addEventListener("click", e => {
+        if (e.target.id === "concert-create-modal")
+            e.target.classList.add("hidden");
+    });
+    document.getElementById("create-concert-btn")?.addEventListener("click", createConcert);
+
     // --- Invitations ---
     document.getElementById("open-invite-modal-btn")?.addEventListener("click", () => {
         document.getElementById("invite-modal")?.classList.remove("hidden");
@@ -3983,6 +4029,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Relabel "Opera" → "Program" in the new rehearsal modal
         const rehearsalOperaLabel = document.querySelector('label[for="rehearsal-opera"]');
         if (rehearsalOperaLabel) rehearsalOperaLabel.textContent = "Program";
+        // Within the Orchestra tab, "Productions" become "Concerts" with their own create button
+        const orchProdHeading = document.getElementById("orchestra-prod-list-heading");
+        if (orchProdHeading) orchProdHeading.textContent = "Concerts";
+        document.getElementById("new-concert-btn")?.classList.remove("hidden");
     }
 
     // orchestra_admin sees Rehearsals and Orchestra only (no Invitations)

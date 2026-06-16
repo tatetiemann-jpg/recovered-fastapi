@@ -115,6 +115,10 @@
                     <button type="button" id="add-section-btn" class="subtle-btn">+ Add Section</button>
                 </div>
             </div>
+            <div class="section-header" style="margin-top:var(--space-3);">
+                <h3 id="orchestra-prod-list-heading" style="margin:0;">Productions</h3>
+                <button type="button" id="new-concert-btn" class="subtle-btn hidden">+ New Concert</button>
+            </div>
             <div id="orchestra-productions-list">
                 <em class="empty-note">Loading…</em>
             </div>
@@ -386,6 +390,33 @@
             <button id="close-prod-create-btn" type="button">Close</button>
         </div>
         <p id="prod-msg"></p>
+    </div>
+</div>
+
+<!-- NEW CONCERT MODAL (standalone orchestra orgs) -->
+<div id="concert-create-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>New Concert</h3>
+
+        <label for="concert-title">Title</label>
+        <input type="text" id="concert-title" placeholder="e.g. Winter Gala">
+
+        <div class="time-pair">
+            <div>
+                <label for="concert-start-date">Start date</label>
+                <input type="date" id="concert-start-date">
+            </div>
+            <div>
+                <label for="concert-end-date">End date</label>
+                <input type="date" id="concert-end-date">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button id="create-concert-btn">Create Concert</button>
+            <button id="close-concert-create-btn" type="button">Close</button>
+        </div>
+        <p id="concert-msg"></p>
     </div>
 </div>
 
@@ -672,7 +703,8 @@
             <option value="admin">Choir Admin</option>
             <option value="studio_teacher">Studio Teacher</option>
             <option value="teacher">Teacher</option>
-            <option value="orchestra_admin">Orchestra Admin</option>
+            <option value="conductor">Conductor</option>
+            <option value="assistant_conductor">Assistant Conductor</option>
             <option value="orchestra_member">Instrumentalist</option>
             <option value="student">Vocalist</option>
         </select>
@@ -749,17 +781,10 @@
         <div id="invite-admin-role-section" class="hidden">
             <label for="invite-admin-role">Production Role</label>
             <select id="invite-admin-role">
-                <optgroup label="Opera Admin Roles">
-                    <option value="director">Director</option>
-                    <option value="assistant_director">Assistant Director</option>
-                    <option value="stage_manager">Stage Manager</option>
-                    <option value="assistant_stage_manager">Assistant Stage Manager</option>
-                </optgroup>
-                <optgroup label="Orchestra Admin Roles">
-                    <option value="conductor">Conductor</option>
-                    <option value="assistant_conductor">Assistant Conductor</option>
-                    <option value="orchestra_manager">Orchestra Manager</option>
-                </optgroup>
+                <option value="director">Director</option>
+                <option value="assistant_director">Assistant Director</option>
+                <option value="stage_manager">Stage Manager</option>
+                <option value="assistant_stage_manager">Assistant Stage Manager</option>
             </select>
         </div>
 
