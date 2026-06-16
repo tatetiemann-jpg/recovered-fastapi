@@ -308,6 +308,18 @@ async def lifespan(app: FastAPI):
                     """, (t_id, s_id, lesson_date, l_time,
                           ext_name, ext_email, rid, dur,
                           t_id, lesson_date, l_time))
+
+            # No-account contacts for casting / seating / staff assignments —
+            # mirrors the lessons.external_name/external_email pattern so
+            # rehearsal notifications can still reach someone without a login.
+            cur.execute("ALTER TABLE student_roles ALTER COLUMN student_id DROP NOT NULL;")
+            cur.execute("ALTER TABLE student_roles ADD COLUMN IF NOT EXISTS external_name TEXT;")
+            cur.execute("ALTER TABLE student_roles ADD COLUMN IF NOT EXISTS external_email TEXT;")
+            cur.execute("ALTER TABLE orchestra_seats ADD COLUMN IF NOT EXISTS external_name TEXT;")
+            cur.execute("ALTER TABLE orchestra_seats ADD COLUMN IF NOT EXISTS external_email TEXT;")
+            cur.execute("ALTER TABLE opera_staff ALTER COLUMN teacher_id DROP NOT NULL;")
+            cur.execute("ALTER TABLE opera_staff ADD COLUMN IF NOT EXISTS external_name TEXT;")
+            cur.execute("ALTER TABLE opera_staff ADD COLUMN IF NOT EXISTS external_email TEXT;")
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -3476,9 +3488,9 @@ def admin_opera_casting(opera_id: int, request: Request):
         # Current principal assignments for this opera
         cur.execute("""
             SELECT sr.student_id, sr.cast_id, sr.role_name,
-                   u.fullname, u.voice_type
+                   u.fullname, u.voice_type, sr.external_name, sr.external_email
             FROM student_roles sr
-            JOIN users u ON u.id = sr.student_id
+            LEFT JOIN users u ON u.id = sr.student_id
             WHERE sr.opera_id = %s
               AND LOWER(sr.role_name) <> 'chorus'
         """, (opera_id,))
@@ -3518,17 +3530,18 @@ def admin_opera_casting(opera_id: int, request: Request):
 
     # Build assignments lookup: {(cast_id, role_name): student_info}
     assignments = {}
-    for s_id, c_id, r_name, name, voice in assignment_rows:
+    for s_id, c_id, r_name, name, voice, ext_name, ext_email in assignment_rows:
         if c_id is None:
             continue  # skip any bad data
         assignments[(c_id, r_name)] = {
             "student_id": s_id,
-            "name": name,
+            "name": name if s_id else ext_name,
             "voice_type": voice,
+            "external_email": None if s_id else ext_email,
         }
 
     # Chorus count: assigned students who have no principal role
-    principal_student_ids = {a[0] for a in assignment_rows}
+    principal_student_ids = {a[0] for a in assignment_rows if a[0]}
     chorus_count = sum(
         1 for s_id, _, _ in assigned_students
         if s_id not in principal_student_ids
@@ -3548,6 +3561,7 @@ def admin_opera_casting(opera_id: int, request: Request):
                 "student_id": info["student_id"],
                 "student_name": info["name"],
                 "student_voice": info["voice_type"],
+                "external_email": info["external_email"],
             }
             for (c_id, r_name), info in assignments.items()
         ],
@@ -3573,16 +3587,21 @@ def admin_assign_principal(payload: dict):
     """
     Assign or clear a principal role.
 
-    Payload shape for ASSIGN:
+    Payload shape for ASSIGN (account holder):
       { opera_id, cast_id, role_name, student_id }
 
-    Payload shape for CLEAR (pass student_id=null):
+    Payload shape for ASSIGN (no account yet — still gets rehearsal notices):
+      { opera_id, cast_id, role_name, external_name, external_email }
+
+    Payload shape for CLEAR (pass student_id=null and no external fields):
       { opera_id, cast_id, role_name, student_id: null }
     """
     opera_id = payload.get("opera_id")
     cast_id = payload.get("cast_id")
     role_name = payload.get("role_name")
     student_id = payload.get("student_id")  # may be null to clear
+    external_name = (payload.get("external_name") or "").strip() or None
+    external_email = (payload.get("external_email") or "").strip() or None
 
     if not (opera_id and cast_id and role_name):
         return {"status": "fail", "message": "Missing opera_id, cast_id, or role_name"}
@@ -3606,6 +3625,14 @@ def admin_assign_principal(payload: dict):
             DELETE FROM student_roles
             WHERE opera_id=%s AND cast_id=%s AND role_name=%s
         """, (opera_id, cast_id, role_name))
+
+        # No-account contact: store name/email directly, no student_assignments row
+        if not student_id and external_name:
+            cur.execute("""
+                INSERT INTO student_roles (student_id, opera_id, cast_id, role_name, external_name, external_email)
+                VALUES (NULL, %s, %s, %s, %s, %s)
+            """, (opera_id, cast_id, role_name, external_name, external_email))
+            return {"status": "success"}
 
         # If student_id is null, we're just clearing — done
         if not student_id:
@@ -3761,18 +3788,19 @@ def admin_opera_staff(opera_id: int, request: Request):
     with db_cursor() as cur:
         # Current staff on this opera
         cur.execute("""
-            SELECT os.id, os.teacher_id, u.fullname, os.staff_role
+            SELECT os.id, os.teacher_id, u.fullname, os.staff_role, os.external_name, os.external_email
             FROM opera_staff os
-            JOIN users u ON u.id = os.teacher_id
+            LEFT JOIN users u ON u.id = os.teacher_id
             WHERE os.opera_id = %s
-            ORDER BY os.staff_role, u.fullname
+            ORDER BY os.staff_role, COALESCE(u.fullname, os.external_name)
         """, (opera_id,))
         staff = [
             {
                 "id": r[0],
                 "teacher_id": r[1],
-                "teacher_name": r[2],
+                "teacher_name": r[2] if r[1] else r[4],
                 "staff_role": r[3],
+                "external_email": None if r[1] else r[5],
             }
             for r in cur.fetchall()
         ]
@@ -3795,8 +3823,11 @@ def admin_assign_staff(payload: dict, request: Request):
     org_id = user["org_id"]
     opera_id = payload.get("opera_id")
     teacher_id = payload.get("teacher_id")
+    external_name = (payload.get("external_name") or "").strip() or None
+    external_email = (payload.get("external_email") or "").strip() or None
+    external_role = (payload.get("external_role") or "").strip() or None
 
-    if not (opera_id and teacher_id):
+    if not opera_id or not (teacher_id or external_name):
         return {"status": "fail", "message": "Missing fields"}
 
     with db_cursor(commit=True) as cur:
@@ -3804,24 +3835,32 @@ def admin_assign_staff(payload: dict, request: Request):
         if not cur.fetchone():
             return {"status": "fail", "message": "Opera not found"}
 
-        cur.execute(
-            "SELECT admin_role FROM users WHERE id=%s AND org_id=%s AND role IN ('admin', 'orchestra_admin')",
-            (teacher_id, org_id)
-        )
-        row = cur.fetchone()
-        if not row:
-            return {"status": "fail", "message": "Admin not found"}
-        staff_role = row[0]
-        if not staff_role:
-            return {"status": "fail", "message": "This admin does not have a production role assigned"}
+        if teacher_id:
+            cur.execute(
+                "SELECT admin_role FROM users WHERE id=%s AND org_id=%s AND role IN ('admin', 'orchestra_admin')",
+                (teacher_id, org_id)
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"status": "fail", "message": "Admin not found"}
+            staff_role = row[0]
+            if not staff_role:
+                return {"status": "fail", "message": "This admin does not have a production role assigned"}
 
-        try:
+            try:
+                cur.execute("""
+                    INSERT INTO opera_staff (opera_id, teacher_id, staff_role)
+                    VALUES (%s, %s, %s)
+                """, (opera_id, teacher_id, staff_role))
+            except pg_errors.UniqueViolation:
+                return {"status": "fail", "message": "This person is already assigned to this production"}
+        else:
+            if not external_role:
+                return {"status": "fail", "message": "Please pick a role"}
             cur.execute("""
-                INSERT INTO opera_staff (opera_id, teacher_id, staff_role)
-                VALUES (%s, %s, %s)
-            """, (opera_id, teacher_id, staff_role))
-        except pg_errors.UniqueViolation:
-            return {"status": "fail", "message": "This person is already assigned to this production"}
+                INSERT INTO opera_staff (opera_id, teacher_id, staff_role, external_name, external_email)
+                VALUES (%s, NULL, %s, %s, %s)
+            """, (opera_id, external_role, external_name, external_email))
 
     return {"status": "success"}
 
@@ -6107,7 +6146,8 @@ def get_orchestra_seats(opera_id: int, request: Request):
             return []
 
         cur.execute("""
-            SELECT ose.id, ose.section_id, ose.chair_number, ose.member_id, u.fullname
+            SELECT ose.id, ose.section_id, ose.chair_number, ose.member_id, u.fullname,
+                   ose.external_name, ose.external_email
             FROM orchestra_seats ose
             LEFT JOIN users u ON u.id = ose.member_id
             WHERE ose.opera_id = %s
@@ -6118,7 +6158,9 @@ def get_orchestra_seats(opera_id: int, request: Request):
     return [
         {
             "id": r[0], "section_id": r[1], "chair_number": r[2],
-            "member_id": r[3], "member_name": r[4],
+            "member_id": r[3], "member_name": r[4] if r[3] else r[5],
+            "external_name": None if r[3] else r[5],
+            "external_email": None if r[3] else r[6],
         }
         for r in rows
     ]
@@ -6137,6 +6179,8 @@ def assign_orchestra_seat(payload: dict, request: Request):
     section_id = payload.get("section_id")
     chair_number = payload.get("chair_number")
     member_id = payload.get("member_id")  # None = clear
+    external_name = (payload.get("external_name") or "").strip() or None
+    external_email = (payload.get("external_email") or "").strip() or None
 
     if not (opera_id and section_id and chair_number):
         return {"status": "fail", "message": "Missing required fields"}
@@ -6159,17 +6203,24 @@ def assign_orchestra_seat(payload: dict, request: Request):
                 return {"status": "fail", "message": "Orchestra member not found"}
 
             cur.execute("""
-                INSERT INTO orchestra_seats (opera_id, section_id, chair_number, member_id)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO orchestra_seats (opera_id, section_id, chair_number, member_id, external_name, external_email)
+                VALUES (%s, %s, %s, %s, NULL, NULL)
                 ON CONFLICT (opera_id, section_id, chair_number)
-                DO UPDATE SET member_id = EXCLUDED.member_id
+                DO UPDATE SET member_id = EXCLUDED.member_id, external_name = NULL, external_email = NULL
             """, (opera_id, section_id, chair_number, member_id))
+        elif external_name:
+            cur.execute("""
+                INSERT INTO orchestra_seats (opera_id, section_id, chair_number, member_id, external_name, external_email)
+                VALUES (%s, %s, %s, NULL, %s, %s)
+                ON CONFLICT (opera_id, section_id, chair_number)
+                DO UPDATE SET member_id = NULL, external_name = EXCLUDED.external_name, external_email = EXCLUDED.external_email
+            """, (opera_id, section_id, chair_number, external_name, external_email))
         else:
             cur.execute("""
-                INSERT INTO orchestra_seats (opera_id, section_id, chair_number, member_id)
-                VALUES (%s, %s, %s, NULL)
+                INSERT INTO orchestra_seats (opera_id, section_id, chair_number, member_id, external_name, external_email)
+                VALUES (%s, %s, %s, NULL, NULL, NULL)
                 ON CONFLICT (opera_id, section_id, chair_number)
-                DO UPDATE SET member_id = NULL
+                DO UPDATE SET member_id = NULL, external_name = NULL, external_email = NULL
             """, (opera_id, section_id, chair_number))
 
     return {"status": "success"}

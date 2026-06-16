@@ -530,6 +530,26 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
                 .sort((a, b) => a.name.localeCompare(b.name));
 
             const sameCastCastings = studentsInCast(cast.id);
+            const isExternalAssignment = currentAssignment && !currentAssignment.student_id;
+
+            if (isExternalAssignment) {
+                // No-account contact already in this slot — show as a removable pill
+                const pill = document.createElement("span");
+                pill.className = "cover-pill";
+                pill.textContent = currentAssignment.name + " (no account)";
+                const removeX = document.createElement("button");
+                removeX.type = "button";
+                removeX.className = "cover-pill-remove";
+                removeX.textContent = "×";
+                removeX.title = "Remove";
+                removeX.addEventListener("click", async () => {
+                    await doAssignPrincipal(castingData.opera.id, cast.id, role.name, null);
+                });
+                pill.appendChild(removeX);
+                cell.appendChild(pill);
+                row.appendChild(cell);
+                return;
+            }
 
             // --- Select ---
             const select = document.createElement("select");
@@ -565,15 +585,72 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
             });
             select.addEventListener("change", onPrincipalAssignmentChange);
 
-            // --- Assign row (select + search button) ---
+            // --- Assign row (select + search button + no-account button) ---
             const assignRow = document.createElement("div");
             assignRow.className = "casting-assign-row";
             const searchToggleBtn = document.createElement("button");
             searchToggleBtn.type = "button";
             searchToggleBtn.className = "casting-search-toggle";
             searchToggleBtn.textContent = "\u{1F50D}";
+            const noAccountToggleBtn = document.createElement("button");
+            noAccountToggleBtn.type = "button";
+            noAccountToggleBtn.className = "casting-search-toggle";
+            noAccountToggleBtn.title = "Assign someone without an account";
+            noAccountToggleBtn.textContent = "+";
             assignRow.appendChild(select);
             assignRow.appendChild(searchToggleBtn);
+            assignRow.appendChild(noAccountToggleBtn);
+
+            // --- No-account panel (name + email, no login required) ---
+            const externalPanel = document.createElement("div");
+            externalPanel.className = "casting-search-panel hidden";
+            const externalNameInput = document.createElement("input");
+            externalNameInput.type = "text";
+            externalNameInput.className = "casting-search-input";
+            externalNameInput.placeholder = "Name";
+            const externalEmailInput = document.createElement("input");
+            externalEmailInput.type = "email";
+            externalEmailInput.className = "casting-search-input";
+            externalEmailInput.placeholder = "Email (for rehearsal notices)";
+            externalEmailInput.style.marginTop = "var(--space-1)";
+            const externalActions = document.createElement("div");
+            externalActions.className = "casting-search-top";
+            const externalSaveBtn = document.createElement("button");
+            externalSaveBtn.type = "button";
+            externalSaveBtn.className = "subtle-btn";
+            externalSaveBtn.textContent = "Save";
+            const externalCancelBtn = document.createElement("button");
+            externalCancelBtn.type = "button";
+            externalCancelBtn.className = "casting-search-close";
+            externalCancelBtn.textContent = "✕";
+            externalActions.appendChild(externalSaveBtn);
+            externalActions.appendChild(externalCancelBtn);
+            externalPanel.appendChild(externalNameInput);
+            externalPanel.appendChild(externalEmailInput);
+            externalPanel.appendChild(externalActions);
+
+            noAccountToggleBtn.addEventListener("click", () => {
+                assignRow.classList.add("hidden");
+                externalPanel.classList.remove("hidden");
+                externalNameInput.value = "";
+                externalEmailInput.value = "";
+                externalNameInput.focus();
+            });
+            externalCancelBtn.addEventListener("click", () => {
+                externalPanel.classList.add("hidden");
+                assignRow.classList.remove("hidden");
+            });
+            externalSaveBtn.addEventListener("click", async () => {
+                const name = externalNameInput.value.trim();
+                if (!name) { externalNameInput.focus(); return; }
+                const ok = await doAssignPrincipalExternal(
+                    castingData.opera.id, cast.id, role.name, name, externalEmailInput.value.trim()
+                );
+                if (ok) {
+                    externalPanel.classList.add("hidden");
+                    assignRow.classList.remove("hidden");
+                }
+            });
 
             // --- Search panel ---
             const searchPanel = document.createElement("div");
@@ -597,6 +674,7 @@ function renderAssignRolesGrid(containerId = "assign-roles-grid") {
 
             cell.appendChild(assignRow);
             cell.appendChild(searchPanel);
+            cell.appendChild(externalPanel);
 
             // Toggle into search mode
             searchToggleBtn.addEventListener("click", () => {
@@ -767,6 +845,30 @@ async function doAssignPrincipal(operaId, castId, roleName, studentId) {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ opera_id: operaId, cast_id: castId, role_name: roleName, student_id: studentId }),
+        });
+        const data = await res.json();
+        if (data.status !== "success") {
+            alert(data.message || "Failed to save.");
+            return false;
+        }
+        await loadCastingForOpera(operaId);
+        renderAssignRolesGrid();
+        renderAssignRolesGrid("edit-prod-roles-grid");
+        return true;
+    } catch (err) {
+        console.error(err);
+        alert("Server error.");
+        return false;
+    }
+}
+
+async function doAssignPrincipalExternal(operaId, castId, roleName, name, email) {
+    try {
+        const res = await fetch(`${API}/admin/assign-principal`, {
+            credentials: "include",
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ opera_id: operaId, cast_id: castId, role_name: roleName, external_name: name, external_email: email }),
         });
         const data = await res.json();
         if (data.status !== "success") {
@@ -2632,7 +2734,9 @@ function renderOrchInlineContent(operaId, container, seats, staffPayload) {
                         data-opera-id="${operaId}"
                         data-section-id="${sec.id}"
                         data-chair="${chair}"
-                        data-current-member="${seat?.member_id || ""}">${seat?.member_id ? "Change" : "Assign"}</button>
+                        data-current-member="${seat?.member_id || ""}"
+                        data-current-ext-name="${escapeHtml(seat?.external_name || "")}"
+                        data-current-ext-email="${escapeHtml(seat?.external_email || "")}">${(seat?.member_id || seat?.external_name) ? "Change" : "Assign"}</button>
                 `;
                 col.appendChild(chairRow);
             }
@@ -2650,7 +2754,9 @@ function renderOrchInlineContent(operaId, container, seats, staffPayload) {
                 Number(btn.dataset.operaId),
                 Number(btn.dataset.sectionId),
                 Number(btn.dataset.chair),
-                btn.dataset.currentMember || null
+                btn.dataset.currentMember || null,
+                btn.dataset.currentExtName || null,
+                btn.dataset.currentExtEmail || null
             )));
     }
     container.appendChild(grid);
@@ -2901,8 +3007,10 @@ function renderSeatingPanel(operaId, sections, seats) {
                         data-opera-id="${operaId}"
                         data-section-id="${sec.id}"
                         data-chair="${chair}"
-                        data-current-member="${seat?.member_id || ""}">
-                        ${seat?.member_id ? "Change" : "Assign"}
+                        data-current-member="${seat?.member_id || ""}"
+                        data-current-ext-name="${escapeHtml(seat?.external_name || "")}"
+                        data-current-ext-email="${escapeHtml(seat?.external_email || "")}">
+                        ${(seat?.member_id || seat?.external_name) ? "Change" : "Assign"}
                     </button>
                 </div>
             `;
@@ -2928,7 +3036,9 @@ function renderSeatingPanel(operaId, sections, seats) {
             Number(btn.dataset.operaId),
             Number(btn.dataset.sectionId),
             Number(btn.dataset.chair),
-            btn.dataset.currentMember || null
+            btn.dataset.currentMember || null,
+            btn.dataset.currentExtName || null,
+            btn.dataset.currentExtEmail || null
         ));
     });
     panel.querySelectorAll(".add-chair-btn").forEach(btn =>
@@ -2987,7 +3097,7 @@ async function confirmCopySeating() {
     }
 }
 
-function openAssignSeatModal(operaId, sectionId, chairNumber, currentMemberId) {
+function openAssignSeatModal(operaId, sectionId, chairNumber, currentMemberId, currentExternalName, currentExternalEmail) {
     const modal = document.getElementById("assign-seat-modal");
     if (!modal) return;
 
@@ -2998,6 +3108,13 @@ function openAssignSeatModal(operaId, sectionId, chairNumber, currentMemberId) {
     document.getElementById("assign-seat-section-id").value = sectionId;
     document.getElementById("assign-seat-chair").value = chairNumber;
     document.getElementById("seat-msg").textContent = "";
+
+    const extNameInput = document.getElementById("assign-seat-external-name");
+    const extEmailInput = document.getElementById("assign-seat-external-email");
+    const extFields = document.getElementById("seat-no-account-fields");
+    if (extNameInput) extNameInput.value = currentExternalName || "";
+    if (extEmailInput) extEmailInput.value = currentExternalEmail || "";
+    if (extFields) extFields.classList.toggle("hidden", !currentExternalName);
 
     // Populate member dropdown — filter to members matching section's instrument (including doublings)
     const memberSelect = document.getElementById("assign-seat-member");
@@ -3035,6 +3152,8 @@ async function saveSeatAssignment() {
     const chairNumber = Number(document.getElementById("assign-seat-chair").value);
     const memberIdRaw = document.getElementById("assign-seat-member").value;
     const memberId = memberIdRaw ? Number(memberIdRaw) : null;
+    const externalName = !memberId ? (document.getElementById("assign-seat-external-name")?.value || "").trim() : "";
+    const externalEmail = !memberId ? (document.getElementById("assign-seat-external-email")?.value || "").trim() : "";
     const msg = document.getElementById("seat-msg");
     msg.textContent = "";
 
@@ -3043,7 +3162,10 @@ async function saveSeatAssignment() {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ opera_id: operaId, section_id: sectionId, chair_number: chairNumber, member_id: memberId })
+            body: JSON.stringify({
+                opera_id: operaId, section_id: sectionId, chair_number: chairNumber, member_id: memberId,
+                external_name: externalName || null, external_email: externalEmail || null,
+            })
         });
         const data = await res.json();
         if (data.status === "success") {
@@ -3823,6 +3945,43 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch (e) { msg.textContent = "Server error."; }
     });
 
+    document.getElementById("edit-prod-staff-no-account-toggle")?.addEventListener("click", () => {
+        document.getElementById("edit-prod-staff-no-account-fields")?.classList.toggle("hidden");
+    });
+
+    document.getElementById("edit-prod-add-staff-external-btn")?.addEventListener("click", async () => {
+        const msg = document.getElementById("edit-prod-staff-msg");
+        msg.textContent = "";
+        const externalName = (document.getElementById("edit-prod-staff-external-name")?.value || "").trim();
+        const externalEmail = (document.getElementById("edit-prod-staff-external-email")?.value || "").trim();
+        const externalRole = document.getElementById("edit-prod-staff-external-role")?.value;
+        if (!externalName) { msg.textContent = "Name is required."; return; }
+        try {
+            const res = await fetch(`${API}/admin/assign-staff`, {
+                credentials: "include", method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    opera_id: castingSelectedOperaId,
+                    external_name: externalName,
+                    external_email: externalEmail || null,
+                    external_role: externalRole,
+                }),
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById("edit-prod-staff-external-name").value = "";
+                document.getElementById("edit-prod-staff-external-email").value = "";
+                document.getElementById("edit-prod-staff-no-account-fields")?.classList.add("hidden");
+                const staffRes = await fetch(`${API}/admin/opera-staff/${castingSelectedOperaId}`, { credentials: "include" });
+                staffData = await staffRes.json();
+                renderEditModalStaff();
+                renderStaffList();
+            } else {
+                msg.textContent = data.message || "Failed.";
+            }
+        } catch (e) { msg.textContent = "Server error."; }
+    });
+
 // --- Rehearsals ---
     populateTimeDropdown(document.getElementById("rehearsal-start-time"));
     populateTimeDropdown(document.getElementById("rehearsal-end-time"));
@@ -4075,6 +4234,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("cancel-seat-btn")?.addEventListener("click", closeAssignSeatModal);
     document.getElementById("assign-seat-modal")?.addEventListener("click", e => {
         if (e.target.id === "assign-seat-modal") closeAssignSeatModal();
+    });
+    document.getElementById("seat-no-account-toggle")?.addEventListener("click", () => {
+        document.getElementById("seat-no-account-fields")?.classList.toggle("hidden");
     });
 
     // --- Call Singers modal ---

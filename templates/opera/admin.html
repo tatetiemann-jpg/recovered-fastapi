@@ -522,6 +522,20 @@
             <select id="edit-prod-staff-teacher" title="Admin"><option value="">No admins yet</option></select>
             <button type="button" id="edit-prod-add-staff-btn">+ Add</button>
         </div>
+        <button type="button" id="edit-prod-staff-no-account-toggle" class="subtle-btn">+ No account</button>
+        <div id="edit-prod-staff-no-account-fields" class="hidden">
+            <select id="edit-prod-staff-external-role">
+                <option value="director">Director</option>
+                <option value="assistant_director">Assistant Director</option>
+                <option value="stage_manager">Stage Manager</option>
+                <option value="assistant_stage_manager">Assistant Stage Manager</option>
+                <option value="conductor">Conductor</option>
+                <option value="assistant_conductor">Assistant Conductor</option>
+            </select>
+            <input type="text" id="edit-prod-staff-external-name" placeholder="Full name">
+            <input type="email" id="edit-prod-staff-external-email" placeholder="email@example.com">
+            <button type="button" id="edit-prod-add-staff-external-btn">+ Add</button>
+        </div>
         <p id="edit-prod-staff-msg" class="hint"></p>
 
         <!-- Section: Role Assignments -->
@@ -620,6 +634,13 @@
         <select id="assign-seat-member">
             <option value="">— Unassigned —</option>
         </select>
+        <button type="button" id="seat-no-account-toggle" class="subtle-btn">+ No account</button>
+        <div id="seat-no-account-fields" class="hidden">
+            <label for="assign-seat-external-name">Name</label>
+            <input type="text" id="assign-seat-external-name" placeholder="Full name">
+            <label for="assign-seat-external-email">Email</label>
+            <input type="email" id="assign-seat-external-email" placeholder="email@example.com">
+        </div>
         <div class="modal-actions">
             <button type="button" id="save-seat-btn">Save</button>
             <button type="button" id="cancel-seat-btn">Cancel</button>
