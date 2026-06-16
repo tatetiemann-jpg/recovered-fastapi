@@ -3136,13 +3136,25 @@ def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request
         cur.execute("SELECT role_name FROM rehearsal_roles WHERE rehearsal_id = %s", (rehearsal_id,))
         role_names = [r[0] for r in cur.fetchall()]
 
-        # Org admins
+        # Org admins (including conductors / assistant conductors)
         cur.execute("""
             SELECT fullname, email FROM users
-            WHERE org_id = %s AND role IN ('admin', 'head_admin', 'system_admin')
+            WHERE org_id = %s AND role IN ('admin', 'head_admin', 'system_admin', 'orchestra_admin')
               AND email IS NOT NULL
         """, (org_id,))
         recipients = {email: name for name, email in cur.fetchall() if email}
+
+        # Production staff for this specific production/concert (includes no-account contacts)
+        cur.execute("""
+            SELECT u.fullname, u.email, os.external_name, os.external_email
+            FROM opera_staff os
+            LEFT JOIN users u ON u.id = os.teacher_id
+            WHERE os.opera_id = %s
+        """, (opera_id,))
+        for full_name, u_email, ext_name, ext_email in cur.fetchall():
+            name, email = (full_name, u_email) if u_email else (ext_name, ext_email)
+            if email and email not in recipients:
+                recipients[email] = name
 
         # Called students / orchestra members
         if rehearsal_type == "orchestra":
@@ -3151,6 +3163,18 @@ def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request
                 WHERE org_id = %s AND role = 'orchestra_member' AND email IS NOT NULL
             """, (org_id,))
             for name, email in cur.fetchall():
+                if email and email not in recipients:
+                    recipients[email] = name
+
+            # Seat holders for this specific concert (includes no-account contacts)
+            cur.execute("""
+                SELECT u.fullname, u.email, ose.external_name, ose.external_email
+                FROM orchestra_seats ose
+                LEFT JOIN users u ON u.id = ose.member_id
+                WHERE ose.opera_id = %s
+            """, (opera_id,))
+            for full_name, u_email, ext_name, ext_email in cur.fetchall():
+                name, email = (full_name, u_email) if u_email else (ext_name, ext_email)
                 if email and email not in recipients:
                     recipients[email] = name
         elif attendance_type == "full":
@@ -3174,12 +3198,13 @@ def admin_set_rehearsal_notes(rehearsal_id: int, payload: dict, request: Request
                     recipients[email] = name
         elif attendance_type == "coaching" and role_names:
             cur.execute("""
-                SELECT DISTINCT u.fullname, u.email FROM users u
-                JOIN student_roles sr ON sr.student_id = u.id
+                SELECT DISTINCT u.fullname, u.email, sr.external_name, sr.external_email
+                FROM student_roles sr
+                LEFT JOIN users u ON u.id = sr.student_id
                 WHERE sr.opera_id = %s AND sr.role_name = ANY(%s)
-                  AND u.role = 'student' AND u.email IS NOT NULL
             """, (opera_id, role_names))
-            for name, email in cur.fetchall():
+            for full_name, u_email, ext_name, ext_email in cur.fetchall():
+                name, email = (full_name, u_email) if u_email else (ext_name, ext_email)
                 if email and email not in recipients:
                     recipients[email] = name
         else:
@@ -6410,27 +6435,31 @@ def call_singers(rehearsal_id: int, payload: dict, request: Request):
 
         if scope == "tutti":
             cur.execute("""
-                SELECT DISTINCT u.id, u.fullname, u.email
+                SELECT DISTINCT u.id, u.fullname, u.email, NULL, NULL
                 FROM users u
                 JOIN student_assignments sa ON sa.student_id = u.id
                 WHERE sa.opera_id = %s AND u.role = 'student'
             """, (opera_id,))
         elif scope == "cast":
             cur.execute("""
-                SELECT DISTINCT u.id, u.fullname, u.email
+                SELECT DISTINCT u.id, u.fullname, u.email, NULL, NULL
                 FROM users u
                 JOIN student_assignments sa ON sa.student_id = u.id
                 WHERE sa.opera_id = %s AND sa.cast_id = %s AND u.role = 'student'
             """, (opera_id, cast_id))
         else:
             cur.execute("""
-                SELECT DISTINCT u.id, u.fullname, u.email
-                FROM users u
-                JOIN student_roles sr ON sr.student_id = u.id
-                WHERE sr.opera_id = %s AND sr.role_name = %s AND u.role = 'student'
+                SELECT DISTINCT u.id, u.fullname, u.email, sr.external_name, sr.external_email
+                FROM student_roles sr
+                LEFT JOIN users u ON u.id = sr.student_id
+                WHERE sr.opera_id = %s AND sr.role_name = %s
             """, (opera_id, role_name))
 
-        singers = cur.fetchall()
+        singers = [
+            (sid, full_name if u_email else ext_name, u_email if u_email else ext_email)
+            for sid, full_name, u_email, ext_name, ext_email in cur.fetchall()
+            if u_email or ext_email
+        ]
 
         # Build scope label for the log
         if scope == "tutti":
