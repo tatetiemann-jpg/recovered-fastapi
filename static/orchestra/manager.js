@@ -195,18 +195,34 @@ async function loadAttendance(rehearsalId) {
     list.innerHTML = "<em class='empty-note'>No members.</em>";
     return;
   }
-  const families = {};
+  list.innerHTML = "";
+
+  // Group: family → section_id → members
+  const byFamily = {};
   rows.forEach(m => {
-    const k = m.section_family || "other";
-    if (!families[k]) families[k] = [];
-    families[k].push(m);
+    const f = m.section_family || "other";
+    const sKey = m.section_id || "__none__";
+    if (!byFamily[f]) byFamily[f] = {};
+    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", members: [] };
+    byFamily[f][sKey].members.push(m);
   });
-  const familyOrder = ["strings","woodwinds","brass","percussion","other"];
-  list.innerHTML = familyOrder.filter(f => families[f]).map(f => `
-    <div style="margin-bottom:var(--space-4);">
-      <h4 style="text-transform:capitalize;margin-bottom:var(--space-2);">${f}</h4>
-      ${families[f].map(m => `
-        <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;">
+
+  FAMILY_ORDER_KEYS.filter(f => byFamily[f]).forEach(f => {
+    const { group: famGroup, inner: famInner } = makeOrchAccordion(
+      FAMILY_LABELS[f], true, true, "orch-family-group"
+    );
+
+    Object.values(byFamily[f]).forEach(secGroup => {
+      const { group: secGrp, inner: secInner } = makeOrchAccordion(
+        `${secGroup.name} <span class="section-count">(${secGroup.members.length})</span>`,
+        true, true
+      );
+
+      secGroup.members.forEach(m => {
+        const row = document.createElement("div");
+        row.className = "card";
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:6px;";
+        row.innerHTML = `
           <div>
             <strong>${m.fullname}</strong>
             ${m.instrument ? `<span class="hint"> — ${m.instrument}</span>` : ""}
@@ -218,9 +234,15 @@ async function loadAttendance(rehearsalId) {
               onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'excused')">~ Excused</button>
             <button class="subtle-btn ${m.status === 'absent' ? 'active' : ''}"
               onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id}, '${m.fullname.replace(/'/g,"\\'")}')">✗ Absent</button>
-          </div>
-        </div>`).join("")}
-    </div>`).join("");
+          </div>`;
+        secInner.appendChild(row);
+      });
+
+      famInner.appendChild(secGrp);
+    });
+
+    list.appendChild(famGroup);
+  });
 }
 
 async function setAttendance(rehearsalId, memberId, status) {
@@ -555,54 +577,77 @@ async function loadSeating(pieceId) {
   const seats = await api("GET", `/orchestra/pieces/${pieceId}/seats`);
   const grid = document.getElementById("seating-grid");
   if (!Array.isArray(seats)) { grid.innerHTML = "<em class='empty-note'>No seats assigned.</em>"; return; }
+  grid.innerHTML = "";
 
-  // Group by section
-  const bySec = {};
-  SECTIONS.forEach(s => { bySec[s.id] = {name: s.name, seats: []}; });
+  // Index seats by section+chair+part
+  const seatIndex = {};
   seats.forEach(s => {
-    if (!bySec[s.section_id]) bySec[s.section_id] = {name: s.section_name, seats: []};
-    bySec[s.section_id].seats.push(s);
+    const key = `${s.section_id}_${s.chair_number}_${s.part_number}`;
+    seatIndex[key] = s;
   });
 
-  // Build UI per section
-  grid.innerHTML = SECTIONS.map(sec => {
-    const secSeats = bySec[sec.id]?.seats || [];
-    // Determine max chairs to show (from section definition)
-    const secDef = SECTIONS.find(s => s.id === sec.id);
-    const chairCount = secDef?.chair_count || 8;
-    // Determine part count for this section (violin gets 1-4, others 1)
-    const isViolin = sec.name.toLowerCase().includes("violin");
-    const partCount = isViolin ? 4 : 1;
-    const partLabels = isViolin ? ["1st Part","2nd Part","3rd Part","4th Part"] : [""];
+  // Group sections by family
+  const byFamily = {};
+  SECTIONS.forEach(sec => {
+    const fam = orchFamily(sec.instrument);
+    if (!byFamily[fam]) byFamily[fam] = [];
+    byFamily[fam].push(sec);
+  });
 
-    const partHtml = Array.from({length: partCount}, (_, pi) => {
-      const part = pi + 1;
-      const chairs = Array.from({length: chairCount}, (_, ci) => {
-        const chair = ci + 1;
-        const seat = secSeats.find(s => s.chair_number === chair && s.part_number === part);
-        const name = seat ? (seat.member_name || "—") : "";
-        const assigned = !!name;
-        return `
-          <div class="chair-cell ${assigned ? 'assigned' : ''}"
-               onclick="openAssignSeat(${sec.id},${chair},${part})"
-               title="Chair ${chair}${part > 1 ? ` / Part ${part}` : ''}${assigned ? ' — '+name : ''}">
-            <span class="chair-num">${chair}</span>
-            ${assigned ? `<span class="chair-name">${name}</span>` : ""}
-          </div>`;
-      }).join("");
-      return `
-        <div style="margin-bottom:var(--space-3);">
-          ${partCount > 1 ? `<div class="hint" style="margin-bottom:4px;">${partLabels[pi]}</div>` : ""}
-          <div class="chair-grid">${chairs}</div>
-        </div>`;
-    }).join("");
+  ORCH_FAMILY_ORDER.filter(fam => byFamily[fam]).forEach(fam => {
+    const { group: famGroup, inner: famInner } = makeOrchAccordion(fam, true, true, "orch-family-group");
 
-    return `
-      <div style="margin-bottom:var(--space-5);">
-        <h4 style="margin-bottom:var(--space-2);">${sec.name}</h4>
-        ${partHtml}
-      </div>`;
-  }).join("");
+    byFamily[fam].forEach(sec => {
+      const chairCount = sec.chair_count || 8;
+      const isViolin = /violin/i.test(sec.name);
+      const partCount = isViolin ? 4 : 1;
+      const partLabels = ["1st Part", "2nd Part", "3rd Part", "4th Part"];
+
+      // Count assigned seats for badge
+      let assignedCount = 0;
+      for (let part = 1; part <= partCount; part++)
+        for (let chair = 1; chair <= chairCount; chair++)
+          if (seatIndex[`${sec.id}_${chair}_${part}`]) assignedCount++;
+
+      const { group: secGrp, inner: secInner } = makeOrchAccordion(
+        `${sec.name} <span class="section-count">${assignedCount}/${chairCount * partCount}</span>`,
+        false, true
+      );
+      secInner.style.paddingBottom = "var(--space-3)";
+
+      for (let part = 1; part <= partCount; part++) {
+        if (partCount > 1) {
+          const partLabel = document.createElement("div");
+          partLabel.className = "hint";
+          partLabel.style.cssText = "margin:10px 0 6px;font-weight:500;";
+          partLabel.textContent = partLabels[part - 1];
+          secInner.appendChild(partLabel);
+        }
+
+        const chairRow = document.createElement("div");
+        chairRow.className = "chair-grid";
+
+        for (let chair = 1; chair <= chairCount; chair++) {
+          const seat = seatIndex[`${sec.id}_${chair}_${part}`];
+          const name = seat ? (seat.member_name || "—") : "";
+          const assigned = !!name;
+
+          const cell = document.createElement("div");
+          cell.className = "chair-cell" + (assigned ? " assigned" : "");
+          cell.title = `Chair ${chair}${part > 1 ? ` / ${partLabels[part-1]}` : ""}${assigned ? " — " + name : ""}`;
+          cell.innerHTML = `<span class="chair-num">${chair}</span>${assigned ? `<span class="chair-name">${name}</span>` : ""}`;
+          cell.addEventListener("click", () => openAssignSeat(sec.id, chair, part));
+          chairRow.appendChild(cell);
+        }
+
+        secInner.appendChild(chairRow);
+      }
+
+      famInner.appendChild(secGrp);
+    });
+
+    grid.appendChild(famGroup);
+  });
 }
 
 function openAssignSeat(sectionId, chairNumber, partNumber) {
@@ -683,34 +728,60 @@ const FAMILY_LABELS = {
   percussion: "Percussion",
   other: "Other"
 };
-const FAMILY_ORDER = ["strings","woodwinds","brass","percussion","other"];
+const FAMILY_ORDER_KEYS = ["strings","woodwinds","brass","percussion","other"];
 
 function renderMembers() {
   const list = document.getElementById("members-list");
   if (!MEMBERS.length) { list.innerHTML = "<em class='empty-note'>No members yet.</em>"; return; }
-  const grouped = {};
+  list.innerHTML = "";
+
+  // Group: family → section_id → members
+  const byFamily = {};
   MEMBERS.forEach(m => {
     const f = m.section_family || "other";
-    if (!grouped[f]) grouped[f] = [];
-    grouped[f].push(m);
+    const sKey = m.section_id || "__none__";
+    if (!byFamily[f]) byFamily[f] = {};
+    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", members: [] };
+    byFamily[f][sKey].members.push(m);
   });
-  list.innerHTML = FAMILY_ORDER.filter(f => grouped[f]).map(f => `
-    <div style="margin-bottom:var(--space-5);">
-      <h3 style="margin-bottom:var(--space-2);">${FAMILY_LABELS[f] || f}</h3>
-      ${grouped[f].map(m => `
-        <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
+
+  FAMILY_ORDER_KEYS.filter(f => byFamily[f]).forEach(f => {
+    const { group: famGroup, inner: famInner } = makeOrchAccordion(
+      FAMILY_LABELS[f], true, true, "orch-family-group"
+    );
+    // Update count label
+    const total = Object.values(byFamily[f]).reduce((s, g) => s + g.members.length, 0);
+    famGroup.querySelector(".section-name").insertAdjacentHTML("afterend",
+      `<span class="section-count" style="margin-left:6px;">(${total})</span>`);
+
+    Object.values(byFamily[f]).forEach(secGroup => {
+      const { group: secGrp, inner: secInner } = makeOrchAccordion(
+        `${secGroup.name} <span class="section-count">(${secGroup.members.length})</span>`,
+        false, true
+      );
+
+      secGroup.members.forEach(m => {
+        const row = document.createElement("div");
+        row.className = "card";
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;";
+        row.innerHTML = `
           <div>
             <strong>${m.fullname}</strong>
             ${m.instrument ? `<span class="hint"> — ${m.instrument}</span>` : ""}
             ${m.part_label ? `<span class="tag" style="margin-left:4px;">${m.part_label}</span>` : ""}
-            ${m.section_name ? `<span class="hint" style="margin-left:4px;">(${m.section_name})</span>` : ""}
           </div>
           <div style="display:flex;gap:8px;">
             <button class="subtle-btn" onclick="openEditMember(${m.id})">Edit</button>
             <button class="subtle-btn" onclick="removeMember(${m.id})">Remove</button>
-          </div>
-        </div>`).join("")}
-    </div>`).join("");
+          </div>`;
+        secInner.appendChild(row);
+      });
+
+      famInner.appendChild(secGrp);
+    });
+
+    list.appendChild(famGroup);
+  });
 }
 
 document.getElementById("open-add-member-btn")?.addEventListener("click", () => {
@@ -967,6 +1038,51 @@ document.getElementById("send-invite-btn")?.addEventListener("click", async () =
     loadInvitations();
   } else { msg.textContent = r.message || "Failed."; }
 });
+
+// ── Orchestra accordion helper ────────────────────────────────────────────────
+
+function orchFamily(instrument) {
+  const i = (instrument || "").toLowerCase();
+  if (/violin|viola|cello|double.?bass|contrabass|harp/.test(i)) return "Strings";
+  if (/flute|oboe|clarinet|bassoon|saxophone|piccolo|english.?horn|cor.?anglais/.test(i)) return "Woodwinds";
+  if (/french.?horn|\bhorn\b|trumpet|trombone|tuba|cornet|euphonium/.test(i)) return "Brass";
+  if (/timpani|percussion|drum|marimba|xylophone|cymbal|glockenspiel|vibraphone/.test(i)) return "Percussion";
+  return "Other";
+}
+
+const ORCH_FAMILY_ORDER = ["Strings", "Woodwinds", "Brass", "Percussion", "Other"];
+
+function makeOrchAccordion(titleHTML, startOpen = false, listMode = true, extraClass = "") {
+  const group = document.createElement("div");
+  group.className = "unified-section-group" + (extraClass ? " " + extraClass : "") + (startOpen ? " open" : "");
+
+  const header = document.createElement("div");
+  header.className = "unified-section-header";
+
+  const chevron = document.createElement("button");
+  chevron.type = "button";
+  chevron.className = "section-chevron-btn";
+  chevron.textContent = "▶";
+
+  const nameArea = document.createElement("span");
+  nameArea.className = "section-name-area";
+  nameArea.innerHTML = `<span class="section-name">${titleHTML}</span>`;
+
+  header.appendChild(chevron);
+  header.appendChild(nameArea);
+  group.appendChild(header);
+
+  const inner = document.createElement("div");
+  inner.className = (listMode ? "unified-section-inner--list" : "unified-section-inner") + (startOpen ? "" : " hidden");
+  group.appendChild(inner);
+
+  header.addEventListener("click", () => {
+    const isOpen = group.classList.toggle("open");
+    inner.classList.toggle("hidden", !isOpen);
+  });
+
+  return { group, inner };
+}
 
 // ── Chair Grid Styles (injected) ──────────────────────────────────────────────
 

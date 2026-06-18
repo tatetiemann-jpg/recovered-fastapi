@@ -2543,6 +2543,51 @@ let orchestraSections = [];
 let orchestraMembers = [];
 let orchestraSelectedOperaId = null;
 
+// ── Orchestra accordion helpers ──────────────────────────────────────────────
+
+const ORCH_FAMILY_ORDER = ["Strings", "Woodwinds", "Brass", "Percussion", "Other"];
+
+function orchFamily(instrument) {
+    const i = (instrument || "").toLowerCase();
+    if (/violin|viola|cello|double.?bass|contrabass|harp/.test(i)) return "Strings";
+    if (/flute|oboe|clarinet|bassoon|saxophone|piccolo|english.?horn|cor.?anglais/.test(i)) return "Woodwinds";
+    if (/french.?horn|\bhorn\b|trumpet|trombone|tuba|cornet|euphonium/.test(i)) return "Brass";
+    if (/timpani|percussion|drum|marimba|xylophone|cymbal|glockenspiel|vibraphone|snare|bass.?drum/.test(i)) return "Percussion";
+    return "Other";
+}
+
+function makeOrchAccordion(titleHTML, startOpen = false, listMode = true, extraClass = "") {
+    const group = document.createElement("div");
+    group.className = "unified-section-group" + (extraClass ? " " + extraClass : "") + (startOpen ? " open" : "");
+
+    const header = document.createElement("div");
+    header.className = "unified-section-header";
+
+    const chevron = document.createElement("button");
+    chevron.type = "button";
+    chevron.className = "section-chevron-btn";
+    chevron.textContent = "▶";
+
+    const nameArea = document.createElement("span");
+    nameArea.className = "section-name-area";
+    nameArea.innerHTML = `<span class="section-name">${titleHTML}</span>`;
+
+    header.appendChild(chevron);
+    header.appendChild(nameArea);
+    group.appendChild(header);
+
+    const inner = document.createElement("div");
+    inner.className = (listMode ? "unified-section-inner--list" : "unified-section-inner") + (startOpen ? "" : " hidden");
+    group.appendChild(inner);
+
+    header.addEventListener("click", () => {
+        const isOpen = group.classList.toggle("open");
+        inner.classList.toggle("hidden", !isOpen);
+    });
+
+    return { group, inner };
+}
+
 async function loadOrchestra() {
     await Promise.all([loadOrchestraSections(), loadOrchestraOperas(), loadOrchestraMembers()]);
     renderOrchestraProductionList();
@@ -2988,20 +3033,45 @@ function renderSeatingPanel(operaId, sections, seats) {
         seatsBySectionAndChair[s.section_id][s.chair_number] = s;
     });
 
-    panel.innerHTML = "";
+    // Group sections by instrument family
+    const byFamily = {};
     sections.forEach(sec => {
-        const sectionSeats = seatsBySectionAndChair[sec.id] || {};
-        const chairCount = sec.chair_count || 5;
+        const fam = orchFamily(sec.instrument);
+        if (!byFamily[fam]) byFamily[fam] = [];
+        byFamily[fam].push(sec);
+    });
 
-        const card = document.createElement("div");
-        card.className = "orchestra-section-card";
+    panel.innerHTML = "";
 
-        let chairRows = "";
-        for (let chair = 1; chair <= chairCount; chair++) {
-            const seat = sectionSeats[chair];
-            const memberName = seat?.member_name || "— Unassigned —";
-            chairRows += `
-                <div class="staff-list-row">
+    ORCH_FAMILY_ORDER.filter(fam => byFamily[fam]).forEach(fam => {
+        const { group: famGroup, inner: famInner } = makeOrchAccordion(fam, true, true, "orch-family-group");
+
+        byFamily[fam].forEach(sec => {
+            const chairCount = sec.chair_count || 5;
+            const sectionSeats = seatsBySectionAndChair[sec.id] || {};
+            const assigned = Object.keys(sectionSeats).length;
+
+            const secTitle = `${escapeHtml(sec.name)} <span class="hint" style="font-weight:400;">(${escapeHtml(sec.instrument)})</span>
+                <span class="section-count" style="margin-left:8px;">${assigned}/${chairCount}</span>`;
+            const { group: secGroup, inner: secInner } = makeOrchAccordion(secTitle, false, true);
+
+            // Section management actions row
+            const actRow = document.createElement("div");
+            actRow.style.cssText = "display:flex;gap:8px;align-items:center;padding:4px 0 8px;flex-wrap:wrap;";
+            actRow.innerHTML = `
+                <span class="hint">${chairCount} chair${chairCount !== 1 ? "s" : ""}</span>
+                <button type="button" class="subtle-btn add-chair-btn" data-id="${sec.id}">+ Chair</button>
+                <button type="button" class="subtle-btn remove-chair-btn" data-id="${sec.id}">− Chair</button>
+                <button type="button" class="subtle-btn delete-section-btn" data-id="${sec.id}">Remove section</button>
+            `;
+            secInner.appendChild(actRow);
+
+            for (let chair = 1; chair <= chairCount; chair++) {
+                const seat = sectionSeats[chair];
+                const memberName = seat?.member_name || "— Unassigned —";
+                const row = document.createElement("div");
+                row.className = "staff-list-row";
+                row.innerHTML = `
                     <span>Chair ${chair}: <em>${escapeHtml(memberName)}</em></span>
                     <button type="button" class="subtle-btn assign-seat-btn"
                         data-opera-id="${operaId}"
@@ -3012,23 +3082,14 @@ function renderSeatingPanel(operaId, sections, seats) {
                         data-current-ext-email="${escapeHtml(seat?.external_email || "")}">
                         ${(seat?.member_id || seat?.external_name) ? "Change" : "Assign"}
                     </button>
-                </div>
-            `;
-        }
+                `;
+                secInner.appendChild(row);
+            }
 
-        card.innerHTML = `
-            <div class="orchestra-section-header">
-                <h3>${escapeHtml(sec.name)} <em class="hint">(${escapeHtml(sec.instrument)})</em></h3>
-                <div class="orchestra-section-actions">
-                    <span class="hint">${chairCount} chair${chairCount !== 1 ? "s" : ""}</span>
-                    <button type="button" class="subtle-btn add-chair-btn" data-id="${sec.id}">+ Chair</button>
-                    <button type="button" class="subtle-btn remove-chair-btn" data-id="${sec.id}">− Chair</button>
-                    <button type="button" class="subtle-btn delete-section-btn" data-id="${sec.id}">Remove</button>
-                </div>
-            </div>
-            ${chairRows}
-        `;
-        panel.appendChild(card);
+            famInner.appendChild(secGroup);
+        });
+
+        panel.appendChild(famGroup);
     });
 
     panel.querySelectorAll(".assign-seat-btn").forEach(btn => {
