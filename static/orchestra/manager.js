@@ -41,6 +41,12 @@ function initTabs() {
       btn.classList.add("active");
       const panel = document.querySelector(`[data-tab-panel="${btn.dataset.tab}"]`);
       if (panel) panel.classList.add("active");
+      // Reset concerts sub-panels so the list is always visible when entering the tab
+      if (btn.dataset.tab === "concerts") {
+        document.getElementById("pieces-panel")?.classList.add("hidden");
+        document.getElementById("seating-panel")?.classList.add("hidden");
+        document.getElementById("concerts-list")?.classList.remove("hidden");
+      }
     });
   });
 }
@@ -485,6 +491,7 @@ document.getElementById("back-to-concerts-btn")?.addEventListener("click", () =>
   document.getElementById("pieces-panel").classList.add("hidden");
   document.getElementById("seating-panel").classList.add("hidden");
   document.getElementById("concerts-list").classList.remove("hidden");
+  renderConcerts();
 });
 
 document.getElementById("back-to-pieces-btn")?.addEventListener("click", () => {
