@@ -142,8 +142,50 @@ async function openAttendanceModal(rehearsalId, titleEncoded) {
   const title = decodeURIComponent(titleEncoded);
   document.getElementById("attendance-modal-title").textContent = `Attendance — ${title}`;
   openModal("attendance-modal");
-  await loadAttendance(rehearsalId);
-  await loadSubRequests(rehearsalId);
+  await Promise.all([
+    loadAbsenceRequests(rehearsalId),
+    loadAttendance(rehearsalId),
+    loadSubRequests(rehearsalId),
+  ]);
+}
+
+// ── Absence Requests ──────────────────────────────────────────────────────────
+
+async function loadAbsenceRequests(rehearsalId) {
+  const reqs = await api("GET", `/orchestra/rehearsals/${rehearsalId}/absence-requests`);
+  const section = document.getElementById("absence-requests-section");
+  const list = document.getElementById("absence-requests-list");
+  const pending = Array.isArray(reqs) ? reqs.filter(r => r.status === "pending") : [];
+  if (!pending.length) { section.style.display = "none"; return; }
+  section.style.display = "";
+  list.innerHTML = pending.map(r => `
+    <div class="card" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div>
+        <strong>${r.fullname}</strong>
+        ${r.section_name ? `<span class="hint"> — ${r.section_name}</span>` : ""}
+        ${r.reason ? `<div class="hint" style="margin-top:2px;">Reason: ${r.reason}</div>` : ""}
+        ${r.note ? `<div class="hint">Note: ${r.note}</div>` : ""}
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="subtle-btn" onclick="approveAbsence(${r.id}, ${rehearsalId})">✓ Approve</button>
+        <button class="subtle-btn" onclick="denyAbsence(${r.id}, ${rehearsalId})">✗ Deny</button>
+      </div>
+    </div>`).join("");
+}
+
+async function approveAbsence(absenceId, rehearsalId) {
+  const r = await api("POST", `/orchestra/absence-request/${absenceId}/approve`);
+  if (r.status === "success") {
+    await loadAbsenceRequests(rehearsalId);
+    await loadSubRequests(rehearsalId);
+    await loadAttendance(rehearsalId);
+  } else { alert(r.message || "Failed."); }
+}
+
+async function denyAbsence(absenceId, rehearsalId) {
+  if (!confirm("Deny this absence request?")) return;
+  await api("POST", `/orchestra/absence-request/${absenceId}/deny`);
+  loadAbsenceRequests(rehearsalId);
 }
 
 async function loadAttendance(rehearsalId) {
@@ -169,13 +211,13 @@ async function loadAttendance(rehearsalId) {
             <strong>${m.fullname}</strong>
             ${m.instrument ? `<span class="hint"> — ${m.instrument}</span>` : ""}
           </div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="subtle-btn ${m.status === 'attended' ? 'active' : ''}"
               onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'attended')">✓ Attended</button>
-            <button class="subtle-btn ${m.status === 'absent' ? 'active' : ''}"
-              onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'absent')">✗ Absent</button>
             <button class="subtle-btn ${m.status === 'excused' ? 'active' : ''}"
               onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'excused')">~ Excused</button>
+            <button class="subtle-btn ${m.status === 'absent' ? 'active' : ''}"
+              onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id}, '${m.fullname.replace(/'/g,"\\'")}')">✗ Absent</button>
           </div>
         </div>`).join("")}
     </div>`).join("");
@@ -184,6 +226,22 @@ async function loadAttendance(rehearsalId) {
 async function setAttendance(rehearsalId, memberId, status) {
   await api("POST", `/orchestra/rehearsals/${rehearsalId}/attendance`, {member_id: memberId, status});
   loadAttendance(rehearsalId);
+}
+
+async function adminMarkAbsent(rehearsalId, memberId, memberName) {
+  const reason = prompt(`Reason for ${memberName}'s absence (optional):`);
+  if (reason === null) return; // cancelled
+  await api("POST", `/orchestra/rehearsals/${rehearsalId}/attendance`,
+            {member_id: memberId, status: "absent"});
+  const r = await api("POST", "/orchestra/admin-mark-absent", {
+    rehearsal_id: rehearsalId,
+    member_id: memberId,
+    reason: reason || "Admin marked absent",
+  });
+  if (r.status === "success") {
+    await loadAttendance(rehearsalId);
+    await loadSubRequests(rehearsalId);
+  } else { alert(r.message || "Failed."); }
 }
 
 document.getElementById("att-mark-all-attended")?.addEventListener("click", async () => {
@@ -212,21 +270,28 @@ async function loadSubRequests(rehearsalId) {
   const reqs = await api("GET", `/orchestra/sub-requests/${rehearsalId}`);
   if (!Array.isArray(reqs) || !reqs.length) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<h4 style="margin-bottom:var(--space-2);">Sub Requests</h4>` +
-    reqs.map(req => `
-      <div class="card" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <div>
-          <strong>${req.section_name}</strong>
-          <span class="tag" style="margin-left:8px;">${req.status.replace("_", " ")}</span>
-          ${req.filled_by_name ? `<span class="hint"> — filled by ${req.filled_by_name}</span>` : ""}
-        </div>
-        <div style="display:flex;gap:6px;">
-          ${req.status !== "filled" && req.status !== "cancelled" ? `
-            <button class="subtle-btn" onclick="contactPreferred(${req.id})">Contact Preferred</button>
-            <button class="subtle-btn" onclick="contactAll(${req.id})">Contact All</button>
-            <button class="subtle-btn" onclick="cancelSubReq(${req.id})">Cancel</button>
-          ` : ""}
-        </div>
-      </div>`).join("");
+    reqs.map(req => {
+      const isSectionSent = req.status === "section_sent";
+      const statusLabel = req.status === "section_sent" ? "Section notified (8hr window)"
+        : req.status.replace(/_/g, " ");
+      const actionable = req.status !== "filled" && req.status !== "cancelled";
+      return `
+        <div class="card" style="padding:8px 12px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <strong>${req.section_name}</strong>
+              <span class="tag" style="margin-left:8px;">${statusLabel}</span>
+              ${req.filled_by_name ? `<span class="hint"> — filled by ${req.filled_by_name}</span>` : ""}
+              ${isSectionSent ? `<div class="hint" style="margin-top:4px;">Section members have been emailed. If no one covers within 8 hrs, the sub list will be contacted automatically.</div>` : ""}
+            </div>
+            ${actionable ? `<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;">
+              ${!isSectionSent ? `<button class="subtle-btn" onclick="contactPreferred(${req.id})">Contact Preferred</button>` : ""}
+              <button class="subtle-btn" onclick="contactAll(${req.id})">Skip to All Subs</button>
+              <button class="subtle-btn" onclick="cancelSubReq(${req.id})">Cancel</button>
+            </div>` : ""}
+          </div>
+        </div>`;
+    }).join("");
 }
 
 async function contactPreferred(reqId) {
@@ -235,6 +300,7 @@ async function contactPreferred(reqId) {
   loadSubRequests(CURRENT_REHEARSAL_ID);
 }
 async function contactAll(reqId) {
+  if (!confirm("This will email all subs on the list immediately, bypassing any remaining section wait time. Continue?")) return;
   const r = await api("POST", `/orchestra/sub-request/${reqId}/contact-all`);
   alert(r.status === "success" ? `Contacted ${r.sent} sub(s).` : r.message || "Failed.");
   loadSubRequests(CURRENT_REHEARSAL_ID);

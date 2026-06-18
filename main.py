@@ -422,6 +422,34 @@ async def lifespan(app: FastAPI):
                 )
             """)
             cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS part_label TEXT;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_absence_requests (
+                    id           SERIAL PRIMARY KEY,
+                    rehearsal_id INTEGER NOT NULL REFERENCES rehearsals(id) ON DELETE CASCADE,
+                    member_id    INTEGER NOT NULL REFERENCES orchestra_members(id) ON DELETE CASCADE,
+                    reason       TEXT,
+                    note         TEXT,
+                    status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    reviewed_at  TIMESTAMPTZ,
+                    reviewed_by  INTEGER REFERENCES users(id),
+                    UNIQUE(rehearsal_id, member_id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_section_coverage_contacts (
+                    id                  SERIAL PRIMARY KEY,
+                    absence_request_id  INTEGER NOT NULL REFERENCES orchestra_absence_requests(id) ON DELETE CASCADE,
+                    member_id           INTEGER NOT NULL REFERENCES orchestra_members(id) ON DELETE CASCADE,
+                    token               TEXT UNIQUE NOT NULL,
+                    contacted_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    response            VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    responded_at        TIMESTAMPTZ,
+                    UNIQUE(absence_request_id, member_id)
+                )
+            """)
+            cur.execute("ALTER TABLE orchestra_sub_requests ADD COLUMN IF NOT EXISTS section_contacted_at TIMESTAMPTZ;")
+            cur.execute("ALTER TABLE orchestra_sub_requests ADD COLUMN IF NOT EXISTS absence_request_id INTEGER REFERENCES orchestra_absence_requests(id);")
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -11825,17 +11853,37 @@ def orchestra_get_sub_requests(rehearsal_id: int, request: Request):
         cur.execute("""
             SELECT osr.id, osr.section_id, os2.name, osr.status,
                    osr.preferred_sent_at, osr.all_sent_at,
+                   s2.fullname AS filled_by, osr.section_contacted_at, osr.absence_request_id
+            FROM orchestra_sub_requests osr
+            JOIN orchestra_sections os2 ON os2.id = osr.section_id
+            LEFT JOIN orchestra_subs s2 ON s2.id = osr.filled_by_sub_id
+            WHERE osr.rehearsal_id=%s
+        """, (rehearsal_id,))
+        rows = cur.fetchall()
+
+    # Passive 8-hour escalation check for section_sent requests
+    for r in rows:
+        if r[3] == "section_sent" and r[7] and r[8]:
+            _check_section_escalation(r[0], rehearsal_id, r[1], r[8])
+
+    # Re-fetch after possible escalation
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT osr.id, osr.section_id, os2.name, osr.status,
+                   osr.preferred_sent_at, osr.all_sent_at,
                    s2.fullname AS filled_by
             FROM orchestra_sub_requests osr
             JOIN orchestra_sections os2 ON os2.id = osr.section_id
             LEFT JOIN orchestra_subs s2 ON s2.id = osr.filled_by_sub_id
             WHERE osr.rehearsal_id=%s
         """, (rehearsal_id,))
-        return [{"id": r[0], "section_id": r[1], "section_name": r[2], "status": r[3],
-                 "preferred_sent_at": str(r[4]) if r[4] else None,
-                 "all_sent_at": str(r[5]) if r[5] else None,
-                 "filled_by_name": r[6]}
-                for r in cur.fetchall()]
+        rows = cur.fetchall()
+
+    return [{"id": r[0], "section_id": r[1], "section_name": r[2], "status": r[3],
+             "preferred_sent_at": str(r[4]) if r[4] else None,
+             "all_sent_at": str(r[5]) if r[5] else None,
+             "filled_by_name": r[6]}
+            for r in rows]
 
 
 @app.post("/orchestra/sub-request/{req_id}/contact-preferred")
@@ -11925,3 +11973,429 @@ def orchestra_get_invitations(request: Request):
         """, (user["org_id"],))
         return [{"email": r[0], "role": r[1], "expires_at": str(r[2]), "fullname": r[3] or ""}
                 for r in cur.fetchall()]
+
+
+# ========================================================
+# ORCHESTRA ABSENCE + SECTION COVERAGE
+# ========================================================
+
+def _trigger_section_coverage(absence_request_id: int, rehearsal_id: int, absent_member_id: int):
+    """
+    Email all other active members in the absent member's section.
+    Creates an orchestra_sub_request linked to the absence with status='section_sent'.
+    After 8 hrs or all decline, the caller of coverage-response auto-escalates to preferred subs.
+    """
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.section_id, om.fullname, os2.name AS section_name,
+                   r.start_time, r.location, r.notes, o.name AS org_name, o.id AS org_id
+            FROM orchestra_members om
+            LEFT JOIN orchestra_sections os2 ON os2.id = om.section_id
+            JOIN rehearsals r ON r.id = %s
+            JOIN organizations o ON o.id = r.org_id
+            WHERE om.id = %s
+        """, (rehearsal_id, absent_member_id))
+        row = cur.fetchone()
+    if not row:
+        return
+    section_id, absent_name, section_name, start_time, location, notes, org_name, org_id = row
+    if not section_id:
+        # No section — skip straight to subs
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                INSERT INTO orchestra_sub_requests (rehearsal_id, section_id, created_by, status, absence_request_id)
+                VALUES (%s, %s, %s, 'pending', %s) RETURNING id
+            """, (rehearsal_id, section_id, absent_member_id, absence_request_id))
+        return
+
+    # Get other members in this section who have email
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, fullname, email FROM orchestra_members
+            WHERE section_id=%s AND active=true AND email IS NOT NULL AND id != %s
+        """, (section_id, absent_member_id))
+        section_members = [{"id": r[0], "fullname": r[1], "email": r[2]} for r in cur.fetchall()]
+
+    # Upsert a sub request linked to this absence, in 'section_sent' status
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT id FROM orchestra_sub_requests
+            WHERE rehearsal_id=%s AND section_id=%s AND status NOT IN ('filled','cancelled')
+        """, (rehearsal_id, section_id))
+        existing = cur.fetchone()
+        if existing:
+            req_id = existing[0]
+            cur.execute("""
+                UPDATE orchestra_sub_requests
+                SET status='section_sent', section_contacted_at=NOW(), absence_request_id=%s
+                WHERE id=%s
+            """, (absence_request_id, req_id))
+        else:
+            cur.execute("""
+                INSERT INTO orchestra_sub_requests
+                    (rehearsal_id, section_id, created_by, status, section_contacted_at, absence_request_id)
+                VALUES (%s, %s, %s, 'section_sent', NOW(), %s) RETURNING id
+            """, (rehearsal_id, section_id, absent_member_id, absence_request_id))
+            req_id = cur.fetchone()[0]
+
+    if not section_members:
+        # No section mates with email — go straight to preferred subs
+        _advance_preferred_orch_sub(req_id, rehearsal_id, section_id)
+        return
+
+    rdate = start_time.strftime("%A, %B %-d") if hasattr(start_time, "strftime") else str(start_time)
+    rtime = start_time.strftime("%H:%M") if hasattr(start_time, "strftime") else ""
+
+    for m in section_members:
+        token = secrets.token_urlsafe(32)
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                INSERT INTO orchestra_section_coverage_contacts
+                    (absence_request_id, member_id, token)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (absence_request_id, member_id) DO NOTHING
+            """, (absence_request_id, m["id"], token))
+            if cur.rowcount == 0:
+                continue
+
+        accept_url = f"{APP_URL}/orchestra/coverage-response/{token}?r=accepted"
+        decline_url = f"{APP_URL}/orchestra/coverage-response/{token}?r=declined"
+        html = f"""
+            <p>Hi {m['fullname']},</p>
+            <p><strong>{absent_name}</strong> is unable to attend the
+            <strong>{org_name}</strong> {section_name} rehearsal:</p>
+            <p><strong>Date:</strong> {rdate} at {rtime}</p>
+            {f"<p><strong>Location:</strong> {location}</p>" if location else ""}
+            {f"<p><strong>Notes:</strong> {notes}</p>" if notes else ""}
+            <p>Are you able to cover their part?</p>
+            <p style='margin-top:16px;'>
+              <a href='{accept_url}' style='background:#4caf50;color:#fff;padding:10px 20px;
+                 border-radius:4px;text-decoration:none;margin-right:8px;'>✓ Yes, I can cover</a>
+              <a href='{decline_url}' style='background:#e53935;color:#fff;padding:10px 20px;
+                 border-radius:4px;text-decoration:none;'>✗ Not available</a>
+            </p>
+        """
+        text = (f"Hi {m['fullname']},\n\n{absent_name} can't make the {section_name} rehearsal "
+                f"on {rdate} at {rtime}.\nCan you cover?\n\nYes: {accept_url}\nNo: {decline_url}")
+        send_email(m["email"], f"Coverage needed — {section_name} | {org_name}", html, text)
+
+
+def _check_section_escalation(req_id: int, rehearsal_id: int, section_id: int, absence_request_id: int):
+    """Check if section coverage has stalled — escalate to preferred subs if so."""
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT section_contacted_at, status FROM orchestra_sub_requests WHERE id=%s
+        """, (req_id,))
+        row = cur.fetchone()
+    if not row or row[1] not in ('section_sent',):
+        return
+    section_contacted_at, _ = row
+
+    # Check if 8 hours have passed
+    from datetime import timezone
+    now_utc = datetime.now(timezone.utc)
+    contacted = section_contacted_at
+    if not hasattr(contacted, 'tzinfo') or contacted.tzinfo is None:
+        contacted = contacted.replace(tzinfo=timezone.utc)
+    elapsed_hours = (now_utc - contacted).total_seconds() / 3600
+
+    if elapsed_hours >= 8:
+        _advance_preferred_orch_sub(req_id, rehearsal_id, section_id)
+        return
+
+    # Check if all section members have declined
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE response='pending'),
+                   COUNT(*) FILTER (WHERE response='declined')
+            FROM orchestra_section_coverage_contacts
+            WHERE absence_request_id=%s
+        """, (absence_request_id,))
+        pending, declined = cur.fetchone()
+    if pending == 0 and declined > 0:
+        # Everyone said no → escalate
+        _advance_preferred_orch_sub(req_id, rehearsal_id, section_id)
+
+
+# ── Coverage response (section member one-click) --------------------------
+
+@app.get("/orchestra/coverage-response/{token}", response_class=HTMLResponse)
+def orchestra_coverage_response(token: str, r: str = ""):
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT oscc.id, oscc.member_id, oscc.absence_request_id, oscc.response,
+                   om.fullname,
+                   oar.rehearsal_id, oar.member_id AS absent_member_id
+            FROM orchestra_section_coverage_contacts oscc
+            JOIN orchestra_members om ON om.id = oscc.member_id
+            JOIN orchestra_absence_requests oar ON oar.id = oscc.absence_request_id
+            WHERE oscc.token = %s
+        """, (token,))
+        row = cur.fetchone()
+    if not row:
+        return HTMLResponse("<p>Link not found or expired.</p>", status_code=404)
+    contact_id, member_id, absence_req_id, existing_resp, fullname, rehearsal_id, absent_mid = row
+
+    if r not in ("accepted", "declined"):
+        return HTMLResponse(f"<p>Hi {fullname}! Use the link in your email to respond.</p>")
+    if existing_resp != "pending":
+        return HTMLResponse(f"<p>You already responded ({existing_resp}). Thanks!</p>")
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE orchestra_section_coverage_contacts
+            SET response=%s, responded_at=NOW() WHERE id=%s
+        """, (r, contact_id))
+
+    if r == "accepted":
+        # Mark sub request as filled via internal coverage
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                UPDATE orchestra_sub_requests SET status='filled'
+                WHERE absence_request_id=%s AND status NOT IN ('filled','cancelled')
+            """, (absence_req_id,))
+            # Decline all other pending coverage contacts
+            cur.execute("""
+                UPDATE orchestra_section_coverage_contacts
+                SET response='declined', responded_at=NOW()
+                WHERE absence_request_id=%s AND id != %s AND response='pending'
+            """, (absence_req_id, contact_id))
+        return HTMLResponse(f"<p>Thanks, {fullname}! Your coverage has been recorded. The admin has been notified.</p>")
+    else:
+        # Declined — check if we need to escalate
+        with db_cursor() as cur:
+            cur.execute("""
+                SELECT osr.id, osr.section_id, osr.status
+                FROM orchestra_sub_requests osr
+                WHERE osr.absence_request_id=%s AND osr.status NOT IN ('filled','cancelled')
+                LIMIT 1
+            """, (absence_req_id,))
+            sr = cur.fetchone()
+        if sr:
+            _check_section_escalation(sr[0], rehearsal_id, sr[1], absence_req_id)
+        return HTMLResponse(f"<p>Thanks, {fullname}. We'll continue looking for coverage.</p>")
+
+
+# ── Member: submit absence request (standalone orchestra org) -------------
+
+def _require_orchestra_member_account(request: Request):
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    if user.get("org_type") != "orchestra" or user.get("role") != "orchestra_member":
+        raise HTTPException(status_code=403)
+    return user
+
+
+@app.post("/orchestra/member-absence-request")
+def orchestra_member_submit_absence(payload: dict, request: Request):
+    user = _require_orchestra_member_account(request)
+    rehearsal_id = payload.get("rehearsal_id")
+    reason = (payload.get("reason") or "").strip()
+    note = (payload.get("note") or "").strip() or None
+    if not rehearsal_id or not reason:
+        return {"status": "fail", "message": "rehearsal_id and reason required"}
+
+    # Find this user's orchestra_members row
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, section_id, fullname FROM orchestra_members
+            WHERE org_id=%s AND (user_id=%s OR email=%s) AND active=true LIMIT 1
+        """, (user["org_id"], user["id"], user.get("email", "")))
+        member_row = cur.fetchone()
+
+    if not member_row:
+        return {"status": "fail", "message": "Your roster entry was not found. Contact your orchestra manager."}
+    member_id, _, member_name = member_row
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO orchestra_absence_requests (rehearsal_id, member_id, reason, note, status)
+            VALUES (%s, %s, %s, %s, 'pending')
+            ON CONFLICT (rehearsal_id, member_id) DO UPDATE
+                SET reason=EXCLUDED.reason, note=EXCLUDED.note, status='pending'
+            RETURNING id
+        """, (rehearsal_id, member_id, reason, note))
+        new_id = cur.fetchone()[0]
+
+    # Notify admins
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT u.email, r.start_time FROM rehearsals r
+            JOIN organizations o ON o.id = r.org_id
+            JOIN users u ON u.org_id = o.id AND u.role IN ('head_admin','orchestra_admin')
+            WHERE r.id=%s AND o.id=%s AND u.email IS NOT NULL
+        """, (rehearsal_id, user["org_id"]))
+        admin_rows = cur.fetchall()
+
+    if admin_rows:
+        start_time = admin_rows[0][1]
+        rdate = start_time.strftime("%A, %B %-d") if hasattr(start_time, "strftime") else str(start_time)
+        for admin_email, _ in admin_rows:
+            html = (f"<p><strong>{member_name}</strong> has requested an absence for the rehearsal "
+                    f"on <strong>{rdate}</strong>.</p>"
+                    f"<p><strong>Reason:</strong> {reason}</p>"
+                    + (f"<p><strong>Note:</strong> {note}</p>" if note else "")
+                    + f"<p>Approve or deny from the rehearsal attendance panel.</p>")
+            text = f"{member_name} has requested absence for {rdate}.\nReason: {reason}"
+            send_email(admin_email, f"Absence request — {member_name}", html, text)
+
+    return {"status": "success", "absence_request_id": new_id}
+
+
+@app.delete("/orchestra/member-absence-request/{rehearsal_id}")
+def orchestra_member_cancel_absence(rehearsal_id: int, request: Request):
+    user = _require_orchestra_member_account(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.id FROM orchestra_members om
+            WHERE om.org_id=%s AND (om.user_id=%s OR om.email=%s) AND om.active=true LIMIT 1
+        """, (user["org_id"], user["id"], user.get("email", "")))
+        row = cur.fetchone()
+    if not row:
+        return {"status": "fail"}
+    member_id = row[0]
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            DELETE FROM orchestra_absence_requests WHERE rehearsal_id=%s AND member_id=%s
+        """, (rehearsal_id, member_id))
+    return {"status": "success"}
+
+
+@app.get("/orchestra/member-absence-requests")
+def orchestra_member_get_absences(request: Request):
+    user = _require_orchestra_member_account(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.id FROM orchestra_members om
+            WHERE om.org_id=%s AND (om.user_id=%s OR om.email=%s) AND om.active=true LIMIT 1
+        """, (user["org_id"], user["id"], user.get("email", "")))
+        row = cur.fetchone()
+    if not row:
+        return []
+    member_id = row[0]
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT rehearsal_id, status FROM orchestra_absence_requests WHERE member_id=%s
+        """, (member_id,))
+        return [{"rehearsal_id": r[0], "status": r[1]} for r in cur.fetchall()]
+
+
+# ── Admin: view + approve/deny + direct-mark absence ----------------------
+
+@app.get("/orchestra/rehearsals/{rehearsal_id}/absence-requests")
+def orchestra_get_absence_requests(rehearsal_id: int, request: Request):
+    require_orchestra_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT oar.id, oar.member_id, om.fullname, om.section_id, os2.name,
+                   oar.reason, oar.note, oar.status, oar.created_at
+            FROM orchestra_absence_requests oar
+            JOIN orchestra_members om ON om.id = oar.member_id
+            LEFT JOIN orchestra_sections os2 ON os2.id = om.section_id
+            WHERE oar.rehearsal_id=%s
+            ORDER BY oar.created_at
+        """, (rehearsal_id,))
+        return [{"id": r[0], "member_id": r[1], "fullname": r[2],
+                 "section_id": r[3], "section_name": r[4] or "",
+                 "reason": r[5] or "", "note": r[6] or "",
+                 "status": r[7], "created_at": str(r[8])}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/absence-request/{absence_id}/approve")
+def orchestra_approve_absence(absence_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE orchestra_absence_requests
+            SET status='approved', reviewed_at=NOW(), reviewed_by=%s
+            WHERE id=%s RETURNING rehearsal_id, member_id
+        """, (user["id"], absence_id))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404)
+    rehearsal_id, member_id = row
+
+    # Notify member if they have an account email
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.fullname, u.email, r.start_time
+            FROM orchestra_members om
+            LEFT JOIN users u ON u.id = om.user_id
+            JOIN rehearsals r ON r.id=%s
+            WHERE om.id=%s
+        """, (rehearsal_id, member_id))
+        mrow = cur.fetchone()
+    if mrow and mrow[1]:
+        rdate = mrow[2].strftime("%A, %B %-d") if hasattr(mrow[2], "strftime") else str(mrow[2])
+        send_email(mrow[1], f"Absence approved — {rdate}",
+                   f"<p>Hi {mrow[0]},</p><p>Your absence for the rehearsal on {rdate} has been approved.</p>",
+                   f"Hi {mrow[0]},\n\nYour absence for {rdate} has been approved.")
+
+    _trigger_section_coverage(absence_id, rehearsal_id, member_id)
+    return {"status": "success"}
+
+
+@app.post("/orchestra/absence-request/{absence_id}/deny")
+def orchestra_deny_absence(absence_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT rehearsal_id, member_id FROM orchestra_absence_requests WHERE id=%s
+        """, (absence_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404)
+    rehearsal_id, member_id = row
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM orchestra_absence_requests WHERE id=%s", (absence_id,))
+
+    # Notify member if they have an account
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.fullname, u.email, r.start_time
+            FROM orchestra_members om LEFT JOIN users u ON u.id=om.user_id
+            JOIN rehearsals r ON r.id=%s WHERE om.id=%s
+        """, (rehearsal_id, member_id))
+        mrow = cur.fetchone()
+    if mrow and mrow[1]:
+        rdate = mrow[2].strftime("%A, %B %-d") if hasattr(mrow[2], "strftime") else str(mrow[2])
+        send_email(mrow[1], f"Absence not approved — {rdate}",
+                   f"<p>Hi {mrow[0]},</p><p>Your absence request for {rdate} was not approved. "
+                   f"Please contact your manager if you have questions.</p>",
+                   f"Hi {mrow[0]},\n\nYour absence for {rdate} was not approved.")
+    return {"status": "success"}
+
+
+@app.post("/orchestra/admin-mark-absent")
+def orchestra_admin_mark_absent(payload: dict, request: Request):
+    """Admin directly marks a member absent — triggers section coverage immediately."""
+    user = require_orchestra_admin(request)
+    rehearsal_id = payload.get("rehearsal_id")
+    member_id = payload.get("member_id")
+    reason = (payload.get("reason") or "Admin marked absent").strip()
+    if not rehearsal_id or not member_id:
+        return {"status": "fail", "message": "rehearsal_id and member_id required"}
+
+    # Record attendance as absent
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO orchestra_attendance (rehearsal_id, member_id, status, notes)
+            VALUES (%s,%s,'absent',%s)
+            ON CONFLICT (rehearsal_id, member_id) DO UPDATE SET status='absent', notes=EXCLUDED.notes
+        """, (rehearsal_id, member_id, reason))
+        # Upsert an approved absence request so coverage tracking exists
+        cur.execute("""
+            INSERT INTO orchestra_absence_requests
+                (rehearsal_id, member_id, reason, status, reviewed_at, reviewed_by)
+            VALUES (%s, %s, %s, 'approved', NOW(), %s)
+            ON CONFLICT (rehearsal_id, member_id) DO UPDATE
+                SET status='approved', reviewed_at=NOW(), reviewed_by=EXCLUDED.reviewed_by
+            RETURNING id
+        """, (rehearsal_id, member_id, reason, user["id"]))
+        absence_id = cur.fetchone()[0]
+
+    _trigger_section_coverage(absence_id, rehearsal_id, member_id)
+    return {"status": "success"}
