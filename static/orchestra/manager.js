@@ -25,7 +25,7 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, {month:"short", day:"numeric", year:"numeric"});
 }
 async function api(method, path, body) {
-  const opts = {method, headers:{"Content-Type":"application/json"}};
+  const opts = {method, credentials: "include", headers:{"Content-Type":"application/json"}};
   if (body !== undefined) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
   return r.json().catch(() => ({}));
@@ -1120,10 +1120,6 @@ async function init() {
 
   initTabs();
   initMessages();
-
-  // Load welcome name
-  const me = await fetch("/me").then(r => r.json()).catch(() => ({}));
-  if (me.fullname) document.getElementById("welcome").textContent = `Welcome, ${me.fullname}`;
 
   await loadSections();
   await Promise.all([loadRehearsals(), loadConcerts(), loadMembers()]);
