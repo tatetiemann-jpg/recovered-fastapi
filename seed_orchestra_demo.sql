@@ -195,7 +195,7 @@ RETURNING id INTO r2;
 
 INSERT INTO rehearsals (org_id,start_time,end_time,location,notes,rehearsal_type,attendance_type,opera_id)
 VALUES (oid,'2026-06-03 19:00','2026-06-03 20:30','Rehearsal Hall B',
-        'Strings sectional — Rachmaninoff passages','orchestra','sectional',c2)
+        'Strings sectional — Rachmaninoff passages','orchestra','full',c2)
 RETURNING id INTO r3;
 
 INSERT INTO rehearsals (org_id,start_time,end_time,location,notes,rehearsal_type,attendance_type,opera_id)
