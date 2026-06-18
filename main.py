@@ -320,6 +320,108 @@ async def lifespan(app: FastAPI):
             cur.execute("ALTER TABLE opera_staff ALTER COLUMN teacher_id DROP NOT NULL;")
             cur.execute("ALTER TABLE opera_staff ADD COLUMN IF NOT EXISTS external_name TEXT;")
             cur.execute("ALTER TABLE opera_staff ADD COLUMN IF NOT EXISTS external_email TEXT;")
+
+            # ── Orchestra Manager tables ─────────────────────────────────────────
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_members (
+                    id           SERIAL PRIMARY KEY,
+                    org_id       INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                    fullname     TEXT NOT NULL,
+                    email        TEXT,
+                    phone        TEXT,
+                    instrument   TEXT,
+                    section_family TEXT,
+                    section_id   INTEGER REFERENCES orchestra_sections(id),
+                    user_id      INTEGER REFERENCES users(id),
+                    notes        TEXT,
+                    active       BOOLEAN NOT NULL DEFAULT true,
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS concert_pieces (
+                    id           SERIAL PRIMARY KEY,
+                    opera_id     INTEGER NOT NULL REFERENCES operas(id) ON DELETE CASCADE,
+                    title        TEXT NOT NULL,
+                    composer     TEXT,
+                    opus         TEXT,
+                    duration_min INTEGER,
+                    sort_order   INTEGER NOT NULL DEFAULT 0,
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS piece_seats (
+                    id           SERIAL PRIMARY KEY,
+                    piece_id     INTEGER NOT NULL REFERENCES concert_pieces(id) ON DELETE CASCADE,
+                    section_id   INTEGER NOT NULL REFERENCES orchestra_sections(id) ON DELETE CASCADE,
+                    chair_number INTEGER NOT NULL,
+                    part_number  INTEGER NOT NULL DEFAULT 1,
+                    member_id    INTEGER REFERENCES orchestra_members(id),
+                    external_name  TEXT,
+                    external_email TEXT,
+                    UNIQUE(piece_id, section_id, chair_number, part_number)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_attendance (
+                    id           SERIAL PRIMARY KEY,
+                    rehearsal_id INTEGER NOT NULL REFERENCES rehearsals(id) ON DELETE CASCADE,
+                    member_id    INTEGER NOT NULL REFERENCES orchestra_members(id) ON DELETE CASCADE,
+                    status       TEXT NOT NULL DEFAULT 'attended',
+                    notes        TEXT,
+                    UNIQUE(rehearsal_id, member_id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_subs (
+                    id           SERIAL PRIMARY KEY,
+                    org_id       INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                    section_id   INTEGER NOT NULL REFERENCES orchestra_sections(id) ON DELETE CASCADE,
+                    fullname     TEXT NOT NULL,
+                    email        TEXT NOT NULL,
+                    phone        TEXT,
+                    is_preferred BOOLEAN NOT NULL DEFAULT false,
+                    preferred_rank INTEGER,
+                    notes        TEXT,
+                    active       BOOLEAN NOT NULL DEFAULT true,
+                    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_sub_requests (
+                    id               SERIAL PRIMARY KEY,
+                    rehearsal_id     INTEGER NOT NULL REFERENCES rehearsals(id) ON DELETE CASCADE,
+                    section_id       INTEGER NOT NULL REFERENCES orchestra_sections(id) ON DELETE CASCADE,
+                    created_by       INTEGER NOT NULL REFERENCES users(id),
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    preferred_sent_at TIMESTAMPTZ,
+                    all_sent_at      TIMESTAMPTZ,
+                    status           TEXT NOT NULL DEFAULT 'open',
+                    filled_by_sub_id INTEGER REFERENCES orchestra_subs(id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_sub_contacts (
+                    id             SERIAL PRIMARY KEY,
+                    sub_request_id INTEGER NOT NULL REFERENCES orchestra_sub_requests(id) ON DELETE CASCADE,
+                    sub_id         INTEGER NOT NULL REFERENCES orchestra_subs(id) ON DELETE CASCADE,
+                    tier           TEXT NOT NULL,
+                    contacted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    response       TEXT NOT NULL DEFAULT 'pending',
+                    responded_at   TIMESTAMPTZ,
+                    token          TEXT NOT NULL UNIQUE,
+                    UNIQUE(sub_request_id, sub_id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS orchestra_rehearsal_sections (
+                    rehearsal_id INTEGER NOT NULL REFERENCES rehearsals(id) ON DELETE CASCADE,
+                    section_id   INTEGER NOT NULL REFERENCES orchestra_sections(id) ON DELETE CASCADE,
+                    PRIMARY KEY (rehearsal_id, section_id)
+                )
+            """)
+            cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS part_label TEXT;")
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -10939,3 +11041,887 @@ def studio_teacher_email_today(payload: dict, request: Request):
         sent_count += 1
 
     return {"status": "success", "sent": sent_count}
+
+
+# ========================================================
+# ORCHESTRA MANAGER
+# ========================================================
+
+def require_orchestra_admin(request: Request):
+    user = require_user(request, role="admin")
+    if user.get("org_type") != "orchestra":
+        raise HTTPException(status_code=403, detail="Orchestra org required")
+    return user
+
+def require_orchestra_user(request: Request):
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    if user.get("org_type") != "orchestra":
+        raise HTTPException(status_code=403, detail="Orchestra org required")
+    return user
+
+# -- Page -----------------------------------------------------------------
+
+@app.get("/orchestra/manager", response_class=HTMLResponse)
+def orchestra_manager_page(request: Request):
+    return templates.TemplateResponse(request, "orchestra/manager.html")
+
+@app.get("/orchestra/sub-response/{token}", response_class=HTMLResponse)
+def orchestra_sub_response_page(token: str, r: str = ""):
+    """One-click accept/decline page for orchestra subs."""
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT osc.id, osc.sub_id, osc.sub_request_id, osc.response,
+                   os2.fullname, osr.rehearsal_id, osr.section_id, osr.status
+            FROM orchestra_sub_contacts osc
+            JOIN orchestra_subs os2 ON os2.id = osc.sub_id
+            JOIN orchestra_sub_requests osr ON osr.id = osc.sub_request_id
+            WHERE osc.token = %s
+        """, (token,))
+        row = cur.fetchone()
+        if not row:
+            return HTMLResponse("<p>Link not found or expired.</p>", status_code=404)
+        sc_id, sub_id, req_id, existing_response, fullname, rehearsal_id, section_id, req_status = row
+
+        if r not in ("accepted", "declined"):
+            return HTMLResponse(f"<p>Hi {fullname}! Use the link in your email to accept or decline.</p>")
+
+        if existing_response != "pending":
+            return HTMLResponse(f"<p>You already {existing_response} this request. Thanks!</p>")
+
+        cur.execute("UPDATE orchestra_sub_contacts SET response=%s, responded_at=NOW() WHERE id=%s", (r, sc_id))
+        if r == "accepted":
+            cur.execute("""
+                UPDATE orchestra_sub_requests SET status='filled', filled_by_sub_id=%s WHERE id=%s
+            """, (sub_id, req_id))
+            cur.execute("""
+                UPDATE orchestra_sub_contacts SET response='declined', responded_at=NOW()
+                WHERE sub_request_id=%s AND id != %s AND response='pending'
+            """, (req_id, sc_id))
+
+    verb = "accepted" if r == "accepted" else "declined"
+    return HTMLResponse(f"<p>Thanks, {fullname}! You've {verb} the sub request.</p>")
+
+
+# -- Orchestra Sections (read-only for manager) ---------------------------
+
+@app.get("/orchestra/sections")
+def orchestra_get_sections(request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, name, instrument, chair_count
+            FROM orchestra_sections WHERE org_id=%s ORDER BY name
+        """, (user["org_id"],))
+        return [{"id": r[0], "name": r[1], "instrument": r[2], "chair_count": r[3] or 5}
+                for r in cur.fetchall()]
+
+
+# -- Members --------------------------------------------------------------
+
+@app.get("/orchestra/members")
+def orchestra_get_members(request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.id, om.fullname, om.email, om.phone, om.instrument,
+                   om.section_family, om.section_id, os2.name AS section_name,
+                   om.user_id, om.notes, om.part_label
+            FROM orchestra_members om
+            LEFT JOIN orchestra_sections os2 ON os2.id = om.section_id
+            WHERE om.org_id=%s AND om.active=true
+            ORDER BY om.section_family, om.fullname
+        """, (user["org_id"],))
+        return [{"id": r[0], "fullname": r[1], "email": r[2] or "", "phone": r[3] or "",
+                 "instrument": r[4] or "", "section_family": r[5] or "other",
+                 "section_id": r[6], "section_name": r[7] or "",
+                 "user_id": r[8], "notes": r[9] or "", "part_label": r[10] or ""}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/members")
+def orchestra_add_member(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fullname = (payload.get("fullname") or "").strip()
+    if not fullname:
+        return {"status": "fail", "message": "Name required"}
+    email = (payload.get("email") or "").strip().lower() or None
+    phone = (payload.get("phone") or "").strip() or None
+    instrument = (payload.get("instrument") or "").strip() or None
+    section_family = (payload.get("section_family") or "other").strip()
+    section_id = payload.get("section_id")
+    notes = (payload.get("notes") or "").strip() or None
+    part_label = (payload.get("part_label") or "").strip() or None
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO orchestra_members (org_id, fullname, email, phone, instrument,
+                section_family, section_id, notes, part_label)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (user["org_id"], fullname, email, phone, instrument,
+              section_family, section_id, notes, part_label))
+        new_id = cur.fetchone()[0]
+    return {"status": "success", "id": new_id}
+
+
+@app.patch("/orchestra/members/{member_id}")
+def orchestra_update_member(member_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fields, vals = [], []
+    for col in ("fullname", "email", "phone", "instrument", "section_family", "notes", "part_label"):
+        if col in payload:
+            fields.append(f"{col}=%s")
+            vals.append((payload[col] or "").strip() or None)
+    if "section_id" in payload:
+        fields.append("section_id=%s")
+        vals.append(payload["section_id"])
+    if "active" in payload:
+        fields.append("active=%s")
+        vals.append(bool(payload["active"]))
+    if not fields:
+        return {"status": "ok"}
+    vals += [member_id, user["org_id"]]
+    with db_cursor(commit=True) as cur:
+        cur.execute(f"UPDATE orchestra_members SET {', '.join(fields)} WHERE id=%s AND org_id=%s", vals)
+    return {"status": "success"}
+
+
+@app.delete("/orchestra/members/{member_id}")
+def orchestra_delete_member(member_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE orchestra_members SET active=false WHERE id=%s AND org_id=%s",
+                    (member_id, user["org_id"]))
+    return {"status": "success"}
+
+
+# -- Concerts (reuse operas table) ----------------------------------------
+
+@app.get("/orchestra/concerts")
+def orchestra_get_concerts(request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, opera_name, start_date, end_date
+            FROM operas WHERE org_id=%s ORDER BY start_date DESC NULLS LAST, id DESC
+        """, (user["org_id"],))
+        return [{"id": r[0], "title": r[1], "start_date": str(r[2]) if r[2] else None,
+                 "end_date": str(r[3]) if r[3] else None}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/concerts")
+def orchestra_create_concert(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return {"status": "fail", "message": "Title required"}
+    start_date = payload.get("start_date") or None
+    end_date = payload.get("end_date") or None
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO operas (org_id, opera_name, start_date, end_date)
+            VALUES (%s,%s,%s,%s) RETURNING id
+        """, (user["org_id"], title, start_date, end_date))
+        new_id = cur.fetchone()[0]
+    return {"status": "success", "id": new_id}
+
+
+@app.patch("/orchestra/concerts/{concert_id}")
+def orchestra_update_concert(concert_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fields, vals = [], []
+    if "title" in payload:
+        fields.append("opera_name=%s")
+        vals.append((payload["title"] or "").strip())
+    if "start_date" in payload:
+        fields.append("start_date=%s")
+        vals.append(payload["start_date"] or None)
+    if "end_date" in payload:
+        fields.append("end_date=%s")
+        vals.append(payload["end_date"] or None)
+    if not fields:
+        return {"status": "ok"}
+    vals += [concert_id, user["org_id"]]
+    with db_cursor(commit=True) as cur:
+        cur.execute(f"UPDATE operas SET {', '.join(fields)} WHERE id=%s AND org_id=%s", vals)
+    return {"status": "success"}
+
+
+@app.delete("/orchestra/concerts/{concert_id}")
+def orchestra_delete_concert(concert_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM operas WHERE id=%s AND org_id=%s", (concert_id, user["org_id"]))
+    return {"status": "success"}
+
+
+# -- Concert Pieces -------------------------------------------------------
+
+@app.get("/orchestra/concerts/{concert_id}/pieces")
+def orchestra_get_pieces(concert_id: int, request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (concert_id, user["org_id"]))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404)
+        cur.execute("""
+            SELECT id, title, composer, opus, duration_min, sort_order
+            FROM concert_pieces WHERE opera_id=%s ORDER BY sort_order, id
+        """, (concert_id,))
+        return [{"id": r[0], "title": r[1], "composer": r[2] or "", "opus": r[3] or "",
+                 "duration_min": r[4], "sort_order": r[5]}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/concerts/{concert_id}/pieces")
+def orchestra_add_piece(concert_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return {"status": "fail", "message": "Title required"}
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (concert_id, user["org_id"]))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Concert not found"}
+        cur.execute("""
+            SELECT COALESCE(MAX(sort_order),0)+1 FROM concert_pieces WHERE opera_id=%s
+        """, (concert_id,))
+        sort_order = cur.fetchone()[0]
+        cur.execute("""
+            INSERT INTO concert_pieces (opera_id, title, composer, opus, duration_min, sort_order)
+            VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (concert_id, title,
+              (payload.get("composer") or "").strip() or None,
+              (payload.get("opus") or "").strip() or None,
+              payload.get("duration_min") or None, sort_order))
+        new_id = cur.fetchone()[0]
+    return {"status": "success", "id": new_id}
+
+
+@app.patch("/orchestra/pieces/{piece_id}")
+def orchestra_update_piece(piece_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fields, vals = [], []
+    for col in ("title", "composer", "opus"):
+        if col in payload:
+            fields.append(f"{col}=%s")
+            vals.append((payload[col] or "").strip() or None)
+    if "duration_min" in payload:
+        fields.append("duration_min=%s")
+        vals.append(payload["duration_min"] or None)
+    if "sort_order" in payload:
+        fields.append("sort_order=%s")
+        vals.append(int(payload["sort_order"]))
+    if not fields:
+        return {"status": "ok"}
+    vals.append(piece_id)
+    with db_cursor(commit=True) as cur:
+        cur.execute(f"""
+            UPDATE concert_pieces SET {', '.join(fields)}
+            WHERE id=%s AND opera_id IN (SELECT id FROM operas WHERE org_id=%s)
+        """, vals + [user["org_id"]])
+    return {"status": "success"}
+
+
+@app.delete("/orchestra/pieces/{piece_id}")
+def orchestra_delete_piece(piece_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            DELETE FROM concert_pieces WHERE id=%s
+              AND opera_id IN (SELECT id FROM operas WHERE org_id=%s)
+        """, (piece_id, user["org_id"]))
+    return {"status": "success"}
+
+
+# -- Piece Seating --------------------------------------------------------
+
+@app.get("/orchestra/pieces/{piece_id}/seats")
+def orchestra_get_piece_seats(piece_id: int, request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT ps.id, ps.section_id, os2.name AS section_name, ps.chair_number,
+                   ps.part_number, ps.member_id, om.fullname,
+                   ps.external_name, ps.external_email
+            FROM piece_seats ps
+            JOIN concert_pieces cp ON cp.id = ps.piece_id
+            JOIN operas o ON o.id = cp.opera_id
+            JOIN orchestra_sections os2 ON os2.id = ps.section_id
+            LEFT JOIN orchestra_members om ON om.id = ps.member_id
+            WHERE ps.piece_id=%s AND o.org_id=%s
+            ORDER BY os2.name, ps.part_number, ps.chair_number
+        """, (piece_id, user["org_id"]))
+        return [{"id": r[0], "section_id": r[1], "section_name": r[2],
+                 "chair_number": r[3], "part_number": r[4],
+                 "member_id": r[5],
+                 "member_name": r[6] if r[5] else r[7],
+                 "external_name": None if r[5] else r[7],
+                 "external_email": None if r[5] else r[8]}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/pieces/{piece_id}/seats")
+def orchestra_assign_piece_seat(piece_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    section_id = payload.get("section_id")
+    chair_number = payload.get("chair_number")
+    part_number = payload.get("part_number", 1)
+    member_id = payload.get("member_id")
+    external_name = (payload.get("external_name") or "").strip() or None
+    external_email = (payload.get("external_email") or "").strip() or None
+
+    if not section_id or not chair_number:
+        return {"status": "fail", "message": "section_id and chair_number required"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT cp.id FROM concert_pieces cp
+            JOIN operas o ON o.id = cp.opera_id
+            WHERE cp.id=%s AND o.org_id=%s
+        """, (piece_id, user["org_id"]))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Piece not found"}
+
+        if member_id:
+            cur.execute("""
+                INSERT INTO piece_seats (piece_id, section_id, chair_number, part_number,
+                    member_id, external_name, external_email)
+                VALUES (%s,%s,%s,%s,%s,NULL,NULL)
+                ON CONFLICT (piece_id, section_id, chair_number, part_number)
+                DO UPDATE SET member_id=EXCLUDED.member_id, external_name=NULL, external_email=NULL
+            """, (piece_id, section_id, chair_number, part_number, member_id))
+        elif external_name:
+            cur.execute("""
+                INSERT INTO piece_seats (piece_id, section_id, chair_number, part_number,
+                    member_id, external_name, external_email)
+                VALUES (%s,%s,%s,%s,NULL,%s,%s)
+                ON CONFLICT (piece_id, section_id, chair_number, part_number)
+                DO UPDATE SET member_id=NULL, external_name=EXCLUDED.external_name,
+                              external_email=EXCLUDED.external_email
+            """, (piece_id, section_id, chair_number, part_number, external_name, external_email))
+        else:
+            cur.execute("""
+                DELETE FROM piece_seats
+                WHERE piece_id=%s AND section_id=%s AND chair_number=%s AND part_number=%s
+            """, (piece_id, section_id, chair_number, part_number))
+    return {"status": "success"}
+
+
+# -- Rehearsals -----------------------------------------------------------
+
+@app.get("/orchestra/rehearsals")
+def orchestra_get_rehearsals(request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT r.id, r.start_time, r.end_time, r.location, r.notes,
+                   r.attendance_type, r.opera_id, o.opera_name,
+                   ARRAY(
+                       SELECT ors2.section_id
+                       FROM orchestra_rehearsal_sections ors2
+                       WHERE ors2.rehearsal_id = r.id
+                   ) AS section_ids
+            FROM rehearsals r
+            LEFT JOIN operas o ON o.id = r.opera_id
+            WHERE r.org_id=%s AND r.rehearsal_type='orchestra'
+            ORDER BY r.start_time DESC
+        """, (user["org_id"],))
+        rows = cur.fetchall()
+    return [{"id": r[0], "start_time": str(r[1]), "end_time": str(r[2]) if r[2] else None,
+             "location": r[3] or "", "notes": r[4] or "",
+             "attendance_type": r[5] or "full",
+             "concert_id": r[6], "concert_title": r[7] or "",
+             "section_ids": r[8] or []}
+            for r in rows]
+
+
+@app.post("/orchestra/rehearsals")
+def orchestra_create_rehearsal(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    start_time = payload.get("start_time")
+    end_time = payload.get("end_time")
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+    concert_id = payload.get("concert_id")  # optional
+    attendance_type = payload.get("attendance_type", "full")
+    section_ids = payload.get("section_ids") or []  # for sectionals
+
+    if not start_time:
+        return {"status": "fail", "message": "start_time required"}
+    if attendance_type not in ("full", "sectional"):
+        attendance_type = "full"
+
+    with db_cursor(commit=True) as cur:
+        if concert_id:
+            cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (concert_id, user["org_id"]))
+            if not cur.fetchone():
+                return {"status": "fail", "message": "Concert not found"}
+
+        cur.execute("""
+            INSERT INTO rehearsals (org_id, opera_id, start_time, end_time, location, notes,
+                attendance_type, rehearsal_type)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,'orchestra') RETURNING id
+        """, (user["org_id"], concert_id, start_time, end_time, location, notes, attendance_type))
+        reh_id = cur.fetchone()[0]
+
+        if attendance_type == "sectional" and section_ids:
+            for sid in section_ids:
+                try:
+                    cur.execute("""
+                        INSERT INTO orchestra_rehearsal_sections (rehearsal_id, section_id)
+                        VALUES (%s,%s) ON CONFLICT DO NOTHING
+                    """, (reh_id, sid))
+                except Exception:
+                    pass
+
+    # Email notification
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT om.fullname, om.email FROM orchestra_members om
+            WHERE om.org_id=%s AND om.active=true AND om.email IS NOT NULL
+        """, (user["org_id"],))
+        members = cur.fetchall()
+        if attendance_type == "sectional" and section_ids:
+            cur.execute("""
+                SELECT om.fullname, om.email FROM orchestra_members om
+                WHERE om.org_id=%s AND om.active=true AND om.email IS NOT NULL
+                  AND om.section_id = ANY(%s)
+            """, (user["org_id"], section_ids))
+            members = cur.fetchall()
+
+    start_dt = start_time if hasattr(start_time, "strftime") else None
+    date_str = str(start_time)[:16]
+    for name, email in members:
+        if email:
+            html = f"<p>Hi {name},</p><p>A rehearsal has been scheduled for {date_str}.</p>"
+            text = f"Hi {name},\n\nA rehearsal has been scheduled for {date_str}."
+            if location:
+                html += f"<p>Location: {location}</p>"
+                text += f"\nLocation: {location}"
+            if notes:
+                html += f"<p>Notes: {notes}</p>"
+                text += f"\nNotes: {notes}"
+            send_email(email, "Orchestra Rehearsal Scheduled", html, text)
+
+    return {"status": "success", "id": reh_id}
+
+
+@app.patch("/orchestra/rehearsals/{rehearsal_id}")
+def orchestra_update_rehearsal(rehearsal_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fields, vals = [], []
+    for col in ("location", "notes"):
+        if col in payload:
+            fields.append(f"{col}=%s")
+            vals.append((payload[col] or "").strip() or None)
+    if "start_time" in payload:
+        fields.append("start_time=%s")
+        vals.append(payload["start_time"])
+    if "end_time" in payload:
+        fields.append("end_time=%s")
+        vals.append(payload["end_time"] or None)
+    if not fields:
+        return {"status": "ok"}
+    vals += [rehearsal_id, user["org_id"]]
+    with db_cursor(commit=True) as cur:
+        cur.execute(f"""
+            UPDATE rehearsals SET {', '.join(fields)}
+            WHERE id=%s AND org_id=%s AND rehearsal_type='orchestra'
+        """, vals)
+    return {"status": "success"}
+
+
+@app.delete("/orchestra/rehearsals/{rehearsal_id}")
+def orchestra_delete_rehearsal(rehearsal_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("DELETE FROM rehearsals WHERE id=%s AND org_id=%s AND rehearsal_type='orchestra'",
+                    (rehearsal_id, user["org_id"]))
+    return {"status": "success"}
+
+
+# -- Attendance -----------------------------------------------------------
+
+@app.get("/orchestra/rehearsals/{rehearsal_id}/attendance")
+def orchestra_get_attendance(rehearsal_id: int, request: Request):
+    user = require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("SELECT 1 FROM rehearsals WHERE id=%s AND org_id=%s", (rehearsal_id, user["org_id"]))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404)
+        cur.execute("""
+            SELECT om.id, om.fullname, om.section_family, om.instrument,
+                   oa.status, oa.notes
+            FROM orchestra_members om
+            LEFT JOIN orchestra_attendance oa
+                ON oa.member_id = om.id AND oa.rehearsal_id = %s
+            WHERE om.org_id=%s AND om.active=true
+            ORDER BY om.section_family, om.fullname
+        """, (rehearsal_id, user["org_id"]))
+        return [{"member_id": r[0], "fullname": r[1], "section_family": r[2] or "other",
+                 "instrument": r[3] or "", "status": r[4], "notes": r[5] or ""}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/rehearsals/{rehearsal_id}/attendance")
+def orchestra_set_attendance(rehearsal_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    member_id = payload.get("member_id")
+    status = payload.get("status")  # attended | absent | excused | None to clear
+    notes = (payload.get("notes") or "").strip() or None
+
+    if not member_id:
+        return {"status": "fail", "message": "member_id required"}
+    if status and status not in ("attended", "absent", "excused"):
+        return {"status": "fail", "message": "Invalid status"}
+
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT 1 FROM rehearsals WHERE id=%s AND org_id=%s", (rehearsal_id, user["org_id"]))
+        if not cur.fetchone():
+            return {"status": "fail", "message": "Rehearsal not found"}
+        if status:
+            cur.execute("""
+                INSERT INTO orchestra_attendance (rehearsal_id, member_id, status, notes)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT (rehearsal_id, member_id) DO UPDATE SET status=EXCLUDED.status, notes=EXCLUDED.notes
+            """, (rehearsal_id, member_id, status, notes))
+        else:
+            cur.execute("DELETE FROM orchestra_attendance WHERE rehearsal_id=%s AND member_id=%s",
+                        (rehearsal_id, member_id))
+    return {"status": "success"}
+
+
+# -- Subs -----------------------------------------------------------------
+
+@app.get("/orchestra/subs")
+def orchestra_get_subs(request: Request, section_id: Optional[int] = None):
+    user = require_orchestra_user(request)
+    org_id = user["org_id"]
+    with db_cursor() as cur:
+        if section_id:
+            cur.execute("""
+                SELECT s.id, s.fullname, s.email, s.phone, s.is_preferred, s.notes,
+                       os2.name, s.section_id, s.preferred_rank,
+                       COUNT(CASE WHEN osc.response='accepted' THEN 1 END),
+                       COUNT(CASE WHEN osc.response='declined' THEN 1 END)
+                FROM orchestra_subs s
+                JOIN orchestra_sections os2 ON os2.id = s.section_id
+                LEFT JOIN orchestra_sub_contacts osc ON osc.sub_id = s.id
+                WHERE s.org_id=%s AND s.section_id=%s AND s.active=true
+                GROUP BY s.id, os2.id
+                ORDER BY s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
+            """, (org_id, section_id))
+        else:
+            cur.execute("""
+                SELECT s.id, s.fullname, s.email, s.phone, s.is_preferred, s.notes,
+                       os2.name, s.section_id, s.preferred_rank,
+                       COUNT(CASE WHEN osc.response='accepted' THEN 1 END),
+                       COUNT(CASE WHEN osc.response='declined' THEN 1 END)
+                FROM orchestra_subs s
+                JOIN orchestra_sections os2 ON os2.id = s.section_id
+                LEFT JOIN orchestra_sub_contacts osc ON osc.sub_id = s.id
+                WHERE s.org_id=%s AND s.active=true
+                GROUP BY s.id, os2.id
+                ORDER BY os2.name, s.is_preferred DESC, s.preferred_rank NULLS LAST, s.fullname
+            """, (org_id,))
+        return [{"id": r[0], "fullname": r[1], "email": r[2], "phone": r[3] or "",
+                 "is_preferred": r[4], "notes": r[5] or "", "section_name": r[6],
+                 "section_id": r[7], "preferred_rank": r[8],
+                 "accepted_count": r[9], "declined_count": r[10]}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/subs")
+def orchestra_add_sub(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fullname = (payload.get("fullname") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    section_id = payload.get("section_id")
+    if not fullname or not email or not section_id:
+        return {"status": "fail", "message": "Name, email, and section required"}
+    phone = (payload.get("phone") or "").strip() or None
+    is_preferred = bool(payload.get("is_preferred", False))
+    notes = (payload.get("notes") or "").strip() or None
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO orchestra_subs (org_id, section_id, fullname, email, phone, is_preferred, notes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id
+        """, (user["org_id"], section_id, fullname, email, phone, is_preferred, notes))
+        new_id = cur.fetchone()[0]
+    return {"status": "success", "id": new_id}
+
+
+@app.patch("/orchestra/subs/{sub_id}")
+def orchestra_update_sub(sub_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    fields, vals = [], []
+    for col in ("fullname", "email", "phone", "notes"):
+        if col in payload:
+            fields.append(f"{col}=%s")
+            vals.append((payload[col] or "").strip() or None)
+    if "is_preferred" in payload:
+        fields.append("is_preferred=%s")
+        vals.append(bool(payload["is_preferred"]))
+    if "preferred_rank" in payload:
+        fields.append("preferred_rank=%s")
+        raw_rank = payload["preferred_rank"]
+        vals.append(int(raw_rank) if raw_rank is not None else None)
+    if "active" in payload:
+        fields.append("active=%s")
+        vals.append(bool(payload["active"]))
+    if not fields:
+        return {"status": "ok"}
+    vals += [sub_id, user["org_id"]]
+    with db_cursor(commit=True) as cur:
+        cur.execute(f"UPDATE orchestra_subs SET {', '.join(fields)} WHERE id=%s AND org_id=%s", vals)
+    return {"status": "success"}
+
+
+@app.delete("/orchestra/subs/{sub_id}")
+def orchestra_delete_sub(sub_id: int, request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE orchestra_subs SET active=false WHERE id=%s AND org_id=%s",
+                    (sub_id, user["org_id"]))
+    return {"status": "success"}
+
+
+# -- Sub Calling ----------------------------------------------------------
+
+def _advance_preferred_orch_sub(req_id: int, rehearsal_id: int, section_id: int) -> bool:
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT s.id, s.fullname, s.email
+            FROM orchestra_subs s
+            WHERE s.section_id=%s AND s.is_preferred=true AND s.active=true
+              AND s.id NOT IN (SELECT sub_id FROM orchestra_sub_contacts WHERE sub_request_id=%s)
+            ORDER BY s.preferred_rank NULLS LAST, s.fullname LIMIT 1
+        """, (section_id, req_id))
+        row = cur.fetchone()
+    if row:
+        _send_orch_sub_emails([{"id": row[0], "fullname": row[1], "email": row[2]}],
+                              req_id, rehearsal_id, section_id, "preferred")
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                UPDATE orchestra_sub_requests SET status='preferred_sent',
+                    preferred_sent_at=COALESCE(preferred_sent_at,NOW())
+                WHERE id=%s AND status NOT IN ('filled','cancelled')
+            """, (req_id,))
+        return True
+    # Preferred exhausted — bulk
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT s.id, s.fullname, s.email FROM orchestra_subs s
+            WHERE s.section_id=%s AND s.active=true
+              AND s.id NOT IN (SELECT sub_id FROM orchestra_sub_contacts WHERE sub_request_id=%s)
+        """, (section_id, req_id))
+        remaining = [{"id": r[0], "fullname": r[1], "email": r[2]} for r in cur.fetchall()]
+    if remaining:
+        _send_orch_sub_emails(remaining, req_id, rehearsal_id, section_id, "regular")
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE orchestra_sub_requests SET status='all_sent', all_sent_at=NOW()
+            WHERE id=%s AND status NOT IN ('filled','cancelled')
+        """, (req_id,))
+    return False
+
+
+def _send_orch_sub_emails(sub_list: list, sub_request_id: int, rehearsal_id: int,
+                          section_id: int, tier: str, custom_message: str = None) -> int:
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT r.start_time, r.location, r.notes, os2.name, o.name, o.id
+            FROM rehearsals r
+            JOIN orchestra_sections os2 ON os2.id=%s
+            JOIN organizations o ON o.id = r.org_id
+            WHERE r.id=%s
+        """, (section_id, rehearsal_id))
+        reh = cur.fetchone()
+    if not reh:
+        return 0
+    start_dt = reh[0]
+    rdate = start_dt.strftime("%A, %B %-d") if hasattr(start_dt, "strftime") else str(start_dt)
+    rstart = start_dt.strftime("%H:%M") if hasattr(start_dt, "strftime") else ""
+    section_name, org_name, org_id = reh[3], reh[4], reh[5]
+
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT fullname, email FROM users
+            WHERE org_id=%s AND role IN ('head_admin','orchestra_admin')
+            ORDER BY CASE role WHEN 'head_admin' THEN 0 ELSE 1 END LIMIT 1
+        """, (org_id,))
+        adm = cur.fetchone()
+    admin_name = adm[0] if adm else None
+    admin_email = adm[1] if adm else None
+
+    sent = 0
+    for sub in sub_list:
+        token = secrets.token_urlsafe(32)
+        with db_cursor(commit=True) as cur:
+            cur.execute("""
+                INSERT INTO orchestra_sub_contacts (sub_request_id, sub_id, tier, token)
+                VALUES (%s,%s,%s,%s) ON CONFLICT (sub_request_id, sub_id) DO NOTHING
+            """, (sub_request_id, sub["id"], tier, token))
+            if cur.rowcount == 0:
+                continue
+        accept_url = f"{APP_URL}/orchestra/sub-response/{token}?r=accepted"
+        decline_url = f"{APP_URL}/orchestra/sub-response/{token}?r=declined"
+        custom_block = f"<p><em>{custom_message}</em></p>" if custom_message else ""
+        html = f"""
+            <p>Hi {sub['fullname']},</p>
+            <p>The <strong>{org_name}</strong> orchestra is looking for a sub for the
+            <strong>{section_name}</strong> section.</p>
+            <p><strong>Date:</strong> {rdate} at {rstart}</p>
+            {f"<p><strong>Location:</strong> {reh[1]}</p>" if reh[1] else ""}
+            {f"<p><strong>Notes:</strong> {reh[2]}</p>" if reh[2] else ""}
+            {custom_block}
+            <p style='margin-top:16px;'>
+              <a href='{accept_url}' style='background:#4caf50;color:#fff;padding:10px 20px;
+                 border-radius:4px;text-decoration:none;margin-right:8px;'>✓ Accept</a>
+              <a href='{decline_url}' style='background:#e53935;color:#fff;padding:10px 20px;
+                 border-radius:4px;text-decoration:none;'>✗ Decline</a>
+            </p>
+            {f"<p style='margin-top:12px;color:#888;font-size:.85em;'>Questions? Reply to {admin_email}</p>" if admin_email else ""}
+        """
+        text = (f"Hi {sub['fullname']},\n\n{org_name} needs a sub for {section_name}.\n"
+                f"Date: {rdate} at {rstart}\n"
+                f"{f'Location: {reh[1]}' if reh[1] else ''}\n\n"
+                f"Accept: {accept_url}\nDecline: {decline_url}")
+        if send_email(sub["email"], f"Sub needed — {section_name} | {org_name}", html, text,
+                      reply_to=admin_email):
+            sent += 1
+    return sent
+
+
+@app.post("/orchestra/sub-request")
+def orchestra_create_sub_request(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    rehearsal_id = payload.get("rehearsal_id")
+    section_id = payload.get("section_id")
+    if not rehearsal_id or not section_id:
+        return {"status": "fail", "message": "rehearsal_id and section_id required"}
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            SELECT id FROM orchestra_sub_requests
+            WHERE rehearsal_id=%s AND section_id=%s AND status NOT IN ('filled','cancelled')
+        """, (rehearsal_id, section_id))
+        existing = cur.fetchone()
+        if existing:
+            return {"status": "ok", "sub_request_id": existing[0], "existing": True}
+        cur.execute("""
+            INSERT INTO orchestra_sub_requests (rehearsal_id, section_id, created_by)
+            VALUES (%s,%s,%s) RETURNING id
+        """, (rehearsal_id, section_id, user["id"]))
+        req_id = cur.fetchone()[0]
+    return {"status": "success", "sub_request_id": req_id}
+
+
+@app.get("/orchestra/sub-requests/{rehearsal_id}")
+def orchestra_get_sub_requests(rehearsal_id: int, request: Request):
+    require_orchestra_user(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT osr.id, osr.section_id, os2.name, osr.status,
+                   osr.preferred_sent_at, osr.all_sent_at,
+                   s2.fullname AS filled_by
+            FROM orchestra_sub_requests osr
+            JOIN orchestra_sections os2 ON os2.id = osr.section_id
+            LEFT JOIN orchestra_subs s2 ON s2.id = osr.filled_by_sub_id
+            WHERE osr.rehearsal_id=%s
+        """, (rehearsal_id,))
+        return [{"id": r[0], "section_id": r[1], "section_name": r[2], "status": r[3],
+                 "preferred_sent_at": str(r[4]) if r[4] else None,
+                 "all_sent_at": str(r[5]) if r[5] else None,
+                 "filled_by_name": r[6]}
+                for r in cur.fetchall()]
+
+
+@app.post("/orchestra/sub-request/{req_id}/contact-preferred")
+def orchestra_contact_preferred(req_id: int, request: Request):
+    require_orchestra_admin(request)
+    with db_cursor() as cur:
+        cur.execute("SELECT rehearsal_id, section_id, status FROM orchestra_sub_requests WHERE id=%s", (req_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404)
+    rehearsal_id, section_id, status = row
+    if status == "filled":
+        return {"status": "fail", "message": "Already filled"}
+    _advance_preferred_orch_sub(req_id, rehearsal_id, section_id)
+    return {"status": "success"}
+
+
+@app.post("/orchestra/sub-request/{req_id}/contact-all")
+def orchestra_contact_all(req_id: int, request: Request):
+    require_orchestra_admin(request)
+    with db_cursor() as cur:
+        cur.execute("SELECT rehearsal_id, section_id, status FROM orchestra_sub_requests WHERE id=%s", (req_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404)
+    rehearsal_id, section_id, status = row
+    if status == "filled":
+        return {"status": "fail", "message": "Already filled"}
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT s.id, s.fullname, s.email FROM orchestra_subs s
+            WHERE s.section_id=%s AND s.active=true
+              AND s.id NOT IN (SELECT sub_id FROM orchestra_sub_contacts WHERE sub_request_id=%s)
+        """, (section_id, req_id))
+        remaining = [{"id": r[0], "fullname": r[1], "email": r[2]} for r in cur.fetchall()]
+    sent = _send_orch_sub_emails(remaining, req_id, rehearsal_id, section_id, "regular")
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            UPDATE orchestra_sub_requests SET status='all_sent', all_sent_at=NOW()
+            WHERE id=%s AND status NOT IN ('filled','cancelled')
+        """, (req_id,))
+    return {"status": "success", "sent": sent}
+
+
+@app.post("/orchestra/sub-request/{req_id}/cancel")
+def orchestra_cancel_sub_request(req_id: int, request: Request):
+    require_orchestra_admin(request)
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE orchestra_sub_requests SET status='cancelled' WHERE id=%s", (req_id,))
+    return {"status": "success"}
+
+
+# -- Invitations ----------------------------------------------------------
+
+@app.post("/orchestra/invite")
+def orchestra_send_invite(payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    email = (payload.get("email") or "").strip().lower()
+    fullname = (payload.get("fullname") or "").strip() or None
+    if not email:
+        return {"status": "fail", "message": "Email required"}
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(pytz.utc) + timedelta(days=7)
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO invitations (email, role, org_id, token, expires_at, invited_by, fullname_hint)
+            VALUES (%s,'orchestra_member',%s,%s,%s,%s,%s)
+            ON CONFLICT (email, org_id) DO UPDATE SET token=EXCLUDED.token, expires_at=EXCLUDED.expires_at
+        """, (email, user["org_id"], token, expires, user["id"], fullname))
+
+    invite_url = f"{APP_URL}/invite/{token}"
+    org_name = "Orchestra"  # could be fetched; good enough for now
+    html = f"<p>You've been invited to join {org_name} on Countrpnt.</p><p><a href='{invite_url}'>Accept Invitation</a></p>"
+    text = f"You've been invited to join {org_name} on Countrpnt.\nAccept: {invite_url}"
+    send_email(email, f"Invitation to join {org_name}", html, text)
+    return {"status": "success"}
+
+
+@app.get("/orchestra/invitations")
+def orchestra_get_invitations(request: Request):
+    user = require_orchestra_admin(request)
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT email, role, expires_at, fullname_hint
+            FROM invitations WHERE org_id=%s ORDER BY expires_at DESC
+        """, (user["org_id"],))
+        return [{"email": r[0], "role": r[1], "expires_at": str(r[2]), "fullname": r[3] or ""}
+                for r in cur.fetchall()]

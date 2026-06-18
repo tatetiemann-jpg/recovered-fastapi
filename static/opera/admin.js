@@ -3909,6 +3909,40 @@ async function refreshMsgBadge() {
 document.addEventListener("DOMContentLoaded", async () => {
     await ME_READY;
 
+    // --- Invitations (set up first so a later error can't block role filtering) ---
+    document.getElementById("open-invite-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("invite-modal")?.classList.remove("hidden");
+    });
+    document.getElementById("close-invite-modal-btn")?.addEventListener("click", () => {
+        document.getElementById("invite-modal")?.classList.add("hidden");
+    });
+    document.getElementById("send-invite-btn")?.addEventListener("click", sendInvite);
+    document.getElementById("invite-role")?.addEventListener("change", onInviteRoleChange);
+    document.querySelectorAll('input[name="invite-teacher-type"]').forEach(radio => {
+        radio.addEventListener("change", onTeacherTypeChange);
+    });
+    // Auto-generate org slug from org name as user types
+    document.getElementById("invite-org-name")?.addEventListener("input", (e) => {
+        const slugEl = document.getElementById("invite-org-slug");
+        if (slugEl && !slugEl.dataset.manuallyEdited) {
+            slugEl.value = e.target.value
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, "");
+        }
+    });
+    document.getElementById("invite-org-slug")?.addEventListener("input", (e) => {
+        e.target.dataset.manuallyEdited = e.target.value ? "1" : "";
+    });
+    document.getElementById("invite-lessons-enabled")?.addEventListener("change", (e) => {
+        document.getElementById("invite-lesson-config")?.classList.toggle("hidden", !e.target.checked);
+    });
+    try {
+        initInviteRolePills();
+    } catch (e) {
+        console.error("initInviteRolePills failed:", e);
+    }
+
     // --- Tabs ---
     document.querySelectorAll(".tab-btn").forEach(btn => {
         btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
@@ -4103,36 +4137,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             e.target.classList.add("hidden");
     });
     document.getElementById("create-concert-btn")?.addEventListener("click", createConcert);
-
-    // --- Invitations ---
-    document.getElementById("open-invite-modal-btn")?.addEventListener("click", () => {
-        document.getElementById("invite-modal")?.classList.remove("hidden");
-    });
-    document.getElementById("close-invite-modal-btn")?.addEventListener("click", () => {
-        document.getElementById("invite-modal")?.classList.add("hidden");
-    });
-    document.getElementById("send-invite-btn")?.addEventListener("click", sendInvite);
-    document.getElementById("invite-role")?.addEventListener("change", onInviteRoleChange);
-    document.querySelectorAll('input[name="invite-teacher-type"]').forEach(radio => {
-        radio.addEventListener("change", onTeacherTypeChange);
-    });
-    // Auto-generate org slug from org name as user types
-    document.getElementById("invite-org-name")?.addEventListener("input", (e) => {
-        const slugEl = document.getElementById("invite-org-slug");
-        if (slugEl && !slugEl.dataset.manuallyEdited) {
-            slugEl.value = e.target.value
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/^-|-$/g, "");
-        }
-    });
-    document.getElementById("invite-org-slug")?.addEventListener("input", (e) => {
-        e.target.dataset.manuallyEdited = e.target.value ? "1" : "";
-    });
-    document.getElementById("invite-lessons-enabled")?.addEventListener("change", (e) => {
-        document.getElementById("invite-lesson-config")?.classList.toggle("hidden", !e.target.checked);
-    });
-    initInviteRolePills();
 
     // --- Productions ---
     document.getElementById("add-prod-role-btn")?.addEventListener("click", addProdRole);

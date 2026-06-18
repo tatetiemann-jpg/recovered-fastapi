@@ -172,6 +172,9 @@ async function login() {
             if (data.role === "admin") location.href = "/choir/admin";
             else if (data.role === "ensemble_member") location.href = "/ensemble/member";
             else location.href = "/choir/member";
+        } else if (data.org_type === "orchestra") {
+            if (["admin", "head_admin", "orchestra_admin"].includes(data.role)) location.href = "/orchestra/manager";
+            else location.href = "/orchestra-member";
         } else if (["admin", "head_admin", "system_admin", "orchestra_admin"].includes(data.role)) {
             location.href = "/admin";
         } else if (data.role === "teacher") {

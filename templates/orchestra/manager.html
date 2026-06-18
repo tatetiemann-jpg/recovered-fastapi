@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Orchestra Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/static/themes.css">
+  <link rel="stylesheet" href="/static/app.css?v=1">
+  <script src="/static/theme.js"></script>
+</head>
+<body class="dashboard-page">
+
+<div class="app-container">
+
+  <div class="top-actions">
+    <button id="logout-btn">Logout</button>
+    <button id="open-edit-account-btn">Edit Account</button>
+  </div>
+
+  <h1 id="welcome">Orchestra Manager</h1>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="rehearsals">Rehearsals</button>
+    <button class="tab-btn" data-tab="concerts">Concerts</button>
+    <button class="tab-btn" data-tab="members">Members</button>
+    <button class="tab-btn" data-tab="subs">Subs</button>
+    <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
+    <button class="tab-btn" data-tab="invitations">Invitations</button>
+  </nav>
+
+  <!-- ===== REHEARSALS TAB ===== -->
+  <section class="tab-panel active" data-tab-panel="rehearsals">
+    <div class="box">
+      <div class="section-header">
+        <h2>Rehearsals</h2>
+        <button id="open-schedule-rehearsal-btn" type="button" class="subtle-btn">+ Schedule Rehearsal</button>
+      </div>
+      <div id="rehearsals-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- ===== CONCERTS TAB ===== -->
+  <section class="tab-panel" data-tab-panel="concerts">
+    <div class="box">
+      <div class="section-header">
+        <h2>Concerts</h2>
+        <button id="open-add-concert-btn" type="button" class="subtle-btn">+ New Concert</button>
+      </div>
+      <div id="concerts-list"><em class="empty-note">Loading…</em></div>
+    </div>
+
+    <!-- Pieces panel (shown when a concert is selected) -->
+    <div id="pieces-panel" class="box hidden" style="margin-top:var(--space-4);">
+      <div class="section-header">
+        <h2 id="pieces-concert-title">Works on Programme</h2>
+        <div style="display:flex;gap:var(--space-2);">
+          <button id="back-to-concerts-btn" type="button" class="subtle-btn">← Back</button>
+          <button id="open-add-piece-btn" type="button" class="subtle-btn">+ Add Work</button>
+        </div>
+      </div>
+      <div id="pieces-list"><em class="empty-note">No works added yet.</em></div>
+    </div>
+
+    <!-- Seating panel (shown when a piece is selected) -->
+    <div id="seating-panel" class="box hidden" style="margin-top:var(--space-4);">
+      <div class="section-header">
+        <h2 id="seating-piece-title">Seating</h2>
+        <button id="back-to-pieces-btn" type="button" class="subtle-btn">← Back</button>
+      </div>
+      <div id="seating-grid"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- ===== MEMBERS TAB ===== -->
+  <section class="tab-panel" data-tab-panel="members">
+    <div class="box">
+      <div class="section-header">
+        <h2>Members</h2>
+        <button id="open-add-member-btn" type="button" class="subtle-btn">+ Add Member</button>
+      </div>
+      <p class="hint">Roster grouped by section family.</p>
+      <div id="members-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+  <!-- ===== SUBS TAB ===== -->
+  <section class="tab-panel" data-tab-panel="subs">
+    <div class="box">
+      <h2>Sub Roster</h2>
+      <p class="hint">Preferred subs are contacted in ranked order — rank 1 first (8 hrs to respond), then rank 2 (6 hrs), rank 3+ (4 hrs each). If the preferred list is exhausted or 24 hours pass, all remaining subs are contacted at once.</p>
+
+      <label for="sub-section-filter">Section</label>
+      <select id="sub-section-filter">
+        <option value="">— All sections —</option>
+      </select>
+
+      <div id="sub-roster-list" style="margin-top:var(--space-4);"><em class="empty-note">Loading…</em></div>
+
+      <hr>
+      <h3 style="margin-bottom:var(--space-3);">Add Sub</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+        <div>
+          <label for="new-sub-name">Name <span class="required">*</span></label>
+          <input id="new-sub-name" type="text" placeholder="Full name">
+        </div>
+        <div>
+          <label for="new-sub-email">Email <span class="required">*</span></label>
+          <input id="new-sub-email" type="email" placeholder="email@example.com">
+        </div>
+        <div>
+          <label for="new-sub-phone">Phone</label>
+          <input id="new-sub-phone" type="tel" placeholder="Optional">
+        </div>
+        <div>
+          <label for="new-sub-section">Section <span class="required">*</span></label>
+          <select id="new-sub-section">
+            <option value="">— select —</option>
+          </select>
+        </div>
+      </div>
+      <label for="new-sub-notes">Notes</label>
+      <input id="new-sub-notes" type="text" placeholder="Optional">
+      <label style="display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);">
+        <input id="new-sub-preferred" type="checkbox"> Preferred sub
+      </label>
+      <button id="add-sub-btn" style="margin-top:var(--space-3);">Add to Roster</button>
+      <p id="sub-add-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- ===== MESSAGES TAB ===== -->
+  <section class="tab-panel" data-tab-panel="messages">
+    <div class="box">
+      <div class="section-header"><h2>Messages</h2></div>
+      <p class="hint">Send messages to your members. Recipients receive an email notification.</p>
+
+      <div class="dm-view-toggle">
+        <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+        <button class="dm-view-btn" data-dm-view="read">Read</button>
+        <button class="dm-view-btn" data-dm-view="compose">Compose</button>
+      </div>
+
+      <div id="dm-inbox" class="dm-view active">
+        <div id="dm-inbox-list"><em class="empty-note">Loading…</em></div>
+      </div>
+
+      <div id="dm-read" class="dm-view hidden">
+        <div id="dm-read-list"><em class="empty-note">No read messages.</em></div>
+      </div>
+
+      <div id="dm-compose" class="dm-view hidden">
+        <label for="dm-to">To</label>
+        <select id="dm-to">
+          <option value="">— select member —</option>
+        </select>
+        <label for="dm-subject">Subject</label>
+        <input id="dm-subject" type="text" placeholder="Subject">
+        <label for="dm-body">Message</label>
+        <textarea id="dm-body" rows="5" placeholder="Write your message…"></textarea>
+        <button id="dm-send-btn">Send</button>
+        <p id="dm-send-msg" class="msg"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== INVITATIONS TAB ===== -->
+  <section class="tab-panel" data-tab-panel="invitations">
+    <div class="box">
+      <div class="section-header">
+        <h2>Invitations</h2>
+      </div>
+      <p class="hint">Invite musicians to create an orchestra member account.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-3);align-items:end;margin-bottom:var(--space-4);">
+        <div>
+          <label for="invite-email">Email <span class="required">*</span></label>
+          <input id="invite-email" type="email" placeholder="musician@example.com">
+        </div>
+        <div>
+          <label for="invite-name">Name (optional)</label>
+          <input id="invite-name" type="text" placeholder="Full name">
+        </div>
+        <button id="send-invite-btn">Send Invite</button>
+      </div>
+      <p id="invite-msg" class="msg"></p>
+
+      <h3 style="margin-top:var(--space-5);">Sent Invitations</h3>
+      <div id="invitations-list"><em class="empty-note">Loading…</em></div>
+    </div>
+  </section>
+
+</div><!-- /.app-container -->
+
+
+<!-- ===== MODALS ===== -->
+
+<!-- Schedule Rehearsal -->
+<div id="schedule-rehearsal-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Schedule Rehearsal</h2>
+      <button class="modal-close-btn" data-modal="schedule-rehearsal-modal">✕</button>
+    </div>
+    <label for="reh-start">Date &amp; Start Time <span class="required">*</span></label>
+    <input type="datetime-local" id="reh-start">
+    <label for="reh-end">End Time</label>
+    <input type="datetime-local" id="reh-end">
+    <label for="reh-concert">Concert (optional)</label>
+    <select id="reh-concert">
+      <option value="">— None —</option>
+    </select>
+    <label for="reh-type">Type</label>
+    <select id="reh-type">
+      <option value="full">Full Orchestra</option>
+      <option value="sectional">Sectional</option>
+    </select>
+    <div id="reh-sections-wrap" class="hidden" style="margin-top:var(--space-3);">
+      <label>Sections (for sectional)</label>
+      <div id="reh-sections-checks" style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);"></div>
+    </div>
+    <label for="reh-location">Location</label>
+    <input type="text" id="reh-location" placeholder="e.g. Main Hall">
+    <label for="reh-notes">Notes</label>
+    <textarea id="reh-notes" rows="2" placeholder="Optional notes to members…"></textarea>
+    <div class="modal-footer">
+      <button id="save-rehearsal-btn">Schedule</button>
+      <button class="subtle-btn modal-close-btn" data-modal="schedule-rehearsal-modal">Cancel</button>
+    </div>
+    <p id="reh-save-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Rehearsal Detail / Attendance Modal -->
+<div id="attendance-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:640px;">
+    <div class="modal-header">
+      <h2 id="attendance-modal-title">Attendance</h2>
+      <button class="modal-close-btn" data-modal="attendance-modal">✕</button>
+    </div>
+
+    <div id="attendance-sub-requests" style="margin-bottom:var(--space-4);"></div>
+
+    <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-3);">
+      <button id="att-mark-all-attended" class="subtle-btn">Mark All Attended</button>
+      <button id="att-mark-all-absent" class="subtle-btn">Mark All Absent</button>
+    </div>
+    <div id="attendance-list"><em class="empty-note">Loading…</em></div>
+
+    <div class="modal-footer" style="margin-top:var(--space-4);">
+      <button id="open-sub-request-btn" class="subtle-btn">+ Request Sub</button>
+      <button class="modal-close-btn subtle-btn" data-modal="attendance-modal">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sub Request Section Select -->
+<div id="sub-request-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-header">
+      <h2>Request Sub</h2>
+      <button class="modal-close-btn" data-modal="sub-request-modal">✕</button>
+    </div>
+    <label for="sub-req-section">Section <span class="required">*</span></label>
+    <select id="sub-req-section">
+      <option value="">— select section —</option>
+    </select>
+    <div class="modal-footer">
+      <button id="create-sub-request-btn">Create Sub Request</button>
+      <button class="subtle-btn modal-close-btn" data-modal="sub-request-modal">Cancel</button>
+    </div>
+    <p id="sub-req-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Add Concert -->
+<div id="add-concert-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h2 id="concert-modal-title">New Concert</h2>
+      <button class="modal-close-btn" data-modal="add-concert-modal">✕</button>
+    </div>
+    <label for="concert-title-input">Title <span class="required">*</span></label>
+    <input type="text" id="concert-title-input" placeholder="e.g. Spring Concert 2026">
+    <label for="concert-start">Start Date</label>
+    <input type="date" id="concert-start">
+    <label for="concert-end">End Date</label>
+    <input type="date" id="concert-end">
+    <div class="modal-footer">
+      <button id="save-concert-btn">Save</button>
+      <button class="subtle-btn modal-close-btn" data-modal="add-concert-modal">Cancel</button>
+    </div>
+    <p id="concert-save-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Add / Edit Work (Piece) -->
+<div id="add-piece-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h2 id="piece-modal-title">Add Work</h2>
+      <button class="modal-close-btn" data-modal="add-piece-modal">✕</button>
+    </div>
+    <label for="piece-title-input">Title <span class="required">*</span></label>
+    <input type="text" id="piece-title-input" placeholder="e.g. Symphony No. 5">
+    <label for="piece-composer">Composer</label>
+    <input type="text" id="piece-composer" placeholder="e.g. Beethoven">
+    <label for="piece-opus">Op. / Catalogue No.</label>
+    <input type="text" id="piece-opus" placeholder="e.g. Op. 67">
+    <label for="piece-duration">Duration (minutes)</label>
+    <input type="number" id="piece-duration" min="1" max="300" placeholder="e.g. 35">
+    <div class="modal-footer">
+      <button id="save-piece-btn">Save</button>
+      <button class="subtle-btn modal-close-btn" data-modal="add-piece-modal">Cancel</button>
+    </div>
+    <p id="piece-save-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Assign Seat -->
+<div id="assign-seat-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:440px;">
+    <div class="modal-header">
+      <h2 id="assign-seat-title">Assign Seat</h2>
+      <button class="modal-close-btn" data-modal="assign-seat-modal">✕</button>
+    </div>
+    <label for="seat-member-select">Member</label>
+    <select id="seat-member-select">
+      <option value="">— Unassigned —</option>
+    </select>
+    <button type="button" id="seat-no-account-toggle" class="subtle-btn" style="margin-top:var(--space-2);">+ No account</button>
+    <div id="seat-no-account-fields" class="hidden" style="margin-top:var(--space-2);">
+      <label for="seat-ext-name">Name</label>
+      <input type="text" id="seat-ext-name" placeholder="Full name">
+      <label for="seat-ext-email">Email</label>
+      <input type="email" id="seat-ext-email" placeholder="email@example.com">
+    </div>
+    <div class="modal-footer">
+      <button id="save-seat-btn">Assign</button>
+      <button class="subtle-btn modal-close-btn" data-modal="assign-seat-modal">Cancel</button>
+    </div>
+    <p id="seat-save-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Add Member -->
+<div id="add-member-modal" class="modal-overlay hidden">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header">
+      <h2 id="member-modal-title">Add Member</h2>
+      <button class="modal-close-btn" data-modal="add-member-modal">✕</button>
+    </div>
+    <label for="member-name-input">Name <span class="required">*</span></label>
+    <input type="text" id="member-name-input" placeholder="Full name">
+    <label for="member-email-input">Email</label>
+    <input type="email" id="member-email-input" placeholder="email@example.com">
+    <label for="member-phone-input">Phone</label>
+    <input type="tel" id="member-phone-input" placeholder="Optional">
+    <label for="member-instrument-input">Instrument</label>
+    <input type="text" id="member-instrument-input" placeholder="e.g. Violin, Oboe">
+    <label for="member-part-label">Part Label</label>
+    <input type="text" id="member-part-label" placeholder="e.g. 1st Violin, 2nd Violin">
+    <label for="member-family-select">Section Family</label>
+    <select id="member-family-select">
+      <option value="strings">Strings</option>
+      <option value="woodwinds">Woodwinds</option>
+      <option value="brass">Brass</option>
+      <option value="percussion">Percussion</option>
+      <option value="other">Other</option>
+    </select>
+    <label for="member-section-select">Section</label>
+    <select id="member-section-select">
+      <option value="">— select —</option>
+    </select>
+    <label for="member-notes-input">Notes</label>
+    <input type="text" id="member-notes-input" placeholder="Optional">
+    <div class="modal-footer">
+      <button id="save-member-btn">Save</button>
+      <button class="subtle-btn modal-close-btn" data-modal="add-member-modal">Cancel</button>
+    </div>
+    <p id="member-save-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- Edit Account Modal (shared) -->
+{% include "_edit_account_modal.html" %}
+
+<script src="/static/app.js"></script>
+<script src="/static/orchestra/manager.js"></script>
+</body>
+</html>

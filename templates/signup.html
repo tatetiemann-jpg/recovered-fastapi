@@ -29,6 +29,10 @@
         <div class="org-type-card-title">Private Studio</div>
         <div class="org-type-card-desc">Students working with a private teacher</div>
       </button>
+      <button type="button" class="org-type-card" onclick="selectOrgType('orchestra')">
+        <div class="org-type-card-title">Orchestra</div>
+        <div class="org-type-card-desc">Orchestra members &amp; musicians</div>
+      </button>
     </div>
     <div class="link"><a href="/login">Back to login</a></div>
   </div>
@@ -67,6 +71,14 @@
     <button type="button" class="signup-back-btn" onclick="goToStep('type')">&#8592; Back</button>
     <h1>Choir Accounts Are Invite-Only</h1>
     <p>Choir accounts are created by invitation from your director. Contact your choir director and ask them to send you an invitation from their admin dashboard &mdash; it only takes a moment.</p>
+    <div class="link"><a href="/login">Back to login</a></div>
+  </div>
+
+  <!-- STEP 2b2: Orchestra invite notice -->
+  <div id="step-orchestra" class="signup-step hidden">
+    <button type="button" class="signup-back-btn" onclick="goToStep('type')">&#8592; Back</button>
+    <h1>Orchestra Accounts Are Invite-Only</h1>
+    <p>Orchestra accounts are created by invitation from your orchestra manager. Contact your manager and ask them to send you an invitation from their dashboard &mdash; it only takes a moment.</p>
     <div class="link"><a href="/login">Back to login</a></div>
   </div>
 
@@ -212,6 +224,7 @@
 
   function selectOrgType(type) {
     if (type === "choir") { goToStep("choir"); return; }
+    if (type === "orchestra") { goToStep("orchestra"); return; }
     if (type === "studio") {
       sourceStep = "studio";
       goToStep("studio");
