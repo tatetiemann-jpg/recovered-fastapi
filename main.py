@@ -837,6 +837,14 @@ def require_user(request: Request, role: Optional[str] = None):
     return user
 
 
+def require_opera_admin(request: Request):
+    """Admin-level check that explicitly excludes standalone orchestra orgs."""
+    user = require_user(request, role="admin")
+    if user.get("org_type") == "orchestra":
+        raise HTTPException(status_code=403, detail="Use /orchestra/* endpoints for orchestra orgs")
+    return user
+
+
 def require_head_admin(request: Request):
     """Returns the current user only if they are head_admin or system_admin."""
     user = require_user(request)
@@ -2240,7 +2248,7 @@ def admin_orgs(request: Request):
 @app.get("/admin/invitations")
 def admin_invitations(request: Request):
     """List pending and recent invitations for the admin's org."""
-    user = require_user(request, role="admin")
+    user = require_opera_admin(request)
 
     with db_cursor() as cur:
         if user["role"] == "system_admin":

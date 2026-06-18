@@ -3674,6 +3674,12 @@ async function refreshMsgBadge() {
 document.addEventListener("DOMContentLoaded", async () => {
     await ME_READY;
 
+    // Orchestra orgs have their own dedicated manager page — redirect if they land here
+    if (ORG_TYPE === "orchestra") {
+        window.location.replace("/orchestra/manager");
+        return;
+    }
+
     // --- Invitations (set up first so a later error can't block role filtering) ---
     document.getElementById("open-invite-modal-btn")?.addEventListener("click", () => {
         document.getElementById("invite-modal")?.classList.remove("hidden");
