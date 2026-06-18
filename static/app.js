@@ -2,6 +2,56 @@
 // APP-LEVEL SCRIPT (shared across all dashboards)
 // ======================================================
 
+// ── Global scroll preservation ─────────────────────────────────────────────
+// Saves scroll position before any button action and restores it after DOM
+// re-renders settle. Prevents the page from jumping to the top when lists or
+// grids are rebuilt after a save/delete. Tab switches are excluded because
+// navigating to a new tab should start at the top.
+(function () {
+    let _savedY = null;
+    let _clearTimer = null;
+    let _restoreTimer = null;
+
+    // Capture scroll on mousedown so we have it before the click fires.
+    document.addEventListener("mousedown", function (e) {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        // Tab switches and logout are intentional navigations — don't preserve.
+        if (btn.classList.contains("tab-btn") ||
+            btn.classList.contains("dm-view-btn") ||
+            btn.id === "logout-btn") return;
+
+        _savedY = window.scrollY;
+        clearTimeout(_clearTimer);
+        // Safety valve: clear saved position after 4s if no re-render occurs.
+        _clearTimer = setTimeout(function () { _savedY = null; }, 4000);
+    }, true);
+
+    // Watch for childList mutations (innerHTML rebuilds) and restore scroll
+    // once DOM changes stop for 250ms — enough time for async re-renders.
+    const obs = new MutationObserver(function (mutations) {
+        if (_savedY === null) return;
+        const significant = mutations.some(function (m) {
+            return m.type === "childList" && m.removedNodes.length > 0;
+        });
+        if (!significant) return;
+        clearTimeout(_restoreTimer);
+        _restoreTimer = setTimeout(function () {
+            if (_savedY !== null) {
+                window.scrollTo({ top: _savedY, behavior: "instant" });
+                _savedY = null;
+                clearTimeout(_clearTimer);
+            }
+        }, 250);
+    });
+
+    function startObs() {
+        obs.observe(document.body, { childList: true, subtree: true });
+    }
+    if (document.body) startObs();
+    else document.addEventListener("DOMContentLoaded", startObs);
+})();
+
 // USERNAME + USER_ROLE are populated by /me. The server derives identity
 // from the HttpOnly session cookie — the frontend doesn't track it anymore.
 let USERNAME = null;

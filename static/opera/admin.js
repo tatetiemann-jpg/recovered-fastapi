@@ -3003,7 +3003,6 @@ async function loadSeatingForOpera(operaId) {
     const panel = document.getElementById("orchestra-seating-panel");
     if (!panel) return;
 
-    const savedScroll = window.scrollY;
     panel.innerHTML = `<em class="empty-note">Loading…</em>`;
 
     try {
@@ -3014,8 +3013,6 @@ async function loadSeatingForOpera(operaId) {
         console.error(e);
         panel.innerHTML = `<em class="empty-note">Failed to load seating.</em>`;
     }
-
-    window.scrollTo({ top: savedScroll, behavior: "instant" });
 }
 
 function renderSeatingPanel(operaId, sections, seats) {
