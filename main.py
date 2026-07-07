@@ -12387,23 +12387,11 @@ def orchestra_admin_mark_absent(payload: dict, request: Request):
     if not rehearsal_id or not member_id:
         return {"status": "fail", "message": "rehearsal_id and member_id required"}
 
-    # Record attendance as absent
+    # Record attendance only — no sub notifications for day-of marking
     with db_cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO orchestra_attendance (rehearsal_id, member_id, status, notes)
             VALUES (%s,%s,'absent',%s)
             ON CONFLICT (rehearsal_id, member_id) DO UPDATE SET status='absent', notes=EXCLUDED.notes
         """, (rehearsal_id, member_id, reason))
-        # Upsert an approved absence request so coverage tracking exists
-        cur.execute("""
-            INSERT INTO orchestra_absence_requests
-                (rehearsal_id, member_id, reason, status, reviewed_at, reviewed_by)
-            VALUES (%s, %s, %s, 'approved', NOW(), %s)
-            ON CONFLICT (rehearsal_id, member_id) DO UPDATE
-                SET status='approved', reviewed_at=NOW(), reviewed_by=EXCLUDED.reviewed_by
-            RETURNING id
-        """, (rehearsal_id, member_id, reason, user["id"]))
-        absence_id = cur.fetchone()[0]
-
-    _trigger_section_coverage(absence_id, rehearsal_id, member_id, admin_user_id=user["id"])
     return {"status": "success"}
