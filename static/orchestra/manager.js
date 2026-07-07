@@ -668,32 +668,15 @@ function openAssignSeat(sectionId, chairNumber, partNumber) {
   document.getElementById("seat-ext-name").value = "";
   document.getElementById("seat-ext-email").value = "";
 
-  // Populate member select
+  // Populate member select — only members in this section
   const sel = document.getElementById("seat-member-select");
   sel.innerHTML = '<option value="">— Unassigned —</option>';
-  // Filter members by section
-  const sectionMembers = MEMBERS.filter(m => m.section_id === sectionId);
-  const otherMembers = MEMBERS.filter(m => m.section_id !== sectionId);
-  if (sectionMembers.length) {
-    const grp = document.createElement("optgroup");
-    grp.label = "This Section";
-    sectionMembers.forEach(m => {
-      const o = document.createElement("option");
-      o.value = m.id; o.textContent = m.fullname + (m.part_label ? ` (${m.part_label})` : "");
-      grp.appendChild(o);
-    });
-    sel.appendChild(grp);
-  }
-  if (otherMembers.length) {
-    const grp = document.createElement("optgroup");
-    grp.label = "Other Members";
-    otherMembers.forEach(m => {
-      const o = document.createElement("option");
-      o.value = m.id; o.textContent = m.fullname;
-      grp.appendChild(o);
-    });
-    sel.appendChild(grp);
-  }
+  MEMBERS.filter(m => m.section_id === sectionId).forEach(m => {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.fullname + (m.part_label ? ` (${m.part_label})` : "");
+    sel.appendChild(o);
+  });
   openModal("assign-seat-modal");
 }
 
