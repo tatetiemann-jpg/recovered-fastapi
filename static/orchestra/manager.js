@@ -665,26 +665,92 @@ async function loadSeating(pieceId) {
 }
 
 function openAssignSeat(sectionId, chairNumber, partNumber) {
+  const sec = SECTIONS.find(s => s.id === sectionId);
+  const secInstrument = (sec?.instrument || "").toLowerCase().trim();
   SEAT_CONTEXT = {piece_id: CURRENT_PIECE_ID, section_id: sectionId,
-                  chair_number: chairNumber, part_number: partNumber};
+                  chair_number: chairNumber, part_number: partNumber,
+                  section_instrument: secInstrument};
   document.getElementById("assign-seat-title").textContent =
     `Assign Seat — Chair ${chairNumber}${partNumber > 1 ? ` / Part ${partNumber}` : ""}`;
   document.getElementById("seat-save-msg").textContent = "";
   document.getElementById("seat-no-account-fields").classList.add("hidden");
   document.getElementById("seat-ext-name").value = "";
   document.getElementById("seat-ext-email").value = "";
+  document.getElementById("doubling-wrap").classList.add("hidden");
+  document.getElementById("doubling-auto-row").classList.add("hidden");
+  document.getElementById("doubling-manual-row").classList.add("hidden");
 
-  // Populate member select — only members in this section
+  // Populate member select — section members first, then anyone who already doubles this instrument
   const sel = document.getElementById("seat-member-select");
   sel.innerHTML = '<option value="">— Unassigned —</option>';
-  MEMBERS.filter(m => m.section_id === sectionId).forEach(m => {
+  const sectionMembers = MEMBERS.filter(m => m.section_id === sectionId);
+  sectionMembers.forEach(m => {
     const o = document.createElement("option");
     o.value = m.id;
     o.textContent = m.fullname + (m.part_label ? ` (${m.part_label})` : "");
     sel.appendChild(o);
   });
+  const sectionIds = new Set(sectionMembers.map(m => m.id));
+  const doublers = MEMBERS.filter(m => {
+    if (sectionIds.has(m.id)) return false;
+    return (m.doublings || "").toLowerCase().split(",").map(d => d.trim()).includes(secInstrument);
+  });
+  if (doublers.length) {
+    const grp = document.createElement("optgroup");
+    grp.label = "Doublers";
+    doublers.forEach(m => {
+      const o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.fullname + ` (doubles)`;
+      grp.appendChild(o);
+    });
+    sel.appendChild(grp);
+  }
   openModal("assign-seat-modal");
 }
+
+document.getElementById("seat-member-select")?.addEventListener("change", function() {
+  const memberId = parseInt(this.value);
+  const wrap = document.getElementById("doubling-wrap");
+  if (!memberId || !SEAT_CONTEXT?.section_instrument) { wrap.classList.add("hidden"); return; }
+
+  const member = MEMBERS.find(m => m.id === memberId);
+  const secInstrument = SEAT_CONTEXT.section_instrument;
+  const memberInstrument = (member?.instrument || "").toLowerCase().trim();
+  const existingDoublings = (member?.doublings || "").toLowerCase().split(",").map(d => d.trim()).filter(Boolean);
+
+  // Already recorded — nothing to offer
+  if (existingDoublings.includes(secInstrument)) { wrap.classList.add("hidden"); return; }
+
+  const autoRow = document.getElementById("doubling-auto-row");
+  const manualRow = document.getElementById("doubling-manual-row");
+  const check = document.getElementById("doubling-check");
+  check.checked = false;
+
+  const isKnownPair = (DOUBLING_PAIRS[secInstrument] || []).includes(memberInstrument);
+  wrap.classList.remove("hidden");
+
+  if (isKnownPair) {
+    document.getElementById("doubling-auto-label").textContent =
+      `Add "${secInstrument}" to ${member.fullname.split(" ")[0]}'s doublings`;
+    autoRow.classList.remove("hidden");
+    manualRow.classList.add("hidden");
+  } else {
+    autoRow.classList.add("hidden");
+    const instrSel = document.getElementById("doubling-instr-select");
+    instrSel.innerHTML = '<option value="">— none —</option>';
+    ["piccolo","flute","oboe","english horn","clarinet","eb clarinet","bass clarinet",
+     "bassoon","contrabassoon","horn","trumpet","trombone","bass trombone","tuba",
+     "euphonium","timpani","harp","piano"]
+      .filter(i => i !== secInstrument && i !== memberInstrument)
+      .forEach(i => {
+        const o = document.createElement("option");
+        o.value = i; o.textContent = i.charAt(0).toUpperCase() + i.slice(1);
+        instrSel.appendChild(o);
+      });
+    manualRow.classList.remove("hidden");
+  }
+});
 
 document.getElementById("seat-no-account-toggle")?.addEventListener("click", () => {
   document.getElementById("seat-no-account-fields")?.classList.toggle("hidden");
@@ -704,10 +770,28 @@ document.getElementById("save-seat-btn")?.addEventListener("click", async () => 
     external_name: extName || null,
     external_email: extEmail || null,
   });
-  if (r.status === "success") {
-    closeModal("assign-seat-modal");
-    loadSeating(SEAT_CONTEXT.piece_id);
-  } else { msg.textContent = r.message || "Failed."; }
+  if (r.status !== "success") { msg.textContent = r.message || "Failed."; return; }
+
+  // Persist doubling if requested
+  if (memberId) {
+    const secInstrument = SEAT_CONTEXT.section_instrument;
+    const autoChecked = document.getElementById("doubling-check")?.checked && secInstrument;
+    const manualInstr = document.getElementById("doubling-instr-select")?.value || "";
+    const doublingToAdd = autoChecked ? secInstrument : manualInstr;
+    if (doublingToAdd) {
+      const member = MEMBERS.find(m => m.id === memberId);
+      const existing = (member?.doublings || "").split(",").map(d => d.trim()).filter(Boolean);
+      if (!existing.includes(doublingToAdd)) {
+        existing.push(doublingToAdd);
+        const updated = existing.join(",");
+        await api("PATCH", `/orchestra/members/${memberId}`, {doublings: updated});
+        if (member) member.doublings = updated;
+      }
+    }
+  }
+
+  closeModal("assign-seat-modal");
+  loadSeating(SEAT_CONTEXT.piece_id);
 });
 
 // ── Members ───────────────────────────────────────────────────────────────────
@@ -1092,6 +1176,23 @@ function sectionScorePos(instrument, name) {
 }
 
 const ORCH_FAMILY_ORDER = ["Strings", "Woodwinds", "Brass", "Percussion", "Other"];
+
+// Known doubling pairs: assigning a player to the key instrument auto-suggests the value as their doubling.
+const DOUBLING_PAIRS = {
+  "piccolo":       ["flute", "alto flute"],
+  "flute":         ["piccolo", "alto flute"],
+  "alto flute":    ["flute"],
+  "english horn":  ["oboe"],
+  "cor anglais":   ["oboe"],
+  "oboe":          ["english horn", "cor anglais"],
+  "eb clarinet":   ["clarinet"],
+  "bass clarinet": ["clarinet"],
+  "clarinet":      ["eb clarinet", "bass clarinet"],
+  "contrabassoon": ["bassoon"],
+  "bassoon":       ["contrabassoon"],
+  "bass trombone": ["trombone"],
+  "trombone":      ["bass trombone"],
+};
 
 function makeOrchAccordion(titleHTML, startOpen = false, listMode = true, extraClass = "") {
   const group = document.createElement("div");

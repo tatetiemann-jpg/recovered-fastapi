@@ -422,6 +422,7 @@ async def lifespan(app: FastAPI):
                 )
             """)
             cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS part_label TEXT;")
+            cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS doublings TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS orchestra_absence_requests (
                     id           SERIAL PRIMARY KEY,
@@ -11163,7 +11164,7 @@ def orchestra_get_members(request: Request):
         cur.execute("""
             SELECT om.id, om.fullname, om.email, om.phone, om.instrument,
                    om.section_family, om.section_id, os2.name AS section_name,
-                   om.user_id, om.notes, om.part_label
+                   om.user_id, om.notes, om.part_label, om.doublings
             FROM orchestra_members om
             LEFT JOIN orchestra_sections os2 ON os2.id = om.section_id
             WHERE om.org_id=%s AND om.active=true
@@ -11172,7 +11173,8 @@ def orchestra_get_members(request: Request):
         return [{"id": r[0], "fullname": r[1], "email": r[2] or "", "phone": r[3] or "",
                  "instrument": r[4] or "", "section_family": r[5] or "other",
                  "section_id": r[6], "section_name": r[7] or "",
-                 "user_id": r[8], "notes": r[9] or "", "part_label": r[10] or ""}
+                 "user_id": r[8], "notes": r[9] or "", "part_label": r[10] or "",
+                 "doublings": r[11] or ""}
                 for r in cur.fetchall()]
 
 
@@ -11204,7 +11206,7 @@ def orchestra_add_member(payload: dict, request: Request):
 def orchestra_update_member(member_id: int, payload: dict, request: Request):
     user = require_orchestra_admin(request)
     fields, vals = [], []
-    for col in ("fullname", "email", "phone", "instrument", "section_family", "notes", "part_label"):
+    for col in ("fullname", "email", "phone", "instrument", "section_family", "notes", "part_label", "doublings"):
         if col in payload:
             fields.append(f"{col}=%s")
             vals.append((payload[col] or "").strip() or None)

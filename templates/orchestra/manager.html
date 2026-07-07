@@ -326,6 +326,25 @@
     <select id="seat-member-select">
       <option value="">— Unassigned —</option>
     </select>
+
+    <!-- Doubling UI — appears when a member is selected and a doubling opportunity exists -->
+    <div id="doubling-wrap" class="hidden" style="margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--surface-2,rgba(128,128,128,.08));">
+      <!-- Known pair: checkbox with auto-generated label -->
+      <div id="doubling-auto-row" class="hidden">
+        <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;margin:0;font-weight:normal;">
+          <input type="checkbox" id="doubling-check" style="width:auto;flex-shrink:0;">
+          <span id="doubling-auto-label"></span>
+        </label>
+      </div>
+      <!-- Unknown pair: instrument picker -->
+      <div id="doubling-manual-row" class="hidden">
+        <label for="doubling-instr-select" style="font-size:0.85em;margin-bottom:4px;">Also doubles on</label>
+        <select id="doubling-instr-select">
+          <option value="">— none —</option>
+        </select>
+      </div>
+    </div>
+
     <button type="button" id="seat-no-account-toggle" class="subtle-btn" style="margin-top:var(--space-2);">+ No account</button>
     <div id="seat-no-account-fields" class="hidden" style="margin-top:var(--space-2);">
       <label for="seat-ext-name">Name</label>
