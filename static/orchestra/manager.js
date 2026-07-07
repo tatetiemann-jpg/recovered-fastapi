@@ -209,7 +209,7 @@ async function loadAttendance(rehearsalId) {
     const f = m.section_family || "other";
     const sKey = m.section_id || "__none__";
     if (!byFamily[f]) byFamily[f] = {};
-    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", members: [] };
+    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", section_id: m.section_id, members: [] };
     byFamily[f][sKey].members.push(m);
   });
 
@@ -217,8 +217,13 @@ async function loadAttendance(rehearsalId) {
     const { group: famGroup, inner: famInner } = makeOrchAccordion(
       FAMILY_LABELS[f], true, true, "orch-family-group"
     );
+    const sortedSections = Object.values(byFamily[f]).sort((a, b) => {
+      const sA = SECTIONS.find(s => s.id === a.section_id);
+      const sB = SECTIONS.find(s => s.id === b.section_id);
+      return sectionScorePos(sA?.instrument || "", a.name) - sectionScorePos(sB?.instrument || "", b.name);
+    });
 
-    Object.values(byFamily[f]).forEach(secGroup => {
+    sortedSections.forEach(secGroup => {
       const { group: secGrp, inner: secInner } = makeOrchAccordion(
         `${secGroup.name} <span class="section-count">(${secGroup.members.length})</span>`,
         true, true
@@ -603,6 +608,7 @@ async function loadSeating(pieceId) {
   });
 
   ORCH_FAMILY_ORDER.filter(fam => byFamily[fam]).forEach(fam => {
+    byFamily[fam].sort((a, b) => sectionScorePos(a.instrument, a.name) - sectionScorePos(b.instrument, b.name));
     const { group: famGroup, inner: famInner } = makeOrchAccordion(fam, true, true, "orch-family-group");
 
     byFamily[fam].forEach(sec => {
@@ -732,7 +738,7 @@ function renderMembers() {
     const f = m.section_family || "other";
     const sKey = m.section_id || "__none__";
     if (!byFamily[f]) byFamily[f] = {};
-    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", members: [] };
+    if (!byFamily[f][sKey]) byFamily[f][sKey] = { name: m.section_name || "Other", section_id: m.section_id, members: [] };
     byFamily[f][sKey].members.push(m);
   });
 
@@ -740,12 +746,17 @@ function renderMembers() {
     const { group: famGroup, inner: famInner } = makeOrchAccordion(
       FAMILY_LABELS[f], true, true, "orch-family-group"
     );
+    const sortedSections = Object.values(byFamily[f]).sort((a, b) => {
+      const sA = SECTIONS.find(s => s.id === a.section_id);
+      const sB = SECTIONS.find(s => s.id === b.section_id);
+      return sectionScorePos(sA?.instrument || "", a.name) - sectionScorePos(sB?.instrument || "", b.name);
+    });
     // Update count label
-    const total = Object.values(byFamily[f]).reduce((s, g) => s + g.members.length, 0);
+    const total = sortedSections.reduce((s, g) => s + g.members.length, 0);
     famGroup.querySelector(".section-name").insertAdjacentHTML("afterend",
       `<span class="section-count" style="margin-left:6px;">(${total})</span>`);
 
-    Object.values(byFamily[f]).forEach(secGroup => {
+    sortedSections.forEach(secGroup => {
       const { group: secGrp, inner: secInner } = makeOrchAccordion(
         `${secGroup.name} <span class="section-count">(${secGroup.members.length})</span>`,
         false, true
@@ -1039,6 +1050,45 @@ function orchFamily(instrument) {
   if (/french.?horn|\bhorn\b|trumpet|trombone|tuba|cornet|euphonium/.test(i)) return "Brass";
   if (/timpani|percussion|drum|marimba|xylophone|cymbal|glockenspiel|vibraphone/.test(i)) return "Percussion";
   return "Other";
+}
+
+// Returns a numeric position matching standard full-score order within each family.
+function sectionScorePos(instrument, name) {
+  const i = (instrument || "").toLowerCase();
+  const n = (name || "").toLowerCase();
+  // Strings
+  if (/violin/.test(i) || /violin/.test(n)) {
+    if (/\b(1|i|first)\b/.test(n)) return 10;
+    if (/\b(2|ii|second)\b/.test(n)) return 11;
+    return 12;
+  }
+  if (/viola/.test(i)) return 13;
+  if (/\bcello/.test(i)) return 14;
+  if (/double.?bass|contrabass/.test(i)) return 15;
+  if (/harp/.test(i)) return 16;
+  // Woodwinds — piccolo before flute, oboe before English horn, Eb before standard before bass clarinet, bassoon before contrabassoon
+  if (/piccolo/.test(i)) return 20;
+  if (/\bflute\b/.test(i)) return 21;
+  if (/alto.flute/.test(i)) return 22;
+  if (/\boboe\b/.test(i)) return 23;
+  if (/english.?horn|cor.?anglais/.test(i)) return 24;
+  if (/clarinet/.test(i) && /\beb\b|e[- ]flat/.test(i)) return 25;
+  if (/clarinet/.test(i) && /bass/.test(i)) return 27;
+  if (/clarinet/.test(i)) return 26;
+  if (/contrabassoon/.test(i)) return 29;
+  if (/bassoon/.test(i)) return 28;
+  if (/saxophone|sax/.test(i)) return 30;
+  // Brass — horn, trumpet, trombone, tuba
+  if (/french.?horn|\bhorn\b/.test(i)) return 40;
+  if (/trumpet/.test(i)) return 41;
+  if (/cornet/.test(i)) return 42;
+  if (/bass.trombone/.test(i)) return 44;
+  if (/trombone/.test(i)) return 43;
+  if (/euphonium/.test(i)) return 45;
+  if (/tuba/.test(i)) return 46;
+  // Percussion — timpani always first
+  if (/timpani/.test(i)) return 50;
+  return 51;
 }
 
 const ORCH_FAMILY_ORDER = ["Strings", "Woodwinds", "Brass", "Percussion", "Other"];
