@@ -196,11 +196,8 @@
 
 <!-- Schedule Rehearsal -->
 <div id="schedule-rehearsal-modal" class="modal-overlay hidden">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h2>Schedule Rehearsal</h2>
-      <button class="modal-close-btn" data-modal="schedule-rehearsal-modal">✕</button>
-    </div>
+  <div class="modal-card modal-large">
+    <h3>Schedule Rehearsal</h3>
     <label for="reh-start">Date &amp; Start Time <span class="required">*</span></label>
     <input type="datetime-local" id="reh-start">
     <label for="reh-end">End Time</label>
@@ -215,16 +212,16 @@
       <option value="sectional">Sectional</option>
     </select>
     <div id="reh-sections-wrap" class="hidden" style="margin-top:var(--space-3);">
-      <label>Sections (for sectional)</label>
-      <div id="reh-sections-checks" style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-2);"></div>
+      <label>Sections <span class="hint" style="font-style:italic;">(for sectional)</span></label>
+      <div id="reh-sections-checks" class="checkbox-row" style="margin-top:var(--space-2);"></div>
     </div>
     <label for="reh-location">Location</label>
     <input type="text" id="reh-location" placeholder="e.g. Main Hall">
     <label for="reh-notes">Notes</label>
     <textarea id="reh-notes" rows="2" placeholder="Optional notes to members…"></textarea>
-    <div class="modal-footer">
-      <button id="save-rehearsal-btn">Schedule</button>
-      <button class="subtle-btn modal-close-btn" data-modal="schedule-rehearsal-modal">Cancel</button>
+    <div class="modal-actions">
+      <button id="save-rehearsal-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Schedule Rehearsal</button>
+      <button class="modal-close-btn" data-modal="schedule-rehearsal-modal">Cancel</button>
     </div>
     <p id="reh-save-msg" class="msg"></p>
   </div>
@@ -232,13 +229,9 @@
 
 <!-- Rehearsal Detail / Attendance Modal -->
 <div id="attendance-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:640px;">
-    <div class="modal-header">
-      <h2 id="attendance-modal-title">Attendance</h2>
-      <button class="modal-close-btn" data-modal="attendance-modal">✕</button>
-    </div>
+  <div class="modal-card modal-large">
+    <h3 id="attendance-modal-title">Attendance</h3>
 
-    <!-- Pending absence requests from members -->
     <div id="absence-requests-section" style="margin-bottom:var(--space-4);display:none;">
       <h4 style="margin-bottom:var(--space-2);">Pending Absence Requests</h4>
       <div id="absence-requests-list"></div>
@@ -252,48 +245,48 @@
     </div>
     <div id="attendance-list"><em class="empty-note">Loading…</em></div>
 
-    <div class="modal-footer" style="margin-top:var(--space-4);">
+    <div class="modal-actions" style="margin-top:var(--space-4);">
       <button id="open-sub-request-btn" class="subtle-btn">+ Request Sub</button>
-      <button class="modal-close-btn subtle-btn" data-modal="attendance-modal">Close</button>
+      <button class="modal-close-btn" data-modal="attendance-modal">Close</button>
     </div>
   </div>
 </div>
 
 <!-- Sub Request Section Select -->
 <div id="sub-request-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:400px;">
-    <div class="modal-header">
-      <h2>Request Sub</h2>
-      <button class="modal-close-btn" data-modal="sub-request-modal">✕</button>
-    </div>
+  <div class="modal-card">
+    <h3>Request Sub</h3>
     <label for="sub-req-section">Section <span class="required">*</span></label>
     <select id="sub-req-section">
       <option value="">— select section —</option>
     </select>
-    <div class="modal-footer">
-      <button id="create-sub-request-btn">Create Sub Request</button>
-      <button class="subtle-btn modal-close-btn" data-modal="sub-request-modal">Cancel</button>
+    <div class="modal-actions">
+      <button id="create-sub-request-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Create Sub Request</button>
+      <button class="modal-close-btn" data-modal="sub-request-modal">Cancel</button>
     </div>
     <p id="sub-req-msg" class="msg"></p>
   </div>
 </div>
 
-<!-- Add Concert -->
+<!-- Add / Edit Concert -->
 <div id="add-concert-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:440px;">
-    <div class="modal-header">
-      <h2 id="concert-modal-title">New Concert</h2>
-      <button class="modal-close-btn" data-modal="add-concert-modal">✕</button>
-    </div>
+  <div class="modal-card">
+    <h3 id="concert-modal-title">New Concert</h3>
     <label for="concert-title-input">Title <span class="required">*</span></label>
     <input type="text" id="concert-title-input" placeholder="e.g. Spring Concert 2026">
-    <label for="concert-start">Start Date</label>
-    <input type="date" id="concert-start">
-    <label for="concert-end">End Date</label>
-    <input type="date" id="concert-end">
-    <div class="modal-footer">
-      <button id="save-concert-btn">Save</button>
-      <button class="subtle-btn modal-close-btn" data-modal="add-concert-modal">Cancel</button>
+    <div class="time-pair">
+      <div>
+        <label for="concert-start">Start Date</label>
+        <input type="date" id="concert-start">
+      </div>
+      <div>
+        <label for="concert-end">End Date</label>
+        <input type="date" id="concert-end">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="save-concert-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Concert</button>
+      <button class="modal-close-btn" data-modal="add-concert-modal">Cancel</button>
     </div>
     <p id="concert-save-msg" class="msg"></p>
   </div>
@@ -301,22 +294,25 @@
 
 <!-- Add / Edit Work (Piece) -->
 <div id="add-piece-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:480px;">
-    <div class="modal-header">
-      <h2 id="piece-modal-title">Add Work</h2>
-      <button class="modal-close-btn" data-modal="add-piece-modal">✕</button>
-    </div>
+  <div class="modal-card">
+    <h3 id="piece-modal-title">Add Work</h3>
     <label for="piece-title-input">Title <span class="required">*</span></label>
     <input type="text" id="piece-title-input" placeholder="e.g. Symphony No. 5">
     <label for="piece-composer">Composer</label>
     <input type="text" id="piece-composer" placeholder="e.g. Beethoven">
-    <label for="piece-opus">Op. / Catalogue No.</label>
-    <input type="text" id="piece-opus" placeholder="e.g. Op. 67">
-    <label for="piece-duration">Duration (minutes)</label>
-    <input type="number" id="piece-duration" min="1" max="300" placeholder="e.g. 35">
-    <div class="modal-footer">
-      <button id="save-piece-btn">Save</button>
-      <button class="subtle-btn modal-close-btn" data-modal="add-piece-modal">Cancel</button>
+    <div class="time-pair">
+      <div>
+        <label for="piece-opus">Op. / Catalogue No.</label>
+        <input type="text" id="piece-opus" placeholder="e.g. Op. 67">
+      </div>
+      <div>
+        <label for="piece-duration">Duration (min)</label>
+        <input type="number" id="piece-duration" min="1" max="300" placeholder="e.g. 35">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="save-piece-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Work</button>
+      <button class="modal-close-btn" data-modal="add-piece-modal">Cancel</button>
     </div>
     <p id="piece-save-msg" class="msg"></p>
   </div>
@@ -324,11 +320,8 @@
 
 <!-- Assign Seat -->
 <div id="assign-seat-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:440px;">
-    <div class="modal-header">
-      <h2 id="assign-seat-title">Assign Seat</h2>
-      <button class="modal-close-btn" data-modal="assign-seat-modal">✕</button>
-    </div>
+  <div class="modal-card">
+    <h3 id="assign-seat-title">Assign Seat</h3>
     <label for="seat-member-select">Member</label>
     <select id="seat-member-select">
       <option value="">— Unassigned —</option>
@@ -340,48 +333,59 @@
       <label for="seat-ext-email">Email</label>
       <input type="email" id="seat-ext-email" placeholder="email@example.com">
     </div>
-    <div class="modal-footer">
-      <button id="save-seat-btn">Assign</button>
-      <button class="subtle-btn modal-close-btn" data-modal="assign-seat-modal">Cancel</button>
+    <div class="modal-actions">
+      <button id="save-seat-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Assign</button>
+      <button class="modal-close-btn" data-modal="assign-seat-modal">Cancel</button>
     </div>
     <p id="seat-save-msg" class="msg"></p>
   </div>
 </div>
 
-<!-- Add Member -->
+<!-- Add / Edit Member -->
 <div id="add-member-modal" class="modal-overlay hidden">
-  <div class="modal-box" style="max-width:480px;">
-    <div class="modal-header">
-      <h2 id="member-modal-title">Add Member</h2>
-      <button class="modal-close-btn" data-modal="add-member-modal">✕</button>
+  <div class="modal-card modal-large">
+    <h3 id="member-modal-title">Add Member</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);">
+      <div>
+        <label for="member-name-input">Name <span class="required">*</span></label>
+        <input type="text" id="member-name-input" placeholder="Full name">
+      </div>
+      <div>
+        <label for="member-email-input">Email</label>
+        <input type="email" id="member-email-input" placeholder="email@example.com">
+      </div>
+      <div>
+        <label for="member-phone-input">Phone</label>
+        <input type="tel" id="member-phone-input" placeholder="Optional">
+      </div>
+      <div>
+        <label for="member-instrument-input">Instrument</label>
+        <input type="text" id="member-instrument-input" placeholder="e.g. Violin, Oboe">
+      </div>
+      <div>
+        <label for="member-part-label">Part Label</label>
+        <input type="text" id="member-part-label" placeholder="e.g. 1st Violin, 2nd Violin">
+      </div>
+      <div>
+        <label for="member-family-select">Section Family</label>
+        <select id="member-family-select">
+          <option value="strings">Strings</option>
+          <option value="woodwinds">Woodwinds</option>
+          <option value="brass">Brass</option>
+          <option value="percussion">Percussion</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
     </div>
-    <label for="member-name-input">Name <span class="required">*</span></label>
-    <input type="text" id="member-name-input" placeholder="Full name">
-    <label for="member-email-input">Email</label>
-    <input type="email" id="member-email-input" placeholder="email@example.com">
-    <label for="member-phone-input">Phone</label>
-    <input type="tel" id="member-phone-input" placeholder="Optional">
-    <label for="member-instrument-input">Instrument</label>
-    <input type="text" id="member-instrument-input" placeholder="e.g. Violin, Oboe">
-    <label for="member-part-label">Part Label</label>
-    <input type="text" id="member-part-label" placeholder="e.g. 1st Violin, 2nd Violin">
-    <label for="member-family-select">Section Family</label>
-    <select id="member-family-select">
-      <option value="strings">Strings</option>
-      <option value="woodwinds">Woodwinds</option>
-      <option value="brass">Brass</option>
-      <option value="percussion">Percussion</option>
-      <option value="other">Other</option>
-    </select>
     <label for="member-section-select">Section</label>
     <select id="member-section-select">
       <option value="">— select —</option>
     </select>
     <label for="member-notes-input">Notes</label>
     <input type="text" id="member-notes-input" placeholder="Optional">
-    <div class="modal-footer">
-      <button id="save-member-btn">Save</button>
-      <button class="subtle-btn modal-close-btn" data-modal="add-member-modal">Cancel</button>
+    <div class="modal-actions">
+      <button id="save-member-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Member</button>
+      <button class="modal-close-btn" data-modal="add-member-modal">Cancel</button>
     </div>
     <p id="member-save-msg" class="msg"></p>
   </div>
