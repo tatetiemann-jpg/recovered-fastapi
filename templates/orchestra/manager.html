@@ -360,6 +360,23 @@
   </div>
 </div>
 
+<!-- Player Info (filled seat) -->
+<div id="player-info-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3 id="player-info-chair"></h3>
+    <div id="player-info-name" style="font-size:1.15em;font-weight:600;margin-bottom:4px;"></div>
+    <div id="player-info-instrument" class="hint" style="margin-bottom:var(--space-2);"></div>
+    <div id="player-info-email" style="margin-bottom:4px;"></div>
+    <div id="player-info-doublings" class="hint"></div>
+    <div class="modal-actions" style="margin-top:var(--space-4);">
+      <button id="player-info-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Edit Seat</button>
+      <button id="player-info-clear-btn">Clear Seat</button>
+      <button class="modal-close-btn" data-modal="player-info-modal">Close</button>
+    </div>
+    <p id="player-info-msg" class="msg"></p>
+  </div>
+</div>
+
 <!-- Add / Edit Member -->
 <div id="add-member-modal" class="modal-overlay hidden">
   <div class="modal-card modal-large">

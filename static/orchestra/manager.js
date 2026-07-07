@@ -643,14 +643,17 @@ async function loadSeating(pieceId) {
 
         for (let chair = 1; chair <= chairCount; chair++) {
           const seat = seatIndex[`${sec.id}_${chair}_${part}`];
-          const name = seat ? (seat.member_name || "—") : "";
+          const name = seat?.member_name || "";
           const assigned = !!name;
 
           const cell = document.createElement("div");
           cell.className = "chair-cell" + (assigned ? " assigned" : "");
           cell.title = `Chair ${chair}${part > 1 ? ` / ${partLabels[part-1]}` : ""}${assigned ? " — " + name : ""}`;
           cell.innerHTML = `<span class="chair-num">${chair}</span>${assigned ? `<span class="chair-name">${name}</span>` : ""}`;
-          cell.addEventListener("click", () => openAssignSeat(sec.id, chair, part));
+          cell.addEventListener("click", () => {
+            if (assigned) openPlayerInfo(seat, sec, chair, part);
+            else openAssignSeat(sec.id, chair, part);
+          });
           chairRow.appendChild(cell);
         }
 
@@ -792,6 +795,60 @@ document.getElementById("save-seat-btn")?.addEventListener("click", async () => 
 
   closeModal("assign-seat-modal");
   loadSeating(SEAT_CONTEXT.piece_id);
+});
+
+// ── Player info (filled seat click) ──────────────────────────────────────────
+
+let PLAYER_INFO_CONTEXT = null;
+
+function openPlayerInfo(seat, sec, chairNumber, partNumber) {
+  const PART_LABELS = ["1st Part", "2nd Part", "3rd Part", "4th Part"];
+  const partSuffix = partNumber > 1 ? ` / ${PART_LABELS[partNumber - 1]}` : "";
+  PLAYER_INFO_CONTEXT = {seat, sec, chairNumber, partNumber};
+
+  document.getElementById("player-info-chair").textContent =
+    `${sec.name} — Chair ${chairNumber}${partSuffix}`;
+  document.getElementById("player-info-name").textContent = seat.member_name || "—";
+  document.getElementById("player-info-msg").textContent = "";
+
+  const member = seat.member_id ? MEMBERS.find(m => m.id === seat.member_id) : null;
+
+  const instrParts = [member?.instrument, member?.part_label].filter(Boolean);
+  document.getElementById("player-info-instrument").textContent = instrParts.join(" · ");
+
+  const email = member?.email || seat.external_email || "";
+  const emailEl = document.getElementById("player-info-email");
+  emailEl.textContent = email ? `✉  ${email}` : "";
+  emailEl.hidden = !email;
+
+  const doublings = (member?.doublings || "").split(",").map(d => d.trim()).filter(Boolean);
+  const doublingsEl = document.getElementById("player-info-doublings");
+  doublingsEl.textContent = doublings.length ? `Doubles: ${doublings.join(", ")}` : "";
+  doublingsEl.hidden = !doublings.length;
+
+  openModal("player-info-modal");
+}
+
+document.getElementById("player-info-edit-btn")?.addEventListener("click", () => {
+  if (!PLAYER_INFO_CONTEXT) return;
+  const {sec, chairNumber, partNumber} = PLAYER_INFO_CONTEXT;
+  closeModal("player-info-modal");
+  openAssignSeat(sec.id, chairNumber, partNumber);
+});
+
+document.getElementById("player-info-clear-btn")?.addEventListener("click", async () => {
+  if (!PLAYER_INFO_CONTEXT) return;
+  const {sec, chairNumber, partNumber} = PLAYER_INFO_CONTEXT;
+  const msg = document.getElementById("player-info-msg");
+  const r = await api("POST", `/orchestra/pieces/${CURRENT_PIECE_ID}/seats`, {
+    section_id: sec.id,
+    chair_number: chairNumber,
+    part_number: partNumber,
+  });
+  if (r.status === "success") {
+    closeModal("player-info-modal");
+    loadSeating(CURRENT_PIECE_ID);
+  } else { msg.textContent = r.message || "Failed."; }
 });
 
 // ── Members ───────────────────────────────────────────────────────────────────
