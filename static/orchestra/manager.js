@@ -496,6 +496,7 @@ document.getElementById("back-to-concerts-btn")?.addEventListener("click", () =>
 
 document.getElementById("back-to-pieces-btn")?.addEventListener("click", () => {
   document.getElementById("seating-panel").classList.add("hidden");
+  document.getElementById("pieces-panel").classList.remove("hidden");
   if (CURRENT_CONCERT_ID) loadPieces(CURRENT_CONCERT_ID);
 });
 
