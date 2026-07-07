@@ -11991,11 +11991,12 @@ def orchestra_get_invitations(request: Request):
 # ORCHESTRA ABSENCE + SECTION COVERAGE
 # ========================================================
 
-def _trigger_section_coverage(absence_request_id: int, rehearsal_id: int, absent_member_id: int):
+def _trigger_section_coverage(absence_request_id: int, rehearsal_id: int, absent_member_id: int, admin_user_id: int = None):
     """
     Email all other active members in the absent member's section.
     Creates an orchestra_sub_request linked to the absence with status='section_sent'.
     After 8 hrs or all decline, the caller of coverage-response auto-escalates to preferred subs.
+    admin_user_id must be a valid users.id — used as created_by on orchestra_sub_requests.
     """
     with db_cursor() as cur:
         cur.execute("""
@@ -12012,12 +12013,7 @@ def _trigger_section_coverage(absence_request_id: int, rehearsal_id: int, absent
         return
     section_id, absent_name, section_name, start_time, location, notes, org_name, org_id = row
     if not section_id:
-        # No section — skip straight to subs
-        with db_cursor(commit=True) as cur:
-            cur.execute("""
-                INSERT INTO orchestra_sub_requests (rehearsal_id, section_id, created_by, status, absence_request_id)
-                VALUES (%s, %s, %s, 'pending', %s) RETURNING id
-            """, (rehearsal_id, section_id, absent_member_id, absence_request_id))
+        # No section — nothing to do
         return
 
     # Get other members in this section who have email
@@ -12047,7 +12043,7 @@ def _trigger_section_coverage(absence_request_id: int, rehearsal_id: int, absent
                 INSERT INTO orchestra_sub_requests
                     (rehearsal_id, section_id, created_by, status, section_contacted_at, absence_request_id)
                 VALUES (%s, %s, %s, 'section_sent', NOW(), %s) RETURNING id
-            """, (rehearsal_id, section_id, absent_member_id, absence_request_id))
+            """, (rehearsal_id, section_id, admin_user_id, absence_request_id))
             req_id = cur.fetchone()[0]
 
     if not section_members:
@@ -12345,7 +12341,7 @@ def orchestra_approve_absence(absence_id: int, request: Request):
                    f"<p>Hi {mrow[0]},</p><p>Your absence for the rehearsal on {rdate} has been approved.</p>",
                    f"Hi {mrow[0]},\n\nYour absence for {rdate} has been approved.")
 
-    _trigger_section_coverage(absence_id, rehearsal_id, member_id)
+    _trigger_section_coverage(absence_id, rehearsal_id, member_id, admin_user_id=user["id"])
     return {"status": "success"}
 
 
@@ -12409,5 +12405,5 @@ def orchestra_admin_mark_absent(payload: dict, request: Request):
         """, (rehearsal_id, member_id, reason, user["id"]))
         absence_id = cur.fetchone()[0]
 
-    _trigger_section_coverage(absence_id, rehearsal_id, member_id)
+    _trigger_section_coverage(absence_id, rehearsal_id, member_id, admin_user_id=user["id"])
     return {"status": "success"}

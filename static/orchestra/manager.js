@@ -234,7 +234,6 @@ async function loadAttendance(rehearsalId) {
         const attOn  = m.status === "attended" ? "background:#22c55e;border-color:#22c55e;color:#fff;" : "background:transparent;border-color:#22c55e;color:#22c55e;";
         const excOn  = m.status === "excused"  ? "background:#eab308;border-color:#eab308;color:#1f1b15;" : "background:transparent;border-color:#eab308;color:#eab308;";
         const absOn  = m.status === "absent"   ? "background:#ef4444;border-color:#ef4444;color:#fff;" : "background:transparent;border-color:#ef4444;color:#ef4444;";
-        const safeName = m.fullname.replace(/'/g, "\\'");
         const row = document.createElement("div");
         row.className = "card";
         row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;";
@@ -249,7 +248,7 @@ async function loadAttendance(rehearsalId) {
             <button style="${S}${excOn}" title="Excused"
               onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'excused')">~</button>
             <button style="${S}${absOn}" title="Absent"
-              onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id}, '${safeName}')">✗</button>
+              onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id})">✗</button>
           </div>`;
         secInner.appendChild(row);
       });
@@ -266,15 +265,11 @@ async function setAttendance(rehearsalId, memberId, status) {
   loadAttendance(rehearsalId);
 }
 
-async function adminMarkAbsent(rehearsalId, memberId, memberName) {
-  const reason = prompt(`Reason for ${memberName}'s absence (optional):`);
-  if (reason === null) return; // cancelled
-  await api("POST", `/orchestra/rehearsals/${rehearsalId}/attendance`,
-            {member_id: memberId, status: "absent"});
+async function adminMarkAbsent(rehearsalId, memberId) {
   const r = await api("POST", "/orchestra/admin-mark-absent", {
     rehearsal_id: rehearsalId,
     member_id: memberId,
-    reason: reason || "Admin marked absent",
+    reason: "Admin marked absent",
   });
   if (r.status === "success") {
     await loadAttendance(rehearsalId);
