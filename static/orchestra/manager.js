@@ -230,21 +230,26 @@ async function loadAttendance(rehearsalId) {
       );
 
       secGroup.members.forEach(m => {
+        const S = "width:30px;height:30px;padding:0;border-radius:6px;border:2px solid;font-size:15px;font-weight:700;cursor:pointer;flex-shrink:0;";
+        const attOn  = m.status === "attended" ? "background:#22c55e;border-color:#22c55e;color:#fff;" : "background:transparent;border-color:#22c55e;color:#22c55e;";
+        const excOn  = m.status === "excused"  ? "background:#eab308;border-color:#eab308;color:#1f1b15;" : "background:transparent;border-color:#eab308;color:#eab308;";
+        const absOn  = m.status === "absent"   ? "background:#ef4444;border-color:#ef4444;color:#fff;" : "background:transparent;border-color:#ef4444;color:#ef4444;";
+        const safeName = m.fullname.replace(/'/g, "\\'");
         const row = document.createElement("div");
         row.className = "card";
-        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin-bottom:6px;";
+        row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;";
         row.innerHTML = `
-          <div>
-            <strong>${m.fullname}</strong>
-            ${m.instrument ? `<span class="hint"> — ${m.instrument}</span>` : ""}
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.fullname}</div>
+            ${m.instrument ? `<div class="hint" style="font-size:0.8em;white-space:nowrap;">${m.instrument}</div>` : ""}
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="subtle-btn ${m.status === 'attended' ? 'active' : ''}"
-              onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'attended')">✓ Attended</button>
-            <button class="subtle-btn ${m.status === 'excused' ? 'active' : ''}"
-              onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'excused')">~ Excused</button>
-            <button class="subtle-btn ${m.status === 'absent' ? 'active' : ''}"
-              onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id}, '${m.fullname.replace(/'/g,"\\'")}')">✗ Absent</button>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <button style="${S}${attOn}" title="Attended"
+              onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'attended')">✓</button>
+            <button style="${S}${excOn}" title="Excused"
+              onclick="setAttendance(${rehearsalId}, ${m.member_id}, 'excused')">~</button>
+            <button style="${S}${absOn}" title="Absent"
+              onclick="adminMarkAbsent(${rehearsalId}, ${m.member_id}, '${safeName}')">✗</button>
           </div>`;
         secInner.appendChild(row);
       });

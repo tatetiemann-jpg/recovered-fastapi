@@ -11591,15 +11591,17 @@ def orchestra_get_attendance(rehearsal_id: int, request: Request):
             raise HTTPException(status_code=404)
         cur.execute("""
             SELECT om.id, om.fullname, om.section_family, om.instrument,
-                   oa.status, oa.notes
+                   oa.status, oa.notes, om.section_id, os2.name AS section_name
             FROM orchestra_members om
             LEFT JOIN orchestra_attendance oa
                 ON oa.member_id = om.id AND oa.rehearsal_id = %s
+            LEFT JOIN orchestra_sections os2 ON os2.id = om.section_id
             WHERE om.org_id=%s AND om.active=true
             ORDER BY om.section_family, om.fullname
         """, (rehearsal_id, user["org_id"]))
         return [{"member_id": r[0], "fullname": r[1], "section_family": r[2] or "other",
-                 "instrument": r[3] or "", "status": r[4], "notes": r[5] or ""}
+                 "instrument": r[3] or "", "status": r[4], "notes": r[5] or "",
+                 "section_id": r[6], "section_name": r[7] or "Other"}
                 for r in cur.fetchall()]
 
 
