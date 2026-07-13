@@ -1,7 +1,7 @@
 // ===============================
 // GLOBAL CONTEXT
 // ===============================
-const API = "https://countrpnt.com";
+const API = "";
 
 // Orchestral instruments — used for signup dropdown and Add Section modal
 // Includes specific doublings so members can identify their exact instrument

@@ -1530,6 +1530,7 @@ def login(data: LoginData, request: Request, response: Response):
         secure=True,
         samesite="lax",
         path="/",
+        domain=".countrpnt.com",
     )
 
     return {
