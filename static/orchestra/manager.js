@@ -740,17 +740,16 @@ document.getElementById("seat-member-select")?.addEventListener("change", functi
     manualRow.classList.add("hidden");
   } else {
     autoRow.classList.add("hidden");
+    const candidates = (DOUBLING_PAIRS[secInstrument] || [])
+      .filter(i => i !== memberInstrument && !existingDoublings.includes(i));
+    if (!candidates.length) { wrap.classList.add("hidden"); return; }
     const instrSel = document.getElementById("doubling-instr-select");
     instrSel.innerHTML = '<option value="">— none —</option>';
-    ["piccolo","flute","oboe","english horn","clarinet","eb clarinet","bass clarinet",
-     "bassoon","contrabassoon","horn","trumpet","trombone","bass trombone","tuba",
-     "euphonium","timpani","harp","piano"]
-      .filter(i => i !== secInstrument && i !== memberInstrument)
-      .forEach(i => {
-        const o = document.createElement("option");
-        o.value = i; o.textContent = i.charAt(0).toUpperCase() + i.slice(1);
-        instrSel.appendChild(o);
-      });
+    candidates.forEach(i => {
+      const o = document.createElement("option");
+      o.value = i; o.textContent = i.charAt(0).toUpperCase() + i.slice(1);
+      instrSel.appendChild(o);
+    });
     manualRow.classList.remove("hidden");
   }
 });
