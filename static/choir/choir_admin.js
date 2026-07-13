@@ -604,12 +604,9 @@ function renderAbsenceList(absences, subReqs, requestsOnly = false) {
 
     const pending = absences.filter(a => a.status === "pending");
     const approved = absences.filter(a => a.status !== "pending");
-    const displayList = requestsOnly ? pending : approved;
 
-    if (!displayList.length) {
-        box.innerHTML = requestsOnly
-            ? `<em class="empty-note">No pending requests.</em>`
-            : `<em class="empty-note">No absences reported.</em>`;
+    if (!absences.length) {
+        box.innerHTML = `<em class="empty-note">No absences reported.</em>`;
         return;
     }
 
@@ -619,8 +616,12 @@ function renderAbsenceList(absences, subReqs, requestsOnly = false) {
 
     box.innerHTML = "";
 
-    if (requestsOnly) {
-        // Pending requests with Approve / Deny
+    // Always render pending requests with Approve / Deny at the top
+    if (pending.length) {
+        const pendingHeader = document.createElement("div");
+        pendingHeader.className = "manage-voice-header";
+        pendingHeader.textContent = "Pending Requests";
+        box.appendChild(pendingHeader);
         pending.forEach(a => {
             const row = document.createElement("div");
             row.style.cssText = "padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;";
@@ -652,8 +653,9 @@ function renderAbsenceList(absences, subReqs, requestsOnly = false) {
             });
             box.appendChild(row);
         });
-        return;
     }
+
+    if (requestsOnly) return;
 
     // Approved absences grouped by section
     const bySec = {};

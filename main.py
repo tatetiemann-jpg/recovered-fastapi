@@ -2061,6 +2061,26 @@ This invitation expires in {INVITE_TOKEN_DAYS} days. If you weren't expecting th
     return html, text
 
 
+_DEFAULT_CHOIR_SECTIONS = [
+    ("Soprano", 0),
+    ("Alto",    1),
+    ("Tenor",   2),
+    ("Bass",    3),
+]
+
+def _seed_default_choir_sections(org_id: int):
+    """Insert SATB sections for a new choir org if none exist yet."""
+    with db_cursor(commit=True) as cur:
+        cur.execute("SELECT COUNT(*) FROM choir_sections WHERE org_id = %s", (org_id,))
+        if cur.fetchone()[0] > 0:
+            return
+        for name, sort_order in _DEFAULT_CHOIR_SECTIONS:
+            cur.execute(
+                "INSERT INTO choir_sections (org_id, name, sort_order) VALUES (%s, %s, %s)",
+                (org_id, name, sort_order),
+            )
+
+
 @app.post("/admin/invite")
 def admin_invite(payload: dict, request: Request):
     """Admin sends an invite email. Role permissions follow hierarchy."""
@@ -2160,6 +2180,8 @@ def admin_invite(payload: dict, request: Request):
                       lesson_booking_open_hour, lesson_booking_close_hour,
                       lesson_cancellation_notice_min, lesson_has_lunch_break,
                       lesson_max_per_teacher, org_logo_url, org_id))
+            if new_org_type == "choir":
+                _seed_default_choir_sections(org_id)
         elif org_name:
             # Create the org on the fly with the specified type and lesson config
             with db_cursor(commit=True) as cur:
@@ -2177,6 +2199,8 @@ def admin_invite(payload: dict, request: Request):
                       lesson_has_lunch_break, lesson_max_per_teacher, org_logo_url))
                 org_id = cur.fetchone()[0]
             _org_id_cache[org_slug] = org_id
+            if new_org_type == "choir":
+                _seed_default_choir_sections(org_id)
         else:
             return {"status": "fail", "message": "Please enter an organization name so we can create it."}
     else:
