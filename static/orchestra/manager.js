@@ -1088,19 +1088,21 @@ function initMessages() {
 }
 
 async function loadDMInbox() {
-  const res = await fetch("/dm/inbox");
-  const msgs = await res.json().catch(() => []);
+  const res = await fetch("/dm", { credentials: "include" });
+  const data = await res.json().catch(() => []);
+  const msgs = Array.isArray(data) ? data : [];
   const list = document.getElementById("dm-inbox-list");
   const unread = msgs.filter(m => !m.read_at);
   document.getElementById("dm-badge").textContent = unread.length;
   document.getElementById("dm-badge").classList.toggle("hidden", !unread.length);
   if (!msgs.length) { list.innerHTML = "<em class='empty-note'>No messages.</em>"; return; }
-  list.innerHTML = msgs.filter(m => !m.read_at).map(m => dmCard(m, false)).join("");
+  list.innerHTML = unread.map(m => dmCard(m, false)).join("");
 }
 
 async function loadDMRead() {
-  const res = await fetch("/dm/inbox");
-  const msgs = await res.json().catch(() => []);
+  const res = await fetch("/dm", { credentials: "include" });
+  const data = await res.json().catch(() => []);
+  const msgs = Array.isArray(data) ? data : [];
   const list = document.getElementById("dm-read-list");
   const read = msgs.filter(m => m.read_at);
   if (!read.length) { list.innerHTML = "<em class='empty-note'>No read messages.</em>"; return; }
@@ -1120,7 +1122,7 @@ function dmCard(m, read) {
 }
 
 async function markRead(id) {
-  await fetch(`/dm/${id}/read`, {method:"POST"});
+  await fetch(`/dm/${id}/read`, {method:"POST", credentials:"include"});
   loadDMInbox();
 }
 
