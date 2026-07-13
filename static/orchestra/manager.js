@@ -629,6 +629,50 @@ async function loadSeating(pieceId) {
       );
       secInner.style.paddingBottom = "var(--space-3)";
 
+      // Chair count edit button
+      {
+        const secHdr = secGrp.querySelector(".unified-section-header");
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "chair-edit-btn";
+        editBtn.title = "Edit chair count";
+        editBtn.innerHTML = "&#9998;";
+        editBtn.addEventListener("click", e => {
+          e.stopPropagation();
+          const existing = secHdr.querySelector(".chair-count-input-wrap");
+          if (existing) { existing.remove(); return; }
+          const wrap = document.createElement("span");
+          wrap.className = "chair-count-input-wrap";
+          const inp = document.createElement("input");
+          inp.type = "number";
+          inp.min = "1";
+          inp.max = "200";
+          inp.value = chairCount;
+          inp.className = "chair-count-input";
+          const okBtn = document.createElement("button");
+          okBtn.type = "button";
+          okBtn.textContent = "Save";
+          okBtn.className = "btn-xs";
+          okBtn.addEventListener("click", async ev => {
+            ev.stopPropagation();
+            const val = parseInt(inp.value, 10);
+            if (!val || val < 1) return;
+            try {
+              const r = await api("PATCH", "/orchestra/sections/" + sec.id + "/chair-count", { chair_count: val });
+              const s = SECTIONS.find(x => x.id === sec.id);
+              if (s) s.chair_count = r.chair_count;
+              loadSeating(CURRENT_PIECE_ID);
+            } catch (_) { alert("Failed to update chair count"); }
+          });
+          wrap.appendChild(inp);
+          wrap.appendChild(okBtn);
+          secHdr.appendChild(wrap);
+          inp.focus();
+          inp.select();
+        });
+        secHdr.appendChild(editBtn);
+      }
+
       for (let part = 1; part <= partCount; part++) {
         if (partCount > 1) {
           const partLabel = document.createElement("div");

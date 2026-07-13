@@ -1041,6 +1041,55 @@ tbody tr:hover td { background: var(--accent-soft); }
   font-weight: 600;
 }
 
+.chair-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 2px 5px;
+  border-radius: var(--radius);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.1s;
+  flex-shrink: 0;
+}
+.unified-section-header:hover .chair-edit-btn {
+  opacity: 1;
+}
+.chair-edit-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.chair-count-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+.chair-count-input {
+  width: 54px;
+  padding: 2px 5px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.btn-xs {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.btn-xs:hover {
+  filter: brightness(1.1);
+}
+
 .section-select-all-btn {
   flex-shrink: 0;
   background: none;

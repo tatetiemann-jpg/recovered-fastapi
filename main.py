@@ -11180,6 +11180,22 @@ def orchestra_get_sections(request: Request):
                 for r in cur.fetchall()]
 
 
+@app.patch("/orchestra/sections/{section_id}/chair-count")
+def orchestra_set_chair_count(section_id: int, payload: dict, request: Request):
+    user = require_orchestra_admin(request)
+    chair_count = int(payload.get("chair_count", 1))
+    chair_count = max(1, min(chair_count, 200))
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE orchestra_sections SET chair_count=%s WHERE id=%s AND org_id=%s RETURNING chair_count",
+            (chair_count, section_id, user["org_id"]),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Section not found")
+    return {"status": "success", "chair_count": row[0]}
+
+
 # -- Members --------------------------------------------------------------
 
 @app.get("/orchestra/members")
