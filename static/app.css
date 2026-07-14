@@ -4488,3 +4488,72 @@ details.cal-subscribe-details[open] > .cal-subscribe-summary::before {
 }
 .rate-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
 .rate-price-wrap { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ======================================================
+   COOKIE CONSENT BANNER
+====================================================== */
+
+#cookie-consent-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+}
+.cc-banner-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.cc-banner-text {
+  flex: 1;
+  min-width: 240px;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.cc-banner-text a { color: var(--accent); }
+.cc-banner-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.cc-customize-panel {
+  max-width: 1000px;
+  margin: var(--space-4) auto 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.cc-category { margin-bottom: var(--space-3); }
+.cc-category-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-weight: normal;
+  cursor: pointer;
+}
+.cc-category-row input { width: auto; flex-shrink: 0; margin-top: 3px; }
+.cc-category-row span { font-size: 0.88rem; color: var(--text-muted); }
+
+#cookie-prefs-link {
+  position: fixed;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 9998;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  line-height: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}

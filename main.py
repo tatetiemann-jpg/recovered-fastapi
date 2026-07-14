@@ -1441,6 +1441,11 @@ def signup_page(request: Request):
     return templates.TemplateResponse(request, "signup.html")
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request):
+    return templates.TemplateResponse(request, "privacy.html")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request):
     return templates.TemplateResponse(request, "opera/admin.html")

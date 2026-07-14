@@ -47,11 +47,13 @@
 
     window.setCharacterTheme = function(themeId) {
         applyCharacterTheme(themeId);
+        if (window.hasConsent && !window.hasConsent('functional')) return;
         try { localStorage.setItem(CHARACTER_THEME_KEY, themeId); } catch (e) {}
     };
 
     window.setLightDark = function(theme) {
         applyLightDark(theme);
+        if (window.hasConsent && !window.hasConsent('functional')) return;
         try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
     };
 
