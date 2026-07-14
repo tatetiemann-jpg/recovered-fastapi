@@ -107,34 +107,39 @@ function populateSectionSelects() {
 // ── Rehearsals ────────────────────────────────────────────────────────────────
 
 async function loadRehearsals() {
-  const rehearsals = await api("GET", "/orchestra/rehearsals");
   const list = document.getElementById("rehearsals-list");
-  if (!Array.isArray(rehearsals) || !rehearsals.length) {
-    list.innerHTML = "<em class='empty-note'>No rehearsals yet.</em>";
-    return;
+  try {
+    const rehearsals = await api("GET", "/orchestra/rehearsals");
+    if (!Array.isArray(rehearsals) || !rehearsals.length) {
+      list.innerHTML = "<em class='empty-note'>No rehearsals yet.</em>";
+      return;
+    }
+    list.innerHTML = rehearsals.map(r => {
+      const sectionTags = (r.section_ids || []).length
+        ? `<span class="tag">${r.section_ids.length} section(s)</span>` : "";
+      return `
+        <div class="card" style="cursor:pointer;" data-reh-id="${r.id}">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <strong>${fmtDT(r.start_time)}</strong>
+              ${r.end_time ? `<span class="hint"> — ${fmtDT(r.end_time)}</span>` : ""}
+              ${r.concert_title ? `<span class="tag" style="margin-left:8px;">${r.concert_title}</span>` : ""}
+              ${r.attendance_type === "sectional" ? `<span class="tag" style="margin-left:4px;">Sectional</span>` : ""}
+              ${sectionTags}
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="subtle-btn" onclick="openAttendanceModal(${r.id},'${encodeURIComponent(fmtDT(r.start_time))}')">Attendance</button>
+              <button class="subtle-btn" onclick="deleteRehearsal(${r.id})">Delete</button>
+            </div>
+          </div>
+          ${r.location ? `<div class="hint">${r.location}</div>` : ""}
+          ${r.notes ? `<div class="hint" style="margin-top:4px;">${r.notes}</div>` : ""}
+        </div>`;
+    }).join("");
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
   }
-  list.innerHTML = rehearsals.map(r => {
-    const sectionTags = (r.section_ids || []).length
-      ? `<span class="tag">${r.section_ids.length} section(s)</span>` : "";
-    return `
-      <div class="card" style="cursor:pointer;" data-reh-id="${r.id}">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div>
-            <strong>${fmtDT(r.start_time)}</strong>
-            ${r.end_time ? `<span class="hint"> — ${fmtDT(r.end_time)}</span>` : ""}
-            ${r.concert_title ? `<span class="tag" style="margin-left:8px;">${r.concert_title}</span>` : ""}
-            ${r.attendance_type === "sectional" ? `<span class="tag" style="margin-left:4px;">Sectional</span>` : ""}
-            ${sectionTags}
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="subtle-btn" onclick="openAttendanceModal(${r.id},'${encodeURIComponent(fmtDT(r.start_time))}')">Attendance</button>
-            <button class="subtle-btn" onclick="deleteRehearsal(${r.id})">Delete</button>
-          </div>
-        </div>
-        ${r.location ? `<div class="hint">${r.location}</div>` : ""}
-        ${r.notes ? `<div class="hint" style="margin-top:4px;">${r.notes}</div>` : ""}
-      </div>`;
-  }).join("");
 }
 
 async function deleteRehearsal(id) {
@@ -158,25 +163,31 @@ async function openAttendanceModal(rehearsalId, titleEncoded) {
 // ── Absence Requests ──────────────────────────────────────────────────────────
 
 async function loadAbsenceRequests(rehearsalId) {
-  const reqs = await api("GET", `/orchestra/rehearsals/${rehearsalId}/absence-requests`);
   const section = document.getElementById("absence-requests-section");
   const list = document.getElementById("absence-requests-list");
-  const pending = Array.isArray(reqs) ? reqs.filter(r => r.status === "pending") : [];
-  if (!pending.length) { section.style.display = "none"; return; }
-  section.style.display = "";
-  list.innerHTML = pending.map(r => `
-    <div class="card" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <div>
-        <strong>${r.fullname}</strong>
-        ${r.section_name ? `<span class="hint"> — ${r.section_name}</span>` : ""}
-        ${r.reason ? `<div class="hint" style="margin-top:2px;">Reason: ${r.reason}</div>` : ""}
-        ${r.note ? `<div class="hint">Note: ${r.note}</div>` : ""}
-      </div>
-      <div style="display:flex;gap:6px;">
-        <button class="subtle-btn" onclick="approveAbsence(${r.id}, ${rehearsalId})">✓ Approve</button>
-        <button class="subtle-btn" onclick="denyAbsence(${r.id}, ${rehearsalId})">✗ Deny</button>
-      </div>
-    </div>`).join("");
+  try {
+    const reqs = await api("GET", `/orchestra/rehearsals/${rehearsalId}/absence-requests`);
+    const pending = Array.isArray(reqs) ? reqs.filter(r => r.status === "pending") : [];
+    if (!pending.length) { section.style.display = "none"; return; }
+    section.style.display = "";
+    list.innerHTML = pending.map(r => `
+      <div class="card" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <strong>${r.fullname}</strong>
+          ${r.section_name ? `<span class="hint"> — ${r.section_name}</span>` : ""}
+          ${r.reason ? `<div class="hint" style="margin-top:2px;">Reason: ${r.reason}</div>` : ""}
+          ${r.note ? `<div class="hint">Note: ${r.note}</div>` : ""}
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="subtle-btn" onclick="approveAbsence(${r.id}, ${rehearsalId})">✓ Approve</button>
+          <button class="subtle-btn" onclick="denyAbsence(${r.id}, ${rehearsalId})">✗ Deny</button>
+        </div>
+      </div>`).join("");
+  } catch (e) {
+    console.error(e);
+    section.style.display = "";
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+  }
 }
 
 async function approveAbsence(absenceId, rehearsalId) {
@@ -195,8 +206,15 @@ async function denyAbsence(absenceId, rehearsalId) {
 }
 
 async function loadAttendance(rehearsalId) {
-  const rows = await api("GET", `/orchestra/rehearsals/${rehearsalId}/attendance`);
   const list = document.getElementById("attendance-list");
+  let rows;
+  try {
+    rows = await api("GET", `/orchestra/rehearsals/${rehearsalId}/attendance`);
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+    return;
+  }
   if (!Array.isArray(rows) || !rows.length) {
     list.innerHTML = "<em class='empty-note'>No members.</em>";
     return;
@@ -300,7 +318,14 @@ document.getElementById("att-mark-all-absent")?.addEventListener("click", async 
 // Sub Requests in Attendance Modal
 async function loadSubRequests(rehearsalId) {
   const wrap = document.getElementById("attendance-sub-requests");
-  const reqs = await api("GET", `/orchestra/sub-requests/${rehearsalId}`);
+  let reqs;
+  try {
+    reqs = await api("GET", `/orchestra/sub-requests/${rehearsalId}`);
+  } catch (e) {
+    console.error(e);
+    wrap.innerHTML = "<em class='empty-note'>Failed to load sub requests.</em>";
+    return;
+  }
   if (!Array.isArray(reqs) || !reqs.length) { wrap.innerHTML = ""; return; }
   wrap.innerHTML = `<h4 style="margin-bottom:var(--space-2);">Sub Requests</h4>` +
     reqs.map(req => {
@@ -365,8 +390,34 @@ document.getElementById("create-sub-request-btn")?.addEventListener("click", asy
 });
 
 // Schedule Rehearsal Modal
+function populateTimeSelect(el) {
+  const current = el.value;
+  el.innerHTML = '<option value="">-- time --</option>';
+  for (let h = 6; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      const suffix = h >= 12 ? "PM" : "AM";
+      const h12 = ((h + 11) % 12) + 1;
+      const opt = document.createElement("option");
+      opt.value = hhmm;
+      opt.textContent = `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+      el.appendChild(opt);
+    }
+  }
+  if (current) el.value = current;
+}
+
 document.getElementById("open-schedule-rehearsal-btn")?.addEventListener("click", () => {
   document.getElementById("reh-save-msg").textContent = "";
+  document.querySelector("input[name='reh-mode'][value='single']").checked = true;
+  document.getElementById("reh-single-fields").classList.remove("hidden");
+  document.getElementById("reh-bulk-fields").classList.add("hidden");
+  document.getElementById("reh-date").value = "";
+  ["bulk-start-date", "bulk-end-date"].forEach(id => document.getElementById(id).value = "");
+  document.querySelectorAll("#bulk-days input").forEach(cb => cb.checked = false);
+  document.getElementById("bulk-preview").textContent = "";
+  populateTimeSelect(document.getElementById("reh-start"));
+  populateTimeSelect(document.getElementById("reh-end"));
   openModal("schedule-rehearsal-modal");
   // Populate concert select
   const sel = document.getElementById("reh-concert");
@@ -378,22 +429,63 @@ document.getElementById("open-schedule-rehearsal-btn")?.addEventListener("click"
   });
 });
 
+document.querySelectorAll("input[name='reh-mode']").forEach(radio => {
+  radio.addEventListener("change", () => {
+    const isRange = radio.value === "range";
+    document.getElementById("reh-single-fields").classList.toggle("hidden", isRange);
+    document.getElementById("reh-bulk-fields").classList.toggle("hidden", !isRange);
+  });
+});
+
+const ORCH_DAY_JS = { monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 0 };
+
+function updateOrchBulkPreview() {
+  const startDate = document.getElementById("bulk-start-date").value;
+  const endDate = document.getElementById("bulk-end-date").value;
+  const days = [...document.querySelectorAll("#bulk-days input:checked")].map(cb => cb.value);
+  const preview = document.getElementById("bulk-preview");
+
+  if (!startDate || !endDate || !days.length) { preview.textContent = ""; return; }
+
+  const sd = new Date(startDate + "T00:00:00");
+  const ed = new Date(endDate + "T00:00:00");
+  if (ed < sd) { preview.textContent = "End date must be after start date."; return; }
+
+  const dayNums = days.map(d => ORCH_DAY_JS[d]);
+  let count = 0;
+  const cur = new Date(sd);
+  while (cur <= ed) {
+    if (dayNums.includes(cur.getDay())) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  preview.textContent = count > 0
+    ? `This will create ${count} rehearsal${count !== 1 ? "s" : ""}.`
+    : "No rehearsals match this selection.";
+}
+
+["bulk-start-date", "bulk-end-date"].forEach(id =>
+  document.getElementById(id)?.addEventListener("change", updateOrchBulkPreview));
+document.querySelectorAll("#bulk-days input").forEach(cb =>
+  cb.addEventListener("change", updateOrchBulkPreview));
+
 document.getElementById("reh-type")?.addEventListener("change", function() {
   const wrap = document.getElementById("reh-sections-wrap");
   wrap?.classList.toggle("hidden", this.value !== "sectional");
 });
 
-document.getElementById("save-rehearsal-btn")?.addEventListener("click", async () => {
+async function createSingleRehearsal() {
+  const date = document.getElementById("reh-date").value;
   const start = document.getElementById("reh-start").value;
   const msg = document.getElementById("reh-save-msg");
-  if (!start) { msg.textContent = "Start time required."; return; }
+  if (!date || !start) { msg.textContent = "Date and start time are required."; return; }
+  const end = document.getElementById("reh-end").value;
   const type = document.getElementById("reh-type").value;
   const sectionIds = type === "sectional"
     ? [...document.querySelectorAll("#reh-sections-checks input:checked")].map(el => parseInt(el.value))
     : [];
   const r = await api("POST", "/orchestra/rehearsals", {
-    start_time: start,
-    end_time: document.getElementById("reh-end").value || null,
+    start_time: `${date}T${start}`,
+    end_time: end ? `${date}T${end}` : null,
     concert_id: parseInt(document.getElementById("reh-concert").value) || null,
     attendance_type: type,
     section_ids: sectionIds,
@@ -406,14 +498,76 @@ document.getElementById("save-rehearsal-btn")?.addEventListener("click", async (
   } else {
     msg.textContent = r.message || "Failed.";
   }
+}
+
+async function bulkScheduleOrchestra() {
+  const msg = document.getElementById("reh-save-msg");
+  msg.textContent = "";
+
+  const start_date = document.getElementById("bulk-start-date").value;
+  const end_date = document.getElementById("bulk-end-date").value;
+  const days = [...document.querySelectorAll("#bulk-days input:checked")].map(cb => cb.value);
+  const start_time = document.getElementById("reh-start").value;
+  const end_time = document.getElementById("reh-end").value;
+  const type = document.getElementById("reh-type").value;
+  const sectionIds = type === "sectional"
+    ? [...document.querySelectorAll("#reh-sections-checks input:checked")].map(el => parseInt(el.value))
+    : [];
+
+  if (!start_date || !end_date) { msg.textContent = "Start and end dates are required."; return; }
+  if (!days.length) { msg.textContent = "Select at least one day of the week."; return; }
+  if (!start_time) { msg.textContent = "Start time is required."; return; }
+
+  const btn = document.getElementById("save-rehearsal-btn");
+  btn.disabled = true;
+  btn.textContent = "Scheduling...";
+
+  try {
+    const r = await api("POST", "/orchestra/rehearsals/bulk", {
+      start_date, end_date, days, start_time, end_time: end_time || null,
+      concert_id: parseInt(document.getElementById("reh-concert").value) || null,
+      attendance_type: type,
+      section_ids: sectionIds,
+      location: document.getElementById("reh-location").value,
+      notes: document.getElementById("reh-notes").value,
+    });
+    if (r.status === "success") {
+      msg.className = "msg success-msg";
+      msg.textContent = `Done! ${r.created} rehearsal${r.created !== 1 ? "s" : ""} scheduled.`;
+      setTimeout(() => {
+        closeModal("schedule-rehearsal-modal");
+        loadRehearsals();
+      }, 800);
+    } else {
+      msg.className = "msg";
+      msg.textContent = r.message || "Failed to schedule.";
+    }
+  } catch (e) {
+    msg.className = "msg";
+    msg.textContent = "Server error.";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Schedule Rehearsal";
+  }
+}
+
+document.getElementById("save-rehearsal-btn")?.addEventListener("click", () => {
+  const mode = document.querySelector("input[name='reh-mode']:checked")?.value;
+  if (mode === "range") bulkScheduleOrchestra(); else createSingleRehearsal();
 });
 
 // ── Concerts ──────────────────────────────────────────────────────────────────
 
 async function loadConcerts() {
-  CONCERTS = await api("GET", "/orchestra/concerts");
-  if (!Array.isArray(CONCERTS)) CONCERTS = [];
-  renderConcerts();
+  try {
+    CONCERTS = await api("GET", "/orchestra/concerts");
+    if (!Array.isArray(CONCERTS)) CONCERTS = [];
+    renderConcerts();
+  } catch (e) {
+    console.error(e);
+    CONCERTS = [];
+    document.getElementById("concerts-list").innerHTML = "<em class='empty-note'>Failed to load.</em>";
+  }
 }
 
 function renderConcerts() {
@@ -506,9 +660,16 @@ document.getElementById("back-to-pieces-btn")?.addEventListener("click", () => {
 });
 
 async function loadPieces(concertId) {
-  PIECES = await api("GET", `/orchestra/concerts/${concertId}/pieces`);
-  if (!Array.isArray(PIECES)) PIECES = [];
   const list = document.getElementById("pieces-list");
+  try {
+    PIECES = await api("GET", `/orchestra/concerts/${concertId}/pieces`);
+  } catch (e) {
+    console.error(e);
+    PIECES = [];
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+    return;
+  }
+  if (!Array.isArray(PIECES)) PIECES = [];
   if (!PIECES.length) { list.innerHTML = "<em class='empty-note'>No works added yet.</em>"; return; }
   list.innerHTML = PIECES.map(p => `
     <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
@@ -587,8 +748,15 @@ async function openSeatingPanel(pieceId, titleEncoded) {
 }
 
 async function loadSeating(pieceId) {
-  const seats = await api("GET", `/orchestra/pieces/${pieceId}/seats`);
   const grid = document.getElementById("seating-grid");
+  let seats;
+  try {
+    seats = await api("GET", `/orchestra/pieces/${pieceId}/seats`);
+  } catch (e) {
+    console.error(e);
+    grid.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+    return;
+  }
   if (!Array.isArray(seats)) { grid.innerHTML = "<em class='empty-note'>No seats assigned.</em>"; return; }
   grid.innerHTML = "";
 
@@ -897,9 +1065,15 @@ document.getElementById("player-info-clear-btn")?.addEventListener("click", asyn
 // ── Members ───────────────────────────────────────────────────────────────────
 
 async function loadMembers() {
-  MEMBERS = await api("GET", "/orchestra/members");
-  if (!Array.isArray(MEMBERS)) MEMBERS = [];
-  renderMembers();
+  try {
+    MEMBERS = await api("GET", "/orchestra/members");
+    if (!Array.isArray(MEMBERS)) MEMBERS = [];
+    renderMembers();
+  } catch (e) {
+    console.error(e);
+    MEMBERS = [];
+    document.getElementById("members-list").innerHTML = "<em class='empty-note'>Failed to load.</em>";
+  }
 }
 
 const FAMILY_LABELS = {
@@ -1034,8 +1208,15 @@ async function removeMember(id) {
 
 async function loadSubs(sectionId) {
   const url = sectionId ? `/orchestra/subs?section_id=${sectionId}` : "/orchestra/subs";
-  const subs = await api("GET", url);
   const list = document.getElementById("sub-roster-list");
+  let subs;
+  try {
+    subs = await api("GET", url);
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+    return;
+  }
   if (!Array.isArray(subs) || !subs.length) {
     list.innerHTML = "<em class='empty-note'>No subs yet.</em>";
     return;
@@ -1114,91 +1295,241 @@ async function removeSub(subId) {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
+let dmInbox = [];
+let dmSent = [];
+let dmContacts = [];
+let dmSelectedRecipients = new Set();
+let dmView = "inbox";
+
 function initMessages() {
   document.querySelectorAll(".dm-view-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".dm-view-btn").forEach(b => b.classList.remove("active"));
-      document.querySelectorAll(".dm-view").forEach(v => v.classList.add("hidden"));
-      btn.classList.add("active");
-      const view = document.getElementById(`dm-${btn.dataset.dmView}`);
-      if (view) view.classList.remove("hidden");
-      if (btn.dataset.dmView === "inbox") loadDMInbox();
-      if (btn.dataset.dmView === "read") loadDMRead();
-      if (btn.dataset.dmView === "compose") loadDMComposePicker();
+      dmView = btn.dataset.dmView;
+      document.querySelectorAll(".dm-view-btn").forEach(b => b.classList.toggle("active", b === btn));
+      renderDmView();
     });
   });
-  loadDMInbox();
+  document.getElementById("dm-scope")?.addEventListener("change", e => {
+    document.getElementById("dm-recipient-row")?.classList.toggle("hidden", e.target.value !== "direct");
+  });
+  document.getElementById("dm-send-btn")?.addEventListener("click", sendDm);
+  loadDmTab();
 }
 
-async function loadDMInbox() {
-  const res = await fetch("/dm", { credentials: "include" });
-  const data = await res.json().catch(() => []);
-  const msgs = Array.isArray(data) ? data : [];
-  const list = document.getElementById("dm-inbox-list");
-  const unread = msgs.filter(m => !m.read_at);
-  document.getElementById("dm-badge").textContent = unread.length;
-  document.getElementById("dm-badge").classList.toggle("hidden", !unread.length);
-  if (!msgs.length) { list.innerHTML = "<em class='empty-note'>No messages.</em>"; return; }
-  list.innerHTML = unread.map(m => dmCard(m, false)).join("");
+async function loadDmTab() {
+  await Promise.all([loadDmMessages(), loadDmContactList()]);
+  renderDmView();
+  renderDmContactPicker();
+  refreshDmBadge();
 }
 
-async function loadDMRead() {
-  const res = await fetch("/dm", { credentials: "include" });
-  const data = await res.json().catch(() => []);
-  const msgs = Array.isArray(data) ? data : [];
-  const list = document.getElementById("dm-read-list");
-  const read = msgs.filter(m => m.read_at);
-  if (!read.length) { list.innerHTML = "<em class='empty-note'>No read messages.</em>"; return; }
-  list.innerHTML = read.map(m => dmCard(m, true)).join("");
+async function loadDmMessages() {
+  try {
+    const res = await fetch("/dm", { credentials: "include" });
+    const data = await res.json();
+    dmInbox = data.inbox || [];
+    dmSent = data.sent || [];
+  } catch (e) {
+    dmInbox = [];
+    dmSent = [];
+  }
 }
 
-function dmCard(m, read) {
-  return `<div class="card">
-    <div style="display:flex;justify-content:space-between;">
-      <strong>${m.subject || "(no subject)"}</strong>
-      <span class="hint">${m.sent_at ? new Date(m.sent_at).toLocaleString() : ""}</span>
-    </div>
-    <div class="hint">From: ${m.sender_name || m.sender_email}</div>
-    <div style="margin-top:8px;">${m.body_text || ""}</div>
-    ${!read ? `<button class="subtle-btn" style="margin-top:8px;" onclick="markRead(${m.id})">Mark read</button>` : ""}
-  </div>`;
+async function loadDmContactList() {
+  try {
+    const res = await fetch("/dm/contacts", { credentials: "include" });
+    const data = await res.json();
+    dmContacts = Array.isArray(data) ? data : [];
+  } catch (e) { dmContacts = []; }
 }
 
-async function markRead(id) {
-  await fetch(`/dm/${id}/read`, {method:"POST", credentials:"include"});
-  loadDMInbox();
-}
-
-async function loadDMComposePicker() {
-  const sel = document.getElementById("dm-to");
-  sel.innerHTML = '<option value="">— select member —</option>';
-  MEMBERS.filter(m => m.email).forEach(m => {
-    const o = document.createElement("option");
-    o.value = m.email; o.textContent = m.fullname;
-    sel.appendChild(o);
+function renderDmView() {
+  const list = document.getElementById("dm-list");
+  if (!list) return;
+  const msgs = dmView === "inbox" ? dmInbox.filter(m => !m.read_at)
+             : dmView === "read"  ? dmInbox.filter(m => !!m.read_at)
+             : dmSent;
+  if (!msgs.length) {
+    list.innerHTML = `<em class="empty-note">${dmView === "inbox" ? "All caught up!" : "No messages yet."}</em>`;
+    return;
+  }
+  list.innerHTML = "";
+  msgs.forEach(m => {
+    const isUnread = dmView === "inbox" && !m.read_at;
+    const card = document.createElement("div");
+    card.className = "dm-card" + (isUnread ? " dm-card--unread" : "");
+    const ts = m.created_at ? new Date(m.created_at).toLocaleString(undefined,
+        { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    let metaLabel = "";
+    if (dmView !== "sent") {
+      metaLabel = `<span class="dm-sender">${escapeHtml(m.sender_name)}</span>`;
+    } else {
+      const rnames = (m.recipients || []).slice(0, 3).map(escapeHtml).join(", ");
+      const extra = (m.recipients || []).length > 3 ? ` +${(m.recipients || []).length - 3} more` : "";
+      metaLabel = `<span class="dm-recipients-label">To: ${rnames}${extra}</span>`;
+    }
+    card.innerHTML = `
+      <div class="dm-meta">
+        ${isUnread ? '<span class="dm-unread-dot"></span>' : ""}
+        ${metaLabel}
+        <span class="dm-time">${ts}</span>
+      </div>
+      <div class="dm-body">${escapeHtml(m.body)}</div>
+      ${dmView !== "sent" ? `<div class="dm-reply-row"><button class="dm-reply-btn" type="button">Reply</button></div>` : ""}
+    `;
+    if (dmView !== "sent") {
+      card.querySelector(".dm-reply-btn")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (isUnread) markDmRead(m.id, card);
+        replyToDm(m.sender_id, m.sender_name);
+      });
+    }
+    if (isUnread) card.addEventListener("click", () => markDmRead(m.id, card));
+    list.appendChild(card);
   });
 }
 
-document.getElementById("dm-send-btn")?.addEventListener("click", async () => {
-  const to = document.getElementById("dm-to").value;
-  const subject = document.getElementById("dm-subject").value.trim();
-  const body = document.getElementById("dm-body").value.trim();
-  const msg = document.getElementById("dm-send-msg");
-  if (!to) { msg.textContent = "Select a recipient."; return; }
-  if (!body) { msg.textContent = "Message required."; return; }
-  const r = await api("POST", "/dm/send", {to_email: to, subject, body_text: body});
-  if (r.status === "success" || r.id) {
-    msg.textContent = "Sent.";
-    document.getElementById("dm-subject").value = "";
-    document.getElementById("dm-body").value = "";
-  } else { msg.textContent = r.message || "Failed."; }
-});
+async function markDmRead(msgId, card) {
+  await fetch(`/dm/${msgId}/read`, { method: "POST", credentials: "include" });
+  const msg = dmInbox.find(m => m.id === msgId);
+  if (msg) msg.read_at = new Date().toISOString();
+  card.classList.remove("dm-card--unread");
+  card.querySelector(".dm-unread-dot")?.remove();
+  refreshDmBadge();
+}
+
+function replyToDm(senderId, senderName) {
+  const scopeEl = document.getElementById("dm-scope");
+  if (scopeEl) {
+    scopeEl.value = "direct";
+    document.getElementById("dm-recipient-row")?.classList.remove("hidden");
+  }
+  dmSelectedRecipients = new Set([senderId]);
+  renderFilteredPills();
+  const compose = document.querySelector(".dm-compose");
+  if (compose) compose.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  setTimeout(() => document.getElementById("dm-body")?.focus(), 300);
+}
+
+async function refreshDmBadge() {
+  try {
+    const res = await fetch("/dm/unread", { credentials: "include" });
+    const data = await res.json();
+    const badge = document.getElementById("dm-badge");
+    if (!badge) return;
+    const count = data.count || 0;
+    badge.textContent = count;
+    badge.classList.toggle("hidden", count === 0);
+  } catch (e) {}
+}
+
+function renderDmContactPicker() {
+  const container = document.getElementById("dm-recipient-pills");
+  const search = document.getElementById("dm-recipient-search");
+  if (!container) return;
+  dmSelectedRecipients = new Set();
+  if (search) {
+    search.classList.remove("hidden");
+    search.value = "";
+    search.oninput = renderFilteredPills;
+  }
+  renderFilteredPills();
+}
+
+function renderFilteredPills() {
+  const container = document.getElementById("dm-recipient-pills");
+  if (!container) return;
+  const q = (document.getElementById("dm-recipient-search")?.value || "").toLowerCase();
+  const byGroup = {};
+  dmContacts.forEach(c => {
+    if (q && !c.fullname.toLowerCase().includes(q)) return;
+    const g = c.group || "Members";
+    if (!byGroup[g]) byGroup[g] = [];
+    byGroup[g].push(c);
+  });
+  container.innerHTML = "";
+  Object.entries(byGroup).forEach(([group, members]) => {
+    const lbl = document.createElement("span");
+    lbl.className = "dm-pill-group-label";
+    lbl.textContent = group;
+    container.appendChild(lbl);
+    members.forEach(c => {
+      const pill = document.createElement("span");
+      pill.className = "dm-pill" + (dmSelectedRecipients.has(c.id) ? " selected" : "");
+      pill.textContent = c.fullname;
+      pill.dataset.id = c.id;
+      pill.addEventListener("click", () => {
+        if (dmSelectedRecipients.has(c.id)) {
+          dmSelectedRecipients.delete(c.id);
+          pill.classList.remove("selected");
+        } else {
+          dmSelectedRecipients.add(c.id);
+          pill.classList.add("selected");
+        }
+      });
+      container.appendChild(pill);
+    });
+  });
+  if (!container.children.length) {
+    container.innerHTML = "<em class='empty-note'>No contacts found.</em>";
+  }
+}
+
+async function sendDm() {
+  const body = (document.getElementById("dm-body")?.value || "").trim();
+  const status = document.getElementById("dm-send-status");
+  if (!body) { status.textContent = "Message cannot be empty."; return; }
+
+  const scopeEl = document.getElementById("dm-scope");
+  const scope = scopeEl ? scopeEl.value : "direct";
+  let recipient_ids = [];
+  if (scope === "direct") {
+    recipient_ids = [...dmSelectedRecipients];
+    if (!recipient_ids.length) { status.textContent = "Select at least one recipient."; return; }
+  }
+
+  const btn = document.getElementById("dm-send-btn");
+  btn.disabled = true;
+  status.textContent = "Sending...";
+  try {
+    const res = await fetch("/dm", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, body, recipient_ids }),
+    });
+    const data = await res.json();
+    if (data.status === "success") {
+      status.textContent = `Sent to ${data.sent_to} recipient${data.sent_to === 1 ? "" : "s"}.`;
+      document.getElementById("dm-body").value = "";
+      if (scopeEl) scopeEl.value = scopeEl.options[0]?.value || "direct";
+      document.getElementById("dm-recipient-row")?.classList.add("hidden");
+      dmSelectedRecipients = new Set();
+      renderFilteredPills();
+      await loadDmMessages();
+      renderDmView();
+    } else {
+      status.textContent = data.message || "Failed to send.";
+    }
+  } catch (e) {
+    status.textContent = "Error sending message.";
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // ── Invitations ───────────────────────────────────────────────────────────────
 
 async function loadInvitations() {
-  const invites = await api("GET", "/orchestra/invitations");
   const list = document.getElementById("invitations-list");
+  let invites;
+  try {
+    invites = await api("GET", "/orchestra/invitations");
+  } catch (e) {
+    console.error(e);
+    list.innerHTML = "<em class='empty-note'>Failed to load.</em>";
+    return;
+  }
   if (!Array.isArray(invites) || !invites.length) {
     list.innerHTML = "<em class='empty-note'>No invitations sent yet.</em>";
     return;
@@ -1279,22 +1610,7 @@ function sectionScorePos(instrument, name) {
 
 const ORCH_FAMILY_ORDER = ["Strings", "Woodwinds", "Brass", "Percussion", "Other"];
 
-// Known doubling pairs: assigning a player to the key instrument auto-suggests the value as their doubling.
-const DOUBLING_PAIRS = {
-  "piccolo":       ["flute", "alto flute"],
-  "flute":         ["piccolo", "alto flute"],
-  "alto flute":    ["flute"],
-  "english horn":  ["oboe"],
-  "cor anglais":   ["oboe"],
-  "oboe":          ["english horn", "cor anglais"],
-  "eb clarinet":   ["clarinet"],
-  "bass clarinet": ["clarinet"],
-  "clarinet":      ["eb clarinet", "bass clarinet"],
-  "contrabassoon": ["bassoon"],
-  "bassoon":       ["contrabassoon"],
-  "bass trombone": ["trombone"],
-  "trombone":      ["bass trombone"],
-};
+// DOUBLING_PAIRS is defined in public.js (shared with opera/admin.js).
 
 function makeOrchAccordion(titleHTML, startOpen = false, listMode = true, extraClass = "") {
   const group = document.createElement("div");
@@ -1342,7 +1658,7 @@ style.textContent = `
     cursor: pointer; font-size: 0.75rem;
     transition: background 0.15s;
   }
-  .chair-cell:hover { background: var(--bg-hover); }
+  .chair-cell:hover { background: var(--hover); }
   .chair-cell.assigned { background: var(--accent-light, #e8f5e9); border-color: var(--accent, #4caf50); }
   .chair-num { font-weight: 600; font-size: 0.85rem; }
   .chair-name { font-size: 0.65rem; text-align: center; max-width: 60px;

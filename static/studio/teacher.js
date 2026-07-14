@@ -28,8 +28,18 @@ document.addEventListener("DOMContentLoaded", () => {
     initCalendarNav();
     initModals();
     initEmailModal();
+    initCancelModal();
+    initMessages();
     loadTeacherRates();
 });
+
+function initCancelModal() {
+    document.getElementById("confirm-cancel-btn")?.addEventListener("click", confirmCancelLesson);
+    document.getElementById("abort-cancel-btn")?.addEventListener("click", closeCancelConfirm);
+    document.getElementById("cancel-lesson-modal")?.addEventListener("click", e => {
+        if (e.target.id === "cancel-lesson-modal") closeCancelConfirm();
+    });
+}
 
 async function loadMe() {
     try {
@@ -268,14 +278,45 @@ async function markAttendance(lessonId, att) {
     loadLessons();
 }
 
-async function cancelLesson(lessonId) {
-    if (!confirm("Cancel this lesson?")) return;
-    await fetch(`${API}/studio-teacher/lesson/${lessonId}`, {
-        method: "DELETE",
-        credentials: "include",
-    });
-    loadLessons();
-    loadCalendar(calYear, calMonth);
+let pendingCancelLessonId = null;
+let pendingCancelContext = null; // "list" or "detail"
+
+function openCancelConfirm(lessonId, context) {
+    pendingCancelLessonId = lessonId;
+    pendingCancelContext = context;
+    document.getElementById("cancel-lesson-msg").textContent = "";
+    document.getElementById("cancel-lesson-modal").classList.remove("hidden");
+}
+
+function closeCancelConfirm() {
+    pendingCancelLessonId = null;
+    pendingCancelContext = null;
+    document.getElementById("cancel-lesson-modal").classList.add("hidden");
+}
+
+function cancelLesson(lessonId) {
+    openCancelConfirm(lessonId, "list");
+}
+
+async function confirmCancelLesson() {
+    if (!pendingCancelLessonId) return;
+    const lessonId = pendingCancelLessonId;
+    const context = pendingCancelContext;
+    const msg = document.getElementById("cancel-lesson-msg");
+    msg.textContent = "Cancelling…";
+    try {
+        await fetch(`${API}/studio-teacher/lesson/${lessonId}`, {
+            method: "DELETE",
+            credentials: "include",
+        });
+        closeCancelConfirm();
+        loadLessons();
+        loadCalendar(calYear, calMonth);
+        if (context === "detail" && dayDetailDate) openDayDetail(dayDetailDate);
+    } catch (e) {
+        console.error(e);
+        msg.textContent = "Server error.";
+    }
 }
 
 // ============================================================
@@ -317,12 +358,8 @@ async function openDayDetail(dateStr) {
     };
 }
 
-async function cancelLessonFromDetail(lessonId) {
-    if (!confirm("Cancel this lesson?")) return;
-    await fetch(`${API}/studio-teacher/lesson/${lessonId}`, { method: "DELETE", credentials: "include" });
-    loadLessons();
-    loadCalendar(calYear, calMonth);
-    if (dayDetailDate) openDayDetail(dayDetailDate);
+function cancelLessonFromDetail(lessonId) {
+    openCancelConfirm(lessonId, "detail");
 }
 
 // ============================================================
@@ -2009,4 +2046,222 @@ function escHtml(str) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+}
+
+// ======================================================
+// DIRECT MESSAGES MODULE
+// ======================================================
+
+let dmInbox = [];
+let dmSent = [];
+let dmContacts = [];
+let dmSelectedRecipients = new Set();
+let dmView = "inbox";
+
+function initMessages() {
+    document.querySelectorAll(".dm-view-btn").forEach(btn =>
+        btn.addEventListener("click", () => {
+            dmView = btn.dataset.dmView;
+            document.querySelectorAll(".dm-view-btn").forEach(b => b.classList.toggle("active", b === btn));
+            renderDmView();
+        })
+    );
+    document.getElementById("dm-scope")?.addEventListener("change", e => {
+        document.getElementById("dm-recipient-row")?.classList.toggle("hidden", e.target.value !== "direct");
+    });
+    document.getElementById("dm-send-btn")?.addEventListener("click", sendDm);
+    loadDmTab();
+}
+
+async function loadDmTab() {
+    await Promise.all([loadDmMessages(), loadDmContactList()]);
+    renderDmView();
+    renderDmContactPicker();
+    refreshDmBadge();
+}
+
+async function loadDmMessages() {
+    try {
+        const res = await fetch(`${API}/dm`, { credentials: "include" });
+        const data = await res.json();
+        dmInbox = data.inbox || [];
+        dmSent = data.sent || [];
+    } catch (e) { dmInbox = []; dmSent = []; }
+}
+
+async function loadDmContactList() {
+    try {
+        const res = await fetch(`${API}/dm/contacts`, { credentials: "include" });
+        const data = await res.json();
+        dmContacts = Array.isArray(data) ? data : [];
+    } catch (e) { dmContacts = []; }
+}
+
+function renderDmView() {
+    const list = document.getElementById("dm-list");
+    if (!list) return;
+    const msgs = dmView === "inbox" ? dmInbox.filter(m => !m.read_at)
+               : dmView === "read"  ? dmInbox.filter(m => !!m.read_at)
+               : dmSent;
+    if (!msgs.length) { list.innerHTML = `<em class="empty-note">${dmView === "inbox" ? "All caught up!" : "No messages yet."}</em>`; return; }
+    list.innerHTML = "";
+    msgs.forEach(m => {
+        const isUnread = dmView === "inbox" && !m.read_at;
+        const card = document.createElement("div");
+        card.className = "dm-card" + (isUnread ? " dm-card--unread" : "");
+        const ts = m.created_at ? new Date(m.created_at).toLocaleString(undefined,
+            { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+        let metaLabel = "";
+        if (dmView !== "sent") {
+            metaLabel = `<span class="dm-sender">${escHtml(m.sender_name)}</span>`;
+        } else {
+            const rnames = (m.recipients || []).slice(0, 3).map(escHtml).join(", ");
+            const extra = (m.recipients || []).length > 3 ? ` +${(m.recipients || []).length - 3} more` : "";
+            metaLabel = `<span class="dm-recipients-label">To: ${rnames}${extra}</span>`;
+        }
+        card.innerHTML = `
+            <div class="dm-meta">
+                ${isUnread ? '<span class="dm-unread-dot"></span>' : ""}
+                ${metaLabel}
+                <span class="dm-time">${ts}</span>
+            </div>
+            <div class="dm-body">${escHtml(m.body)}</div>
+            ${dmView !== "sent" ? `<div class="dm-reply-row"><button class="dm-reply-btn" type="button">Reply</button></div>` : ""}
+        `;
+        if (dmView !== "sent") {
+            card.querySelector(".dm-reply-btn")?.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (isUnread) markDmRead(m.id, card);
+                replyToDm(m.sender_id, m.sender_name);
+            });
+        }
+        if (isUnread) card.addEventListener("click", () => markDmRead(m.id, card));
+        list.appendChild(card);
+    });
+}
+
+async function markDmRead(msgId, card) {
+    await fetch(`${API}/dm/${msgId}/read`, { method: "POST", credentials: "include" });
+    const msg = dmInbox.find(m => m.id === msgId);
+    if (msg) msg.read_at = new Date().toISOString();
+    card.classList.remove("dm-card--unread");
+    card.querySelector(".dm-unread-dot")?.remove();
+    refreshDmBadge();
+}
+
+function replyToDm(senderId, senderName) {
+    const scopeEl = document.getElementById("dm-scope");
+    if (scopeEl) {
+        scopeEl.value = "direct";
+        document.getElementById("dm-recipient-row")?.classList.remove("hidden");
+    }
+    dmSelectedRecipients = new Set([senderId]);
+    renderFilteredPills();
+    const compose = document.querySelector(".dm-compose");
+    if (compose) compose.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setTimeout(() => document.getElementById("dm-body")?.focus(), 300);
+}
+
+async function refreshDmBadge() {
+    try {
+        const res = await fetch(`${API}/dm/unread`, { credentials: "include" });
+        const data = await res.json();
+        const badge = document.getElementById("dm-badge");
+        if (!badge) return;
+        const count = data.count || 0;
+        badge.textContent = count;
+        badge.classList.toggle("hidden", count === 0);
+    } catch (e) {}
+}
+
+function renderDmContactPicker() {
+    const container = document.getElementById("dm-recipient-pills");
+    const search = document.getElementById("dm-recipient-search");
+    if (!container) return;
+    dmSelectedRecipients = new Set();
+    if (search) {
+        search.classList.remove("hidden");
+        search.value = "";
+        search.oninput = renderFilteredPills;
+    }
+    renderFilteredPills();
+}
+
+function renderFilteredPills() {
+    const container = document.getElementById("dm-recipient-pills");
+    if (!container) return;
+    const q = (document.getElementById("dm-recipient-search")?.value || "").toLowerCase();
+    const byGroup = {};
+    dmContacts.forEach(c => {
+        if (q && !c.fullname.toLowerCase().includes(q)) return;
+        const g = c.group || "Contacts";
+        if (!byGroup[g]) byGroup[g] = [];
+        byGroup[g].push(c);
+    });
+    container.innerHTML = "";
+    Object.entries(byGroup).forEach(([group, members]) => {
+        const lbl = document.createElement("span");
+        lbl.className = "dm-pill-group-label";
+        lbl.textContent = group;
+        container.appendChild(lbl);
+        members.forEach(c => {
+            const pill = document.createElement("span");
+            pill.className = "dm-pill" + (dmSelectedRecipients.has(c.id) ? " selected" : "");
+            pill.textContent = c.fullname;
+            pill.dataset.id = c.id;
+            pill.addEventListener("click", () => {
+                if (dmSelectedRecipients.has(c.id)) {
+                    dmSelectedRecipients.delete(c.id);
+                    pill.classList.remove("selected");
+                } else {
+                    dmSelectedRecipients.add(c.id);
+                    pill.classList.add("selected");
+                }
+            });
+            container.appendChild(pill);
+        });
+    });
+    if (!container.children.length) {
+        container.innerHTML = "<em class='empty-note'>No contacts found.</em>";
+    }
+}
+
+async function sendDm() {
+    const body = (document.getElementById("dm-body")?.value || "").trim();
+    const status = document.getElementById("dm-send-status");
+    if (!body) { status.textContent = "Message cannot be empty."; return; }
+    const scopeEl = document.getElementById("dm-scope");
+    const scope = scopeEl ? scopeEl.value : "direct";
+    let recipient_ids = [];
+    if (scope === "direct") {
+        recipient_ids = [...dmSelectedRecipients];
+        if (!recipient_ids.length) { status.textContent = "Select at least one recipient."; return; }
+    }
+    const btn = document.getElementById("dm-send-btn");
+    btn.disabled = true;
+    status.textContent = "Sending...";
+    try {
+        const res = await fetch(`${API}/dm`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scope, body, recipient_ids }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            status.textContent = `Sent to ${data.sent_to} recipient${data.sent_to === 1 ? "" : "s"}.`;
+            document.getElementById("dm-body").value = "";
+            if (scopeEl) scopeEl.value = scopeEl.options[0]?.value || "direct";
+            document.getElementById("dm-recipient-row")?.classList.add("hidden");
+            dmSelectedRecipients = new Set();
+            renderFilteredPills();
+            await loadDmMessages();
+            renderDmView();
+        } else {
+            status.textContent = data.message || "Failed to send.";
+        }
+    } catch (e) {
+        status.textContent = "Error sending message.";
+    } finally {
+        btn.disabled = false;
+    }
 }

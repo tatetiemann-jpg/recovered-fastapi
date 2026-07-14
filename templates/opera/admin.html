@@ -5,7 +5,7 @@
     <title>Admin Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/themes.css">
-    <link rel="stylesheet" href="/static/app.css?v=3">
+    <link rel="stylesheet" href="/static/app.css?v=5">
     <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -303,7 +303,7 @@
         <textarea id="rehearsal-notes" rows="2" placeholder="Optional notes"></textarea>
 
         <div class="modal-actions">
-            <button id="create-rehearsal-btn">Create Rehearsal</button>
+            <button id="create-rehearsal-btn" class="btn-primary">Create Rehearsal</button>
             <button id="close-rehearsal-create-btn" type="button">Close</button>
         </div>
 
@@ -325,7 +325,7 @@
             <input type="text" id="edit-instruments" placeholder="e.g. french horn, trumpet">
         </div>
         <div class="modal-actions">
-            <button id="save-teacher-edit-btn">Save</button>
+            <button id="save-teacher-edit-btn" class="btn-primary">Save</button>
             <button id="close-edit-teacher-btn" type="button">Cancel</button>
         </div>
         <p id="edit-teacher-msg"></p>
@@ -351,7 +351,7 @@
         <label for="add-notes-textarea">Notes</label>
         <textarea id="add-notes-textarea" rows="6" placeholder="Enter rehearsal notes…"></textarea>
         <div class="modal-actions">
-            <button id="send-reh-notes-btn">Send Notes</button>
+            <button id="send-reh-notes-btn" class="btn-primary">Send Notes</button>
             <button id="close-add-notes-btn" type="button">Cancel</button>
         </div>
         <p id="add-notes-msg"></p>
@@ -386,7 +386,7 @@
         <button type="button" id="add-prod-role-btn" class="subtle-btn">+ Add Role</button>
 
         <div class="modal-actions">
-            <button id="create-production-btn">Create Production</button>
+            <button id="create-production-btn" class="btn-primary">Create Production</button>
             <button id="close-prod-create-btn" type="button">Close</button>
         </div>
         <p id="prod-msg"></p>
@@ -413,7 +413,7 @@
         </div>
 
         <div class="modal-actions">
-            <button id="create-concert-btn">Create Concert</button>
+            <button id="create-concert-btn" class="btn-primary">Create Concert</button>
             <button id="close-concert-create-btn" type="button">Close</button>
         </div>
         <p id="concert-msg"></p>
@@ -433,7 +433,7 @@
         <div id="schedule-days" class="request-days-grid"></div>
 
         <div class="modal-actions">
-            <button id="save-schedule-btn">Save</button>
+            <button id="save-schedule-btn" class="btn-primary">Save</button>
             <button id="cancel-schedule-btn">Cancel</button>
         </div>
 
@@ -462,7 +462,7 @@
             </div>
         </div>
         <div class="modal-actions" style="justify-content:flex-start;margin-bottom:0;">
-            <button type="button" id="save-edit-prod-btn">Save Details</button>
+            <button type="button" id="save-edit-prod-btn" class="btn-primary">Save Details</button>
         </div>
         <p id="edit-prod-msg"></p>
 
@@ -530,7 +530,7 @@
         </label>
         <p id="call-singers-msg" class="hint"></p>
         <div class="modal-actions">
-            <button type="button" id="submit-call-singers-btn">Send Call</button>
+            <button type="button" id="submit-call-singers-btn" class="btn-primary">Send Call</button>
             <button type="button" id="cancel-call-singers-btn">Cancel</button>
         </div>
     </div>
@@ -551,7 +551,7 @@
             <input type="text" id="section-instrument-other" placeholder="Enter instrument name">
         </div>
         <div class="modal-actions">
-            <button type="button" id="save-section-btn">Add</button>
+            <button type="button" id="save-section-btn" class="btn-primary">Add</button>
             <button type="button" id="cancel-section-btn">Cancel</button>
         </div>
         <p id="section-msg"></p>
@@ -568,7 +568,7 @@
             <option value="" disabled selected>Select a production…</option>
         </select>
         <div class="modal-actions">
-            <button type="button" id="confirm-copy-seating-btn">Copy</button>
+            <button type="button" id="confirm-copy-seating-btn" class="btn-primary">Copy</button>
             <button type="button" id="cancel-copy-seating-btn">Cancel</button>
         </div>
         <p id="copy-seating-msg"></p>
@@ -586,6 +586,25 @@
         <select id="assign-seat-member">
             <option value="">— Unassigned —</option>
         </select>
+
+        <!-- Doubling UI — appears when a member is selected and a doubling opportunity exists -->
+        <div id="doubling-wrap" class="hidden" style="margin-top:var(--space-2);padding:var(--space-2) var(--space-3);border-radius:6px;background:var(--surface-2);">
+            <!-- Known pair: checkbox with auto-generated label -->
+            <div id="doubling-auto-row" class="hidden">
+                <label style="display:flex;align-items:center;gap:var(--space-2);cursor:pointer;margin:0;font-weight:normal;">
+                    <input type="checkbox" id="doubling-check" style="width:auto;flex-shrink:0;">
+                    <span id="doubling-auto-label"></span>
+                </label>
+            </div>
+            <!-- Unknown pair: instrument picker -->
+            <div id="doubling-manual-row" class="hidden">
+                <label for="doubling-instr-select" style="font-size:0.85em;margin-bottom:4px;">Also doubles on</label>
+                <select id="doubling-instr-select">
+                    <option value="">— none —</option>
+                </select>
+            </div>
+        </div>
+
         <button type="button" id="seat-no-account-toggle" class="subtle-btn">+ No account</button>
         <div id="seat-no-account-fields" class="hidden">
             <label for="assign-seat-external-name">Name</label>
@@ -594,7 +613,7 @@
             <input type="email" id="assign-seat-external-email" placeholder="email@example.com">
         </div>
         <div class="modal-actions">
-            <button type="button" id="save-seat-btn">Save</button>
+            <button type="button" id="save-seat-btn" class="btn-primary">Save</button>
             <button type="button" id="cancel-seat-btn">Cancel</button>
         </div>
         <p id="seat-msg"></p>
@@ -628,7 +647,7 @@
         <label for="edit-reh-notes">Notes</label>
         <textarea id="edit-reh-notes" rows="4"></textarea>
         <div class="modal-actions">
-            <button id="save-reh-edit-btn">Save Changes</button>
+            <button id="save-reh-edit-btn" class="btn-primary">Save Changes</button>
             <button id="close-reh-edit-btn" type="button">Cancel</button>
         </div>
         <p id="reh-edit-msg"></p>
@@ -774,7 +793,7 @@
         </div>
 
         <div class="modal-actions">
-            <button id="send-invite-btn">Send Invitation</button>
+            <button id="send-invite-btn" class="btn-primary">Send Invitation</button>
             <button type="button" id="close-invite-modal-btn" class="subtle-btn">Cancel</button>
         </div>
         <p id="invite-msg"></p>
@@ -782,7 +801,7 @@
 </div>
 
 <script src="/static/themes.js"></script>
-<script src="/static/app.js?v=3"></script>
-<script src="/static/opera/admin.js"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/opera/admin.js?v=2"></script>
 </body>
 </html>

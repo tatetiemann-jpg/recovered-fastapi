@@ -5,7 +5,9 @@
 let allEnsembleRehearsals = [];
 let myEnsembleAbsences = new Set();
 let absenceTargetRehearsalId = null;
+let absenceTargetDate = null;
 let selectedAbsenceReason = null;
+let activeFindSubRehearsalId = null;
 
 function fmtTime(hhmm) {
     if (!hhmm) return "";
@@ -21,12 +23,6 @@ function fmtDate(iso) {
     return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
-function escapeHtml(s) {
-    if (s == null) return "";
-    return String(s)
-        .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
 
 function buildEnsembleRehearsalCard(r) {
     const rEnd = r.end_time ? new Date(r.date + "T" + r.end_time) : new Date(r.date + "T23:59");
@@ -58,7 +54,7 @@ function buildEnsembleRehearsalCard(r) {
         if (absent) {
             card.querySelector(".undo-absent-btn").addEventListener("click", () => undoEnsembleAbsent(r.id));
         } else {
-            card.querySelector(".cant-make-btn").addEventListener("click", () => markEnsembleAbsent(r.id));
+            card.querySelector(".cant-make-btn").addEventListener("click", () => markEnsembleAbsent(r.id, r.date));
         }
     }
     return card;
@@ -142,8 +138,9 @@ async function loadEnsembleRehearsalTimeline() {
     }
 }
 
-function markEnsembleAbsent(rehearsalId) {
+function markEnsembleAbsent(rehearsalId, dateISO) {
     absenceTargetRehearsalId = rehearsalId;
+    absenceTargetDate = dateISO;
     selectedAbsenceReason = null;
     document.querySelectorAll(".absence-reason-btn").forEach(b => b.classList.remove("selected"));
     document.getElementById("absence-note").value = "";
@@ -157,8 +154,8 @@ async function submitEnsembleAbsence() {
         return;
     }
     const note = (document.getElementById("absence-note").value || "").trim();
-    const btn = document.getElementById("absence-submit-btn");
-    btn.disabled = true;
+    const btn = document.getElementById("absence-submit-sub-btn");
+    if (btn) btn.disabled = true;
     try {
         await fetch(`${API}/ensemble/absence`, {
             method: "POST", credentials: "include",
@@ -168,9 +165,132 @@ async function submitEnsembleAbsence() {
         myEnsembleAbsences.add(absenceTargetRehearsalId);
         document.getElementById("absence-modal").classList.add("hidden");
         renderRehearsalTimeline(document.getElementById("rehearsal-timeline"), allEnsembleRehearsals);
+        openFindSubModal(absenceTargetRehearsalId, absenceTargetDate);
     } catch (e) {
         document.getElementById("absence-modal-msg").textContent = "Server error. Try again.";
     } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ── Find-a-sub modal ──────────────────────────────────────────────────────────
+
+async function openFindSubModal(rehearsalId, dateISO) {
+    activeFindSubRehearsalId = rehearsalId;
+    document.getElementById("find-sub-title").textContent = "Find a Sub";
+    document.getElementById("find-sub-rehearsal").textContent = fmtDate(dateISO);
+    document.getElementById("find-sub-list").innerHTML = `<em class="empty-note">Loading...</em>`;
+    document.getElementById("find-sub-msg").textContent = "";
+    document.getElementById("find-sub-modal").classList.remove("hidden");
+
+    try {
+        const res = await fetch(`${API}/choir/subs`, { credentials: "include" });
+        const subs = await res.json();
+        const list = document.getElementById("find-sub-list");
+
+        if (!Array.isArray(subs) || !subs.length) {
+            list.innerHTML = `<em class="empty-note">No subs have been added for your section yet.</em>`;
+            return;
+        }
+
+        list.innerHTML = "";
+        const preferred = subs.filter(s => s.is_preferred);
+        const regular = subs.filter(s => !s.is_preferred);
+
+        if (preferred.length) {
+            const emailAllBtn = document.createElement("button");
+            emailAllBtn.className = "slot-pill-btn";
+            emailAllBtn.style.cssText = "width:100%;margin-bottom:var(--space-4);font-size:.88rem;";
+            emailAllBtn.textContent = "Contact Preferred Subs";
+            emailAllBtn.addEventListener("click", () => memberContactAllPreferred(rehearsalId, emailAllBtn));
+            list.appendChild(emailAllBtn);
+
+            const hdr = document.createElement("div");
+            hdr.className = "section-group-title";
+            hdr.textContent = "Preferred";
+            list.appendChild(hdr);
+            preferred.forEach(s => list.appendChild(buildMemberEmailSubRow(s, rehearsalId)));
+        }
+        if (regular.length) {
+            const hdr = document.createElement("div");
+            hdr.className = "section-group-title";
+            hdr.style.marginTop = "var(--space-4)";
+            hdr.textContent = "Regular";
+            list.appendChild(hdr);
+            regular.forEach(s => list.appendChild(buildMemberEmailSubRow(s, rehearsalId)));
+        }
+    } catch (e) {
+        document.getElementById("find-sub-list").innerHTML = `<em class="empty-note">Failed to load.</em>`;
+    }
+}
+
+function buildMemberEmailSubRow(sub, rehearsalId) {
+    const row = document.createElement("div");
+    row.className = "staff-row";
+    row.innerHTML = `
+        <div style="flex:1;">
+            <div style="font-weight:600;">${escapeHtml(sub.fullname)}</div>
+            <div style="font-size:.85rem;color:var(--text-muted);">${escapeHtml(sub.email)}${sub.phone ? " · " + escapeHtml(sub.phone) : ""}</div>
+            ${sub.notes ? `<div style="font-size:.82rem;color:var(--text-muted);font-style:italic;">${escapeHtml(sub.notes)}</div>` : ""}
+        </div>
+        <button class="subtle-btn email-sub-btn">Email</button>
+    `;
+    const btn = row.querySelector(".email-sub-btn");
+    btn.addEventListener("click", () => memberContactOneSub(sub.id, sub.section_id, rehearsalId, btn));
+    return row;
+}
+
+async function memberContactOneSub(subId, sectionId, rehearsalId, btn) {
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    try {
+        const res = await fetch(`${API}/choir/contact-sub`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                rehearsal_id: Number(rehearsalId),
+                section_id: Number(sectionId),
+                sub_id: subId,
+            }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            btn.textContent = "Sent";
+            btn.style.color = "var(--success)";
+        } else {
+            btn.textContent = data.message === "Already contacted" ? "Already sent" : "Failed";
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.textContent = "Error";
+        btn.disabled = false;
+    }
+}
+
+async function memberContactAllPreferred(rehearsalId, btn) {
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+    try {
+        const res = await fetch(`${API}/choir/contact-preferred-subs`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rehearsal_id: Number(rehearsalId) }),
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+            if (data.pending_approval) {
+                btn.textContent = "Queued — pending approval";
+                btn.style.background = "var(--warning,#b45309)";
+            } else {
+                btn.textContent = "Sent!";
+                btn.style.background = "var(--success,#2f8f6a)";
+            }
+        } else {
+            btn.textContent = data.message || "Failed";
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.textContent = "Error";
         btn.disabled = false;
     }
 }
@@ -216,12 +336,40 @@ document.addEventListener("DOMContentLoaded", async () => {
             selectedAbsenceReason = btn.dataset.reason;
         });
     });
-    document.getElementById("absence-submit-btn")?.addEventListener("click", submitEnsembleAbsence);
+    document.getElementById("absence-submit-sub-btn")?.addEventListener("click", submitEnsembleAbsence);
     document.getElementById("absence-cancel-btn")?.addEventListener("click", () =>
         document.getElementById("absence-modal").classList.add("hidden"));
     document.getElementById("absence-modal")?.addEventListener("click", e => {
         if (e.target.id === "absence-modal") e.target.classList.add("hidden");
     });
+
+    // Find-sub modal
+    document.getElementById("find-sub-modal")?.addEventListener("click", e => {
+        if (e.target.id === "find-sub-modal")
+            document.getElementById("find-sub-modal").classList.add("hidden");
+    });
+    document.getElementById("find-sub-close")?.addEventListener("click", () =>
+        document.getElementById("find-sub-modal").classList.add("hidden"));
+
+    // Calendar subscription URL
+    fetch(`${API}/choir/my-calendar-token`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => {
+            const input = document.getElementById("calendar-url");
+            if (input && data.token) {
+                input.value = `${window.location.origin}/choir/calendar/${data.token}.ics`;
+            }
+            const copyBtn = document.getElementById("copy-calendar-url-btn");
+            if (copyBtn) {
+                copyBtn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(input.value).then(() => {
+                        copyBtn.textContent = "Copied!";
+                        setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
+                    });
+                });
+            }
+        })
+        .catch(() => {});
 
     // Messages tab
     document.querySelectorAll(".dm-view-btn").forEach(btn =>

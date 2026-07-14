@@ -46,15 +46,6 @@ function adminFormatTime(hhmm) {
     return `${hour12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
-function escapeHtml(s) {
-    if (s == null) return "";
-    return String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
 
 
 // -----------------------------------------------------------
@@ -2389,6 +2380,7 @@ function onTeacherTypeChange() {
 let orchestraSections = [];
 let orchestraMembers = [];
 let orchestraSelectedOperaId = null;
+let assignSeatSectionInstrument = "";
 
 // ── Orchestra accordion helpers ──────────────────────────────────────────────
 
@@ -2881,10 +2873,15 @@ function openAssignSeatModal(operaId, sectionId, chairNumber, currentMemberId, c
     if (extEmailInput) extEmailInput.value = currentExternalEmail || "";
     if (extFields) extFields.classList.toggle("hidden", !currentExternalName);
 
+    document.getElementById("doubling-wrap")?.classList.add("hidden");
+    document.getElementById("doubling-auto-row")?.classList.add("hidden");
+    document.getElementById("doubling-manual-row")?.classList.add("hidden");
+
     // Populate member dropdown — filter to members matching section's instrument (including doublings)
     const memberSelect = document.getElementById("assign-seat-member");
     memberSelect.innerHTML = `<option value="">— Unassigned —</option>`;
     const sectionInstrument = sec?.instrument?.toLowerCase() || "";
+    assignSeatSectionInstrument = sectionInstrument;
     const filtered = sectionInstrument
         ? orchestraMembers.filter(m => {
             const mi = (m.instrument || "").toLowerCase();
@@ -2911,6 +2908,48 @@ function closeAssignSeatModal() {
     document.getElementById("assign-seat-modal")?.classList.add("hidden");
 }
 
+document.getElementById("assign-seat-member")?.addEventListener("change", function() {
+    const memberId = parseInt(this.value);
+    const wrap = document.getElementById("doubling-wrap");
+    if (!memberId || !assignSeatSectionInstrument) { wrap.classList.add("hidden"); return; }
+
+    const member = orchestraMembers.find(m => m.id === memberId);
+    const secInstrument = assignSeatSectionInstrument;
+    const memberInstrument = (member?.instrument || "").toLowerCase().trim();
+    const existingDoublings = (member?.doublings || "").toLowerCase().split(",").map(d => d.trim()).filter(Boolean);
+
+    // Already recorded — nothing to offer
+    if (existingDoublings.includes(secInstrument)) { wrap.classList.add("hidden"); return; }
+
+    const autoRow = document.getElementById("doubling-auto-row");
+    const manualRow = document.getElementById("doubling-manual-row");
+    const check = document.getElementById("doubling-check");
+    check.checked = false;
+
+    const isKnownPair = (DOUBLING_PAIRS[secInstrument] || []).includes(memberInstrument);
+    wrap.classList.remove("hidden");
+
+    if (isKnownPair) {
+        document.getElementById("doubling-auto-label").textContent =
+            `Add "${secInstrument}" to ${member.name.split(" ")[0]}'s doublings`;
+        autoRow.classList.remove("hidden");
+        manualRow.classList.add("hidden");
+    } else {
+        autoRow.classList.add("hidden");
+        const candidates = (DOUBLING_PAIRS[secInstrument] || [])
+            .filter(i => i !== memberInstrument && !existingDoublings.includes(i));
+        if (!candidates.length) { wrap.classList.add("hidden"); return; }
+        const instrSel = document.getElementById("doubling-instr-select");
+        instrSel.innerHTML = '<option value="">— none —</option>';
+        candidates.forEach(i => {
+            const o = document.createElement("option");
+            o.value = i; o.textContent = i.charAt(0).toUpperCase() + i.slice(1);
+            instrSel.appendChild(o);
+        });
+        manualRow.classList.remove("hidden");
+    }
+});
+
 async function saveSeatAssignment() {
     const operaId = Number(document.getElementById("assign-seat-opera-id").value);
     const sectionId = Number(document.getElementById("assign-seat-section-id").value);
@@ -2933,12 +2972,36 @@ async function saveSeatAssignment() {
             })
         });
         const data = await res.json();
-        if (data.status === "success") {
-            closeAssignSeatModal();
-            if (orchestraExpandedContainer) await reloadOrchInline(operaId, orchestraExpandedContainer);
-        } else {
+        if (data.status !== "success") {
             msg.textContent = data.message || "Failed to save.";
+            return;
         }
+
+        // Persist doubling if requested
+        if (memberId) {
+            const secInstrument = assignSeatSectionInstrument;
+            const autoChecked = document.getElementById("doubling-check")?.checked && secInstrument;
+            const manualInstr = document.getElementById("doubling-instr-select")?.value || "";
+            const doublingToAdd = autoChecked ? secInstrument : manualInstr;
+            if (doublingToAdd) {
+                const member = orchestraMembers.find(m => m.id === memberId);
+                const existing = (member?.doublings || "").split(",").map(d => d.trim()).filter(Boolean);
+                if (!existing.includes(doublingToAdd)) {
+                    existing.push(doublingToAdd);
+                    const updated = existing.join(",");
+                    await fetch(`${API}/admin/orchestra-members/${memberId}/doublings`, {
+                        method: "PATCH",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ doublings: updated }),
+                    });
+                    if (member) member.doublings = updated;
+                }
+            }
+        }
+
+        closeAssignSeatModal();
+        if (orchestraExpandedContainer) await reloadOrchInline(operaId, orchestraExpandedContainer);
     } catch (e) {
         console.error(e);
         msg.textContent = "Server error.";

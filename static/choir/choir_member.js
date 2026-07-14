@@ -14,12 +14,6 @@ let selectedAbsenceReason = null;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function escapeHtml(s) {
-    if (s == null) return "";
-    return String(s)
-        .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
 
 function fmtDate(iso) {
     if (!iso) return "";

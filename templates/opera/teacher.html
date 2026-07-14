@@ -5,7 +5,7 @@
     <title>Teacher Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/themes.css">
-    <link rel="stylesheet" href="/static/app.css?v=3">
+    <link rel="stylesheet" href="/static/app.css?v=5">
     <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -35,7 +35,7 @@
         <div class="box">
             <h2 id="today-header">Today</h2>
             <div id="today-lessons-grid">
-                <em class="empty-note">Loadingâ¦</em>
+                <em class="empty-note">Loading&#8230;</em>
             </div>
         </div>
 
@@ -76,19 +76,19 @@
             <h2>Vocalists</h2>
             <p class="hint">Click a vocalist to see your lesson history with them.</p>
             <div id="students-list">
-                <em class="empty-note">Loadingâ¦</em>
+                <em class="empty-note">Loading&#8230;</em>
             </div>
         </div>
 
         <!-- Single student history view (hidden by default) -->
         <div class="box hidden" id="student-history-view">
             <div class="section-header">
-                <button id="back-to-students-btn" class="subtle-btn">â Back to students</button>
+                <button id="back-to-students-btn" class="subtle-btn">&#8592; Back to students</button>
                 <h2 id="student-history-title"></h2>
             </div>
             <p id="student-history-subtitle" class="hint"></p>
             <div id="student-history-list">
-                <em class="empty-note">Loadingâ¦</em>
+                <em class="empty-note">Loading&#8230;</em>
             </div>
         </div>
 
@@ -105,7 +105,7 @@
                 <button id="open-request-btn" class="subtle-btn">Edit My Schedule</button>
             </div>
             <div id="weekly-out">
-                <em class="empty-note">Loading availabilityâ¦</em>
+                <em class="empty-note">Loading availability&#8230;</em>
             </div>
         </div>
 
@@ -166,11 +166,11 @@
         <p id="notes-modal-subtitle" class="hint"></p>
 
         <div id="notes-locked-banner" class="notes-locked-banner hidden">
-            ð These notes are locked (lesson was more than 7 days ago).
+            &#128274; These notes are locked (lesson was more than 7 days ago).
         </div>
 
         <div id="notes-shared-banner" class="notes-shared-banner hidden">
-            â Shared with student. Any edits you make now are visible to them.
+            &#10003; Shared with student. Any edits you make now are visible to them.
         </div>
 
         <label for="notes-piece">Piece worked on</label>
@@ -180,7 +180,7 @@
         <input id="notes-technique" placeholder="e.g. breath support on long phrases">
 
         <label for="notes-other">Other notes</label>
-        <textarea id="notes-other" rows="6" placeholder="Anything else you want to rememberâ¦"></textarea>
+        <textarea id="notes-other" rows="6" placeholder="Anything else you want to remember&#8230;"></textarea>
 
         <div class="modal-actions">
             <span id="notes-save-status" class="notes-save-status"></span>
@@ -249,7 +249,7 @@
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=3"></script>
 <script src="/static/themes.js"></script>
-<script src="/static/app.js?v=3"></script>
-<script src="/static/opera/teacher.js"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/opera/teacher.js?v=2"></script>
 </body>
 </html>

@@ -145,8 +145,11 @@ const ME_READY = loadMe();
 function escapeHtml(s) {
     if (s == null) return "";
     return String(s)
-        .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
 }
 
 // Escape HTML then wrap bare URLs in clickable <a> tags.
@@ -382,27 +385,4 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("save-account-btn")?.addEventListener("click", submitAccountUpdate);
     document.getElementById("logout-btn")?.addEventListener("click", logout);
     document.getElementById("submit-transfer-btn")?.addEventListener("click", submitOrgTransfer);
-
-    // Cancel-lesson handler (student page only)
-    const lessonsBox = document.getElementById("my-lessons");
-    lessonsBox?.addEventListener("click", (e) => {
-        if (!e.target.classList.contains("cancel-lesson-btn")) return;
-        const lessonId = e.target.dataset.lessonId;
-        if (!confirm("Are you sure you want to cancel this lesson?")) return;
-
-        fetch(`${API}/student/cancel-lesson`, {
-            method: "POST",
-            credentials: "include",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ lesson_id: lessonId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === "success" && typeof loadMyLessons === "function") {
-                loadMyLessons();
-            } else if (data.status !== "success") {
-                alert(data.message || "Failed to cancel lesson.");
-            }
-        });
-    });
 });

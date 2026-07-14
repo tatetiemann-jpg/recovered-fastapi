@@ -5,7 +5,7 @@
   <title>Choir Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/themes.css">
-  <link rel="stylesheet" href="/static/app.css?v=1">
+  <link rel="stylesheet" href="/static/app.css?v=5">
   <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -173,7 +173,7 @@
       <input id="invite-instrument" type="text" placeholder="e.g. First Violin, Piano, Cello">
     </div>
     <div class="modal-actions">
-      <button id="send-invite-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Invitation</button>
+      <button id="send-invite-btn" type="button" class="btn-primary">Send Invitation</button>
       <button id="close-invite-modal-btn" type="button">Cancel</button>
     </div>
     <p id="invite-msg" class="msg"></p>
@@ -251,7 +251,7 @@
     <input id="reh-materials-url" type="url" placeholder="https://sharepoint.com/…">
 
     <div class="modal-actions">
-      <button id="create-reh-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Schedule Rehearsal</button>
+      <button id="create-reh-btn" type="button" class="btn-primary">Schedule Rehearsal</button>
       <button id="close-schedule-modal-btn" type="button">Cancel</button>
     </div>
     <p id="reh-msg" class="msg"></p>
@@ -288,7 +288,7 @@
     <div id="choir-notes-existing" class="notes-display" style="margin-bottom:var(--space-3);padding-bottom:var(--space-3);border-bottom:1px solid var(--border);"></div>
     <textarea id="choir-notes-textarea" rows="6" placeholder="Enter notes to share with the choir…"></textarea>
     <div class="modal-actions">
-      <button id="send-choir-notes-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Notes</button>
+      <button id="send-choir-notes-btn" class="btn-primary">Send Notes</button>
       <button id="close-choir-notes-btn">Cancel</button>
     </div>
     <p id="choir-notes-msg"></p>
@@ -324,7 +324,7 @@
     <label for="edit-choir-reh-materials">Materials Link</label>
     <input id="edit-choir-reh-materials" type="url" placeholder="https://sharepoint.com/…">
     <div class="modal-actions">
-      <button id="save-choir-reh-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Changes</button>
+      <button id="save-choir-reh-edit-btn" class="btn-primary">Save Changes</button>
       <button id="close-choir-reh-edit-btn">Cancel</button>
     </div>
     <p id="choir-reh-edit-msg"></p>
@@ -335,7 +335,7 @@
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=2"></script>
 <script src="/static/themes.js?v=2"></script>
-<script src="/static/app.js?v=2"></script>
+<script src="/static/app.js?v=4"></script>
 <!-- EDIT SUB MODAL -->
 <div id="edit-sub-modal" class="modal-overlay hidden">
   <div class="modal-card">
@@ -350,7 +350,7 @@
     <label for="edit-sub-notes">Notes</label>
     <textarea id="edit-sub-notes" rows="3" placeholder="e.g. very reliable, prefers Sundays…"></textarea>
     <div class="modal-actions">
-      <button id="save-sub-edit-btn" type="button" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save</button>
+      <button id="save-sub-edit-btn" type="button" class="btn-primary">Save</button>
       <button id="close-edit-sub-btn" type="button">Cancel</button>
     </div>
     <p id="edit-sub-msg" class="msg"></p>
@@ -370,7 +370,7 @@
     <div id="custom-sub-msg-compose" class="hidden" style="margin-top:var(--space-3);">
       <textarea id="custom-sub-msg-text" rows="6" placeholder="Type your message to the sub…" style="width:100%;box-sizing:border-box;"></textarea>
       <div class="modal-actions">
-        <button type="button" id="custom-sub-send-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Send Message</button>
+        <button type="button" id="custom-sub-send-btn" class="btn-primary">Send Message</button>
         <button type="button" id="custom-sub-back-btn">Back</button>
       </div>
       <p id="custom-sub-msg-status"></p>
@@ -378,6 +378,6 @@
   </div>
 </div>
 
-<script src="/static/choir/choir_admin.js?v=27"></script>
+<script src="/static/choir/choir_admin.js?v=28"></script>
 </body>
 </html>

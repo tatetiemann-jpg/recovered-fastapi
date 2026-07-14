@@ -55,15 +55,6 @@ function formatCancelledTime(iso) {
     return d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
 }
 
-function escapeHtml(s) {
-    if (s == null) return "";
-    return String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
 
 
 // -------------------- TAB SWITCHING --------------------

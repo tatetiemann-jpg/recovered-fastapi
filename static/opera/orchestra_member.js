@@ -47,15 +47,6 @@ function formatShortDate(iso) {
     });
 }
 
-function escapeHtml(s) {
-    if (s == null) return "";
-    return String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-}
 
 
 // -------------------- TAB SWITCHING --------------------
@@ -196,8 +187,29 @@ function formatNoticeTime(minutes) {
     return `${h}h ${m}m`;
 }
 
-async function handleCancelLesson(lessonId) {
-    if (!confirm("Cancel this lesson? This can't be undone.")) return;
+let pendingCancelLessonId = null;
+
+function openCancelConfirm(lessonId) {
+    pendingCancelLessonId = Number(lessonId);
+    document.getElementById("cancel-lesson-msg").textContent = "";
+    document.getElementById("cancel-lesson-modal").classList.remove("hidden");
+}
+
+function closeCancelConfirm() {
+    pendingCancelLessonId = null;
+    document.getElementById("cancel-lesson-modal").classList.add("hidden");
+}
+
+function handleCancelLesson(lessonId) {
+    openCancelConfirm(lessonId);
+}
+
+async function confirmCancelLesson() {
+    if (!pendingCancelLessonId) return;
+    const lessonId = pendingCancelLessonId;
+    const msg = document.getElementById("cancel-lesson-msg");
+    msg.textContent = "Cancelling…";
+
     try {
         const res = await fetch(`${API}/orchestra-member/cancel-lesson`, {
             credentials: "include",
@@ -207,14 +219,17 @@ async function handleCancelLesson(lessonId) {
         });
         const data = await res.json();
         if (data.status === "success") {
-            alert("Lesson cancelled.");
-            loadToday();
+            msg.textContent = "Cancelled.";
+            setTimeout(() => {
+                closeCancelConfirm();
+                loadToday();
+            }, 600);
         } else {
-            alert(data.message || "Failed to cancel.");
+            msg.textContent = data.message || "Failed to cancel.";
         }
     } catch (e) {
         console.error(e);
-        alert("Server error.");
+        msg.textContent = "Server error.";
     }
 }
 
@@ -727,6 +742,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("absence-modal").classList.add("hidden"));
     document.getElementById("absence-modal")?.addEventListener("click", e => {
         if (e.target.id === "absence-modal") e.target.classList.add("hidden");
+    });
+
+    // Cancel lesson modal
+    document.getElementById("confirm-cancel-btn")?.addEventListener("click", confirmCancelLesson);
+    document.getElementById("abort-cancel-btn")?.addEventListener("click", closeCancelConfirm);
+    document.getElementById("cancel-lesson-modal")?.addEventListener("click", e => {
+        if (e.target.id === "cancel-lesson-modal") closeCancelConfirm();
     });
 
     // Calendar subscription URL

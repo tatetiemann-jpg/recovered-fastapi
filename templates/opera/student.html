@@ -5,7 +5,7 @@
     <title>Vocalist Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/themes.css">
-    <link rel="stylesheet" href="/static/app.css?v=3">
+    <link rel="stylesheet" href="/static/app.css?v=5">
     <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -184,13 +184,26 @@
     </div>
 </div>
 
+<!-- CANCEL LESSON MODAL -->
+<div id="cancel-lesson-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Cancel Lesson</h3>
+        <p id="cancel-lesson-text">Cancel this lesson? This can't be undone.</p>
+        <div class="modal-actions">
+            <button id="confirm-cancel-btn">Yes, cancel</button>
+            <button id="abort-cancel-btn">Keep it</button>
+        </div>
+        <p id="cancel-lesson-msg"></p>
+    </div>
+</div>
+
 <!-- ================= -->
 <!-- EDIT ACCOUNT MODAL -->
 <!-- ================= -->
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=3"></script>
 <script src="/static/themes.js"></script>
-<script src="/static/app.js?v=3"></script>
-<script src="/static/opera/student.js"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/opera/student.js?v=2"></script>
 </body>
 </html>

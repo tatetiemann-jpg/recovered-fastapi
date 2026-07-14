@@ -56,6 +56,23 @@ const INSTRUMENT_FAMILY = {
     "organ":        "piano",
 };
 
+// Known doubling pairs: assigning a player to the key instrument auto-suggests the value as their doubling.
+const DOUBLING_PAIRS = {
+    "piccolo":       ["flute", "alto flute"],
+    "flute":         ["piccolo", "alto flute"],
+    "alto flute":    ["flute"],
+    "english horn":  ["oboe"],
+    "cor anglais":   ["oboe"],
+    "oboe":          ["english horn", "cor anglais"],
+    "eb clarinet":   ["clarinet"],
+    "bass clarinet": ["clarinet"],
+    "clarinet":      ["eb clarinet", "bass clarinet"],
+    "contrabassoon": ["bassoon"],
+    "bassoon":       ["contrabassoon"],
+    "bass trombone": ["trombone"],
+    "trombone":      ["bass trombone"],
+};
+
 function populateInstrumentSelect(selectId, otherRowId) {
     const select = document.getElementById(selectId);
     if (!select) return;

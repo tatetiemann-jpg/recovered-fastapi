@@ -5,7 +5,7 @@
     <title>Studio Dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/themes.css">
-    <link rel="stylesheet" href="/static/app.css?v=3">
+    <link rel="stylesheet" href="/static/app.css?v=5">
     <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -23,6 +23,7 @@
         <button class="tab-btn" data-tab="lessons">Lessons</button>
         <button class="tab-btn" data-tab="schedule">Schedule</button>
         <button class="tab-btn" data-tab="students">Students</button>
+        <button class="tab-btn" data-tab="messages">Messages <span id="dm-badge" class="msg-badge hidden">0</span></button>
     </nav>
 
     <!-- ============================ -->
@@ -84,6 +85,52 @@
         </div>
     </section>
 
+    <!-- ============================ -->
+    <!-- MESSAGES TAB -->
+    <!-- ============================ -->
+    <section class="tab-panel" data-tab-panel="messages">
+        <div class="box">
+            <div class="section-header">
+                <h2>Messages</h2>
+            </div>
+            <p class="hint">Message your students. Recipients receive an email notification.</p>
+
+            <div class="dm-view-toggle">
+                <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
+                <button class="dm-view-btn" data-dm-view="read">Read</button>
+                <button class="dm-view-btn" data-dm-view="sent">Sent</button>
+            </div>
+
+            <div id="dm-list" class="dm-list"><em class="empty-note">Loading&#8230;</em></div>
+
+            <div class="dm-compose">
+                <h3>New Message</h3>
+                <div class="dm-scope-row">
+                    <label for="dm-scope">Send to</label>
+                    <select id="dm-scope">
+                        <option value="studio_today">Today's Lessons</option>
+                        <option value="studio_week">This Week's Lessons</option>
+                        <option value="studio_all">All My Students</option>
+                        <option value="direct">Individual</option>
+                    </select>
+                </div>
+                <div id="dm-recipient-row" class="dm-recipient-row hidden">
+                    <label>Recipients</label>
+                    <div class="dm-recipient-picker">
+                        <input id="dm-recipient-search" type="text" placeholder="Filter contacts&#8230;" class="dm-recipient-search hidden">
+                        <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+                    </div>
+                </div>
+                <label for="dm-body">Message</label>
+                <textarea id="dm-body" rows="4" placeholder="Write your message&#8230;"></textarea>
+                <div style="margin-top:var(--space-3);">
+                    <button id="dm-send-btn">Send Message</button>
+                </div>
+                <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
+            </div>
+        </div>
+    </section>
+
 
 </div>
 
@@ -127,7 +174,7 @@
         </div>
 
         <div class="modal-actions">
-            <button id="lesson-submit-btn">Save</button>
+            <button id="lesson-submit-btn" class="btn-primary">Save</button>
             <button id="lesson-cancel-btn">Cancel</button>
         </div>
         <p id="lesson-modal-msg" class="hint"></p>
@@ -178,7 +225,7 @@
         <p id="mw-summary" class="hint" style="margin:-var(--space-1) 0 var(--space-3);font-weight:500;"></p>
 
         <div class="modal-actions">
-            <button id="mw-submit-btn">Schedule</button>
+            <button id="mw-submit-btn" class="btn-primary">Schedule</button>
             <button id="mw-cancel-btn">Cancel</button>
         </div>
         <p id="mw-modal-msg" class="hint"></p>
@@ -194,7 +241,7 @@
         <p class="hint">Paste your schedule below — one lesson per line or any format. AI will extract dates, times, names, and durations.</p>
         <textarea id="parse-text" rows="8" placeholder="e.g.&#10;Monday June 9 - Sally Smith 3pm 30min&#10;Tuesday June 10 - Bobby Jones 4:30pm 45min"></textarea>
         <div class="modal-actions">
-            <button id="parse-submit-btn">Parse</button>
+            <button id="parse-submit-btn" class="btn-primary">Parse</button>
             <button id="parse-cancel-btn">Cancel</button>
         </div>
         <p id="parse-msg" class="hint"></p>
@@ -207,7 +254,7 @@
             </div>
             <div id="parse-preview-groups"></div>
             <div class="modal-actions" style="margin-top:var(--space-3);">
-                <button id="parse-confirm-btn">Add All</button>
+                <button id="parse-confirm-btn" class="btn-primary">Add All</button>
             </div>
         </div>
     </div>
@@ -236,7 +283,7 @@
         <div id="request-days" class="request-days-grid"></div>
 
         <div class="modal-actions">
-            <button id="submit-request-btn">Save Changes</button>
+            <button id="submit-request-btn" class="btn-primary">Save Changes</button>
             <button id="cancel-request-btn">Cancel</button>
         </div>
         <p id="request-msg"></p>
@@ -268,7 +315,7 @@
         </select>
 
         <div class="modal-actions">
-            <button id="as-submit-btn">Add Student</button>
+            <button id="as-submit-btn" class="btn-primary">Add Student</button>
             <button id="as-cancel-btn">Cancel</button>
         </div>
         <p id="as-msg" class="hint"></p>
@@ -303,7 +350,7 @@
         </div>
 
         <div class="modal-actions">
-            <button id="af-submit-btn">Create Family</button>
+            <button id="af-submit-btn" class="btn-primary">Create Family</button>
             <button id="af-cancel-btn">Cancel</button>
         </div>
         <p id="af-msg" class="hint"></p>
@@ -327,7 +374,7 @@
         <input id="ef-parent-email" type="email" placeholder="jane@example.com">
 
         <div class="modal-actions">
-            <button id="ef-submit-btn">Save Changes</button>
+            <button id="ef-submit-btn" class="btn-primary">Save Changes</button>
             <button id="ef-cancel-btn">Cancel</button>
         </div>
         <p id="ef-msg" class="hint"></p>
@@ -370,7 +417,7 @@
                 </div>
             </div>
             <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3);flex-wrap:wrap;">
-                <button id="sd-edit-save-btn">Save Changes</button>
+                <button id="sd-edit-save-btn" class="btn-primary">Save Changes</button>
                 <button id="sd-edit-cancel-btn" class="subtle-btn">Cancel</button>
                 <button id="sd-delete-btn" class="subtle-btn" style="margin-left:auto;color:var(--color-error,#dc2626);">Delete Student</button>
             </div>
@@ -410,7 +457,7 @@
             <div id="remind-recipients-list" style="margin-top:var(--space-2);display:flex;flex-direction:column;gap:var(--space-2);"></div>
         </details>
         <div class="modal-actions">
-            <button id="remind-all-confirm-btn">Send Reminders</button>
+            <button id="remind-all-confirm-btn" class="btn-primary">Send Reminders</button>
             <button id="remind-all-cancel-btn" class="subtle-btn">Cancel</button>
         </div>
         <p id="remind-all-msg" class="hint"></p>
@@ -452,7 +499,7 @@
         <input type="text" id="rp-note" placeholder="e.g. Venmo on June 1">
 
         <div class="modal-actions">
-            <button id="rp-submit-btn">Save</button>
+            <button id="rp-submit-btn" class="btn-primary">Save</button>
             <button id="rp-cancel-btn" class="subtle-btn">Cancel</button>
         </div>
         <p id="rp-msg" class="hint"></p>
@@ -504,10 +551,23 @@
         <textarea id="email-body" rows="6" placeholder="Write your message…"></textarea>
 
         <div class="modal-actions">
-            <button id="email-send-btn">Send</button>
+            <button id="email-send-btn" class="btn-primary">Send</button>
             <button id="email-cancel-btn" class="subtle-btn">Cancel</button>
         </div>
         <p id="email-modal-msg" class="hint"></p>
+    </div>
+</div>
+
+<!-- CANCEL LESSON MODAL -->
+<div id="cancel-lesson-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+        <h3>Cancel Lesson</h3>
+        <p id="cancel-lesson-text">Cancel this lesson?</p>
+        <div class="modal-actions">
+            <button id="confirm-cancel-btn">Yes, cancel</button>
+            <button id="abort-cancel-btn">Keep it</button>
+        </div>
+        <p id="cancel-lesson-msg"></p>
     </div>
 </div>
 
@@ -518,7 +578,7 @@
 
 <script src="/static/public.js?v=3"></script>
 <script src="/static/themes.js"></script>
-<script src="/static/app.js?v=3"></script>
-<script src="/static/studio/teacher.js"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/studio/teacher.js?v=2"></script>
 </body>
 </html>

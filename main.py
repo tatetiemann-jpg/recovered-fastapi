@@ -113,6 +113,7 @@ async def lifespan(app: FastAPI):
                     UNIQUE (message_id, user_id)
                 );
             """)
+            cur.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS external_recipient_names TEXT;")
             cur.execute("ALTER TABLE subs ADD COLUMN IF NOT EXISTS preferred_rank INT;")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS choir_type VARCHAR(20) DEFAULT 'choir';")
             cur.execute("ALTER TABLE rehearsals ADD COLUMN IF NOT EXISTS materials_url TEXT;")
@@ -423,6 +424,7 @@ async def lifespan(app: FastAPI):
             """)
             cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS part_label TEXT;")
             cur.execute("ALTER TABLE orchestra_members ADD COLUMN IF NOT EXISTS doublings TEXT;")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS doublings TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS orchestra_absence_requests (
                     id           SERIAL PRIMARY KEY,
@@ -904,11 +906,15 @@ def find_user(username: str, role: Optional[str] = None):
         }
 
 def is_booking_window_open_for(target_date, tz=None, open_hour=21, close_hour=18) -> bool:
-    """Day-of only: window is open on the same calendar day, before close_hour."""
+    """Window for target_date opens at open_hour the evening before and closes at close_hour on the day itself."""
     if tz is None:
         tz = EST
     now_local = datetime.now(tz)
-    return now_local.date() == target_date and now_local.hour < close_hour
+    if now_local.date() == target_date:
+        return now_local.hour < close_hour
+    if now_local.date() == target_date - timedelta(days=1):
+        return now_local.hour >= open_hour
+    return False
 
 def get_student_rehearsal_conflicts(student_id: int, date_obj, time_obj, tz=None) -> bool:
     """
@@ -1547,7 +1553,7 @@ def login(data: LoginData, request: Request, response: Response):
 def logout(request: Request, response: Response):
     token = request.cookies.get("session")
     delete_session(token) if token else None
-    response.delete_cookie("session", path="/")
+    response.delete_cookie("session", path="/", domain=".countrpnt.com")
     return {"success": True}
 
 
@@ -3210,6 +3216,7 @@ def admin_create_rehearsals_bulk(payload: dict, request: Request):
     created = 0
     with db_cursor(commit=True) as cur:
         for rdate in rehearsal_dates:
+            cur.execute("SAVEPOINT bulk_reh")
             try:
                 start_dt = datetime.fromisoformat(f"{rdate}T{start_time_str}")
                 end_dt = datetime.fromisoformat(f"{rdate}T{end_time_str}") if end_time_str else None
@@ -3240,8 +3247,10 @@ def admin_create_rehearsals_bulk(payload: dict, request: Request):
                         (rid, lid)
                     )
 
+                cur.execute("RELEASE SAVEPOINT bulk_reh")
                 created += 1
             except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT bulk_reh")
                 print(f"[admin_bulk] skipped {rdate}: {e}")
 
     return {"status": "success", "created": created}
@@ -3250,10 +3259,10 @@ def admin_create_rehearsals_bulk(payload: dict, request: Request):
 def render_rehearsal_notes_email(opera_name: str, date_str: str, time_str: str, notes: str):
     html = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
-<h2 style="color:#333;margin-bottom:4px;">Rehearsal Notes: {opera_name}</h2>
-<p style="color:#888;margin-top:0;">{date_str} &middot; {time_str}</p>
+<h2 style="color:#333;margin-bottom:4px;">Rehearsal Notes: {html_mod.escape(opera_name)}</h2>
+<p style="color:#888;margin-top:0;">{html_mod.escape(date_str)} &middot; {html_mod.escape(time_str)}</p>
 <hr style="border:none;border-top:1px solid #eee;margin:16px 0;">
-<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{notes}</div>
+<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{html_mod.escape(notes)}</div>
 </body></html>"""
     text = f"Rehearsal Notes: {opera_name}\n{date_str} \xb7 {time_str}\n\n{notes}"
     return html, text
@@ -3263,9 +3272,9 @@ def render_choir_notes_email(date_str: str, time_str: str, notes: str):
     html = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
 <h2 style="color:#333;margin-bottom:4px;">Rehearsal Notes</h2>
-<p style="color:#888;margin-top:0;">{date_str} &middot; {time_str}</p>
+<p style="color:#888;margin-top:0;">{html_mod.escape(date_str)} &middot; {html_mod.escape(time_str)}</p>
 <hr style="border:none;border-top:1px solid #eee;margin:16px 0;">
-<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{notes}</div>
+<div style="white-space:pre-wrap;font-size:15px;line-height:1.6;color:#222;">{html_mod.escape(notes)}</div>
 </body></html>"""
     text = f"Rehearsal Notes\n{date_str} \xb7 {time_str}\n\n{notes}"
     return html, text
@@ -4430,11 +4439,17 @@ def get_teacher_viewing_date(tz=None):
         return now_local.date() + timedelta(days=1)
     return now_local.date()
 
-def get_bookable_date(tz=None, close_hour=18):
-    """Day-of only: always returns today in the org's timezone."""
+def get_bookable_date(tz=None, close_hour=18, open_hour=21):
+    """
+    The date currently eligible for booking: today until close_hour, then
+    tomorrow once open_hour has passed (previous-evening booking window).
+    """
     if tz is None:
         tz = EST
-    return datetime.now(tz).date()
+    now_local = datetime.now(tz)
+    if now_local.hour < close_hour:
+        return now_local.date()
+    return now_local.date() + timedelta(days=1)
 
 @app.get("/teacher/today")
 def teacher_today(request: Request):
@@ -5167,9 +5182,9 @@ def student_today(request: Request):
     org_tz = get_org_tz(student)
     cfg = get_org_lesson_config(student["org_id"])
     now_local = datetime.now(org_tz)
-    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    booking_pending = False  # day-of only: no pre-booking window
+    booking_pending = not booking_open  # target date is set but window hasn't opened yet tonight
 
     # Today's rehearsals for this student
     with db_cursor() as cur:
@@ -5376,7 +5391,7 @@ def student_teacher_slots(request: Request, teacher: int, period: str, duration:
             return []
         min_dt = datetime.now(org_tz) + timedelta(hours=24)
     else:
-        target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+        target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
         if not is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
             return []
 
@@ -5488,15 +5503,15 @@ def student_mark_absence(payload: dict, request: Request):
         org_tz = get_org_tz(student)
         local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
         date_str = local_dt.strftime("%A, %B %-d, %Y")
-        note_html = f"<p><strong>Notes:</strong> {note}</p>" if note else ""
+        note_html = f"<p><strong>Notes:</strong> {html_mod.escape(note)}</p>" if note else ""
         note_text = f"\nNotes: {note}" if note else ""
         subject = f"Absence Notice – {student['fullname']} – {opera_name}"
         html_body = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
 <h2 style="color:#333;">Absence Notice</h2>
-<p><strong>{student['fullname']}</strong> has marked themselves absent for the
-<strong>{opera_name}</strong> rehearsal on <strong>{date_str}</strong>.</p>
-<p><strong>Reason:</strong> {reason}</p>
+<p><strong>{html_mod.escape(student['fullname'])}</strong> has marked themselves absent for the
+<strong>{html_mod.escape(opera_name)}</strong> rehearsal on <strong>{date_str}</strong>.</p>
+<p><strong>Reason:</strong> {html_mod.escape(reason)}</p>
 {note_html}
 </body></html>"""
         text_body = f"Absence Notice\n{student['fullname']} has marked themselves absent for the {opera_name} rehearsal on {date_str}.\nReason: {reason}{note_text}"
@@ -5555,14 +5570,14 @@ def student_book(payload: dict, request: Request):
             return {"status": "fail", "message": "Lessons must be booked at least 24 hours in advance"}
     else:
         # Can only book for the currently bookable date
-        if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"]):
+        if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"]):
             return {"status": "fail", "message": "Lessons can only be booked for the current bookable day"}
 
         # Booking window check
         if not is_booking_window_open_for(lesson_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
             return {
                 "status": "fail",
-                "message": f"Booking is closed. Booking is open until {cfg['booking_close_hour']}:00 on the day of your lesson."
+                "message": f"Booking is closed. Booking opens at {cfg['booking_open_hour']}:00 the evening before and closes at {cfg['booking_close_hour']}:00 on the day of your lesson."
             }
 
         # Block past times today
@@ -5773,9 +5788,9 @@ def orchestra_member_today(request: Request):
     org_tz = get_org_tz(member)
     cfg = get_org_lesson_config(member["org_id"])
     now_local = datetime.now(org_tz)
-    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    booking_pending = False  # day-of only: no pre-booking window
+    booking_pending = not booking_open  # target date is set but window hasn't opened yet tonight
 
     org_id = member["org_id"]
     member_instrument = (member.get("instrument") or "").strip().lower()
@@ -5939,7 +5954,7 @@ def orchestra_member_mark_absence(payload: dict, request: Request):
         cur.execute(
             """
             SELECT r.start_time, o.opera_name FROM rehearsals r
-            JOIN operas o ON o.id = r.opera_id WHERE r.id=%s
+            LEFT JOIN operas o ON o.id = r.opera_id WHERE r.id=%s
             """,
             (rehearsal_id,),
         )
@@ -5956,20 +5971,21 @@ def orchestra_member_mark_absence(payload: dict, request: Request):
 
     if row and admin_emails:
         start_dt, opera_name = row
+        rehearsal_label = f"{opera_name} orchestra" if opera_name else "orchestra"
         org_tz = get_org_tz(member)
         local_dt = start_dt.astimezone(org_tz) if start_dt.tzinfo else start_dt
         date_str = local_dt.strftime("%A, %B %-d, %Y")
-        note_html = f"<p><strong>Notes:</strong> {note}</p>" if note else ""
+        note_html = f"<p><strong>Notes:</strong> {html_mod.escape(note)}</p>" if note else ""
         note_text = f"\nNotes: {note}" if note else ""
-        subject = f"Absence Notice - {member['fullname']} - {opera_name}"
+        subject = f"Absence Notice - {member['fullname']} - {opera_name or 'Orchestra Rehearsal'}"
         html_body = f"""<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;">
 <h2 style="color:#333;">Absence Notice</h2>
-<p><strong>{member['fullname']}</strong> has marked themselves absent for the
-<strong>{opera_name}</strong> orchestra rehearsal on <strong>{date_str}</strong>.</p>
-<p><strong>Reason:</strong> {reason}</p>{note_html}
+<p><strong>{html_mod.escape(member['fullname'])}</strong> has marked themselves absent for the
+<strong>{html_mod.escape(rehearsal_label)}</strong> rehearsal on <strong>{date_str}</strong>.</p>
+<p><strong>Reason:</strong> {html_mod.escape(reason)}</p>{note_html}
 </body></html>"""
-        text_body = f"Absence Notice\n{member['fullname']} has marked themselves absent for the {opera_name} orchestra rehearsal on {date_str}.\nReason: {reason}{note_text}"
+        text_body = f"Absence Notice\n{member['fullname']} has marked themselves absent for the {rehearsal_label} rehearsal on {date_str}.\nReason: {reason}{note_text}"
         for email in admin_emails:
             send_email(to=email, subject=subject, html_body=html_body, text_body=text_body)
 
@@ -6027,7 +6043,7 @@ def orchestra_member_teacher_slots(request: Request, teacher: int, period: str, 
 
     slot_duration = duration if duration in cfg["duration_options"] else cfg["duration_min"]
 
-    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
     if not is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
         return []
 
@@ -6066,7 +6082,7 @@ def orchestra_member_book(payload: dict, request: Request):
 
     slot_duration = int(duration_req) if int(duration_req or 0) in cfg["duration_options"] else cfg["duration_min"]
 
-    if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"]):
+    if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"]):
         return {"status": "fail", "message": "Lessons can only be booked for the current bookable day"}
 
     if not is_booking_window_open_for(lesson_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
@@ -6314,13 +6330,27 @@ def get_orchestra_members(request: Request):
     org_id = user["org_id"]
     with db_cursor() as cur:
         cur.execute("""
-            SELECT id, fullname, instrument
+            SELECT id, fullname, instrument, doublings
             FROM users
             WHERE org_id = %s AND role = 'orchestra_member'
             ORDER BY instrument, fullname
         """, (org_id,))
         rows = cur.fetchall()
-    return [{"id": r[0], "name": r[1], "instrument": r[2] or ""} for r in rows]
+    return [{"id": r[0], "name": r[1], "instrument": r[2] or "", "doublings": r[3] or ""} for r in rows]
+
+
+@app.patch("/admin/orchestra-members/{member_id}/doublings")
+def update_orchestra_member_doublings(member_id: int, payload: dict, request: Request):
+    """Update an opera-side orchestra member's recorded doublings."""
+    user = require_user(request, role="admin")
+    org_id = user["org_id"]
+    doublings = (payload.get("doublings") or "").strip()
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE users SET doublings=%s WHERE id=%s AND org_id=%s AND role='orchestra_member'",
+            (doublings or None, member_id, org_id)
+        )
+    return {"status": "success"}
 
 
 @app.get("/admin/orchestra-seats/{opera_id}")
@@ -6671,6 +6701,47 @@ def require_choir_member(request: Request):
     return user
 
 
+def resolve_member_section_id(user: dict) -> Optional[int]:
+    """
+    Resolve a choir/ensemble member's section_id, falling back to a
+    voice_type (choir members) or instrument (ensemble members) name
+    match against choir_sections. Creates the section if none matches
+    yet, and persists the result onto the user row so subsequent
+    lookups (subs, calendar filtering, rehearsal calls) don't need to
+    re-resolve it.
+    """
+    section_id = user.get("section_id")
+    if section_id:
+        return section_id
+    name = (user.get("voice_type") or user.get("instrument") or "").strip()
+    if not name:
+        return None
+    org_id = user["org_id"]
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT id FROM choir_sections WHERE org_id=%s AND LOWER(name)=%s LIMIT 1",
+            (org_id, name.lower())
+        )
+        row = cur.fetchone()
+    if row:
+        section_id = row[0]
+    else:
+        with db_cursor(commit=True) as cur:
+            cur.execute(
+                "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM choir_sections WHERE org_id=%s",
+                (org_id,)
+            )
+            next_sort = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO choir_sections (org_id, name, sort_order) VALUES (%s, %s, %s) RETURNING id",
+                (org_id, name.title(), next_sort)
+            )
+            section_id = cur.fetchone()[0]
+    with db_cursor(commit=True) as cur:
+        cur.execute("UPDATE users SET section_id=%s WHERE id=%s", (section_id, user["id"]))
+    return section_id
+
+
 # -- Page routes --------------------------------------------------------------
 
 @app.get("/choir/admin", response_class=HTMLResponse)
@@ -6912,18 +6983,7 @@ def choir_get_rehearsals(request: Request):
     user = require_choir_member(request)
     org_id = user["org_id"]
     role = user["role"]
-    section_id = user.get("section_id")
-    if not section_id and role != "admin":
-        voice_type = (user.get("voice_type") or "").lower()
-        if voice_type:
-            with db_cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM choir_sections
-                    WHERE org_id = %s AND LOWER(name) = %s
-                """, (org_id, voice_type))
-                row = cur.fetchone()
-                if row:
-                    section_id = row[0]
+    section_id = user.get("section_id") if role == "admin" else resolve_member_section_id(user)
 
     with db_cursor() as cur:
         cur.execute("""
@@ -7272,6 +7332,7 @@ def choir_create_rehearsals_bulk(payload: dict, request: Request):
     created = 0
     with db_cursor(commit=True) as cur:
         for rdate in rehearsal_dates:
+            cur.execute("SAVEPOINT bulk_reh")
             try:
                 start_dt = datetime.fromisoformat(f"{rdate}T{start}")
                 end_dt = datetime.fromisoformat(f"{rdate}T{end}") if end else None
@@ -7285,9 +7346,11 @@ def choir_create_rehearsals_bulk(payload: dict, request: Request):
                         INSERT INTO rehearsal_sections (rehearsal_id, section_id)
                         VALUES (%s, %s) ON CONFLICT DO NOTHING
                     """, (rid, sid))
+                cur.execute("RELEASE SAVEPOINT bulk_reh")
                 created += 1
-            except Exception:
-                pass
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT bulk_reh")
+                print(f"[choir_bulk] skipped {rdate}: {e}")
 
     return {"status": "success", "created": created}
 
@@ -7299,20 +7362,9 @@ def choir_get_subs(request: Request, section_id: Optional[int] = None):
     user = require_choir_member(request)
     org_id = user["org_id"]
     if user["role"] != "admin":
-        section_id = user.get("section_id")
+        section_id = resolve_member_section_id(user)
         if not section_id:
-            voice_type = (user.get("voice_type") or "").lower()
-            if not voice_type:
-                return []
-            with db_cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM choir_sections
-                    WHERE org_id = %s AND LOWER(name) = %s
-                """, (org_id, voice_type))
-                row = cur.fetchone()
-                if not row:
-                    return []
-                section_id = row[0]
+            return []
 
     with db_cursor() as cur:
         if section_id:
@@ -7451,18 +7503,7 @@ def choir_cancel_absence(rehearsal_id: int, request: Request):
     user = require_choir_member(request)
     org_id = user["org_id"]
 
-    section_id = user.get("section_id")
-    if not section_id:
-        voice_type = (user.get("voice_type") or "").lower()
-        if voice_type:
-            with db_cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM choir_sections
-                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
-                """, (org_id, voice_type))
-                row = cur.fetchone()
-                if row:
-                    section_id = row[0]
+    section_id = resolve_member_section_id(user)
 
     if section_id:
         with db_cursor() as cur:
@@ -7654,18 +7695,7 @@ def choir_my_sub_status(request: Request):
     user = require_choir_member(request)
     org_id = user["org_id"]
 
-    section_id = user.get("section_id")
-    if not section_id:
-        voice_type = (user.get("voice_type") or "").lower()
-        if voice_type:
-            with db_cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM choir_sections
-                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
-                """, (org_id, voice_type))
-                row = cur.fetchone()
-                if row:
-                    section_id = row[0]
+    section_id = resolve_member_section_id(user)
 
     if not section_id:
         return []
@@ -7910,19 +7940,8 @@ def choir_create_sub_request(payload: dict, request: Request):
     rehearsal_id = payload.get("rehearsal_id")
     org_id = user["org_id"]
 
-    # Resolve the user's own section_id (from profile or voice_type fallback)
-    user_section_id = user.get("section_id")
-    if not user_section_id:
-        voice_type = (user.get("voice_type") or "").lower()
-        if voice_type:
-            with db_cursor() as cur:
-                cur.execute("""
-                    SELECT id FROM choir_sections
-                    WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
-                """, (org_id, voice_type))
-                row = cur.fetchone()
-                if row:
-                    user_section_id = row[0]
+    # Resolve the user's own section_id (from profile, voice_type, or instrument fallback)
+    user_section_id = resolve_member_section_id(user)
 
     # Admins may specify any section; members are locked to their own
     if user["role"] == "admin":
@@ -8264,7 +8283,7 @@ def choir_my_calendar_token(request: Request):
 def choir_calendar_ics(token: str):
     with db_cursor() as cur:
         cur.execute("""
-            SELECT u.id, u.org_id, u.section_id, u.voice_type
+            SELECT u.id, u.org_id, u.section_id, u.voice_type, u.instrument
             FROM users u WHERE u.calendar_token=%s
         """, (token,))
         row = cur.fetchone()
@@ -8272,17 +8291,11 @@ def choir_calendar_ics(token: str):
     if not row:
         raise HTTPException(status_code=404, detail="Calendar not found")
 
-    user_id, org_id, section_id, voice_type = row
-
-    if not section_id and voice_type:
-        with db_cursor() as cur:
-            cur.execute("""
-                SELECT id FROM choir_sections
-                WHERE org_id=%s AND LOWER(name)=%s LIMIT 1
-            """, (org_id, voice_type.lower()))
-            sr = cur.fetchone()
-            if sr:
-                section_id = sr[0]
+    user_id, org_id, section_id, voice_type, instrument = row
+    section_id = resolve_member_section_id({
+        "id": user_id, "org_id": org_id, "section_id": section_id,
+        "voice_type": voice_type, "instrument": instrument,
+    })
 
     with db_cursor() as cur:
         cur.execute("""
@@ -8467,18 +8480,7 @@ def choir_contact_one_sub(payload: dict, request: Request):
 
     # Non-admin members may only contact subs for their own section
     if user["role"] != "admin":
-        user_section_id = user.get("section_id")
-        if not user_section_id:
-            voice_type = (user.get("voice_type") or "").lower()
-            if voice_type:
-                with db_cursor() as cur:
-                    cur.execute("""
-                        SELECT id FROM choir_sections
-                        WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
-                    """, (org_id, voice_type))
-                    row = cur.fetchone()
-                    if row:
-                        user_section_id = row[0]
+        user_section_id = resolve_member_section_id(user)
         if user_section_id and int(section_id) != user_section_id:
             raise HTTPException(status_code=403, detail="Members can only contact subs for their own section")
 
@@ -8535,18 +8537,7 @@ def choir_contact_preferred_subs(payload: dict, request: Request):
     if user["role"] == "admin" and payload.get("section_id"):
         section_id = payload["section_id"]
     else:
-        section_id = user.get("section_id")
-        if not section_id:
-            voice_type = (user.get("voice_type") or "").lower()
-            if voice_type:
-                with db_cursor() as cur:
-                    cur.execute("""
-                        SELECT id FROM choir_sections
-                        WHERE org_id = %s AND LOWER(name) = %s LIMIT 1
-                    """, (org_id, voice_type))
-                    row = cur.fetchone()
-                    if row:
-                        section_id = row[0]
+        section_id = resolve_member_section_id(user)
         if not section_id:
             return {"status": "fail", "message": "Could not resolve your section"}
 
@@ -8616,9 +8607,9 @@ def choir_member_today_booking(request: Request):
         return {"lessons_enabled": False}
 
     now_local = datetime.now(org_tz)
-    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
     booking_open = is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"])
-    booking_pending = False  # day-of only: no pre-booking window
+    booking_pending = not booking_open  # target date is set but window hasn't opened yet tonight
 
     org_id = user["org_id"]
     teachers = []
@@ -8681,7 +8672,7 @@ def choir_member_teacher_slots(request: Request, teacher: int, period: str, dura
 
     slot_duration = duration if duration in cfg["duration_options"] else cfg["duration_min"]
 
-    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"])
+    target_date = get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"])
     if not is_booking_window_open_for(target_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
         return []
 
@@ -8723,11 +8714,11 @@ def choir_member_book(payload: dict, request: Request):
     if not cfg.get("lessons_enabled"):
         return {"status": "fail", "message": "Lesson booking is not enabled for your organization."}
 
-    if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"]):
+    if lesson_date != get_bookable_date(org_tz, close_hour=cfg["booking_close_hour"], open_hour=cfg["booking_open_hour"]):
         return {"status": "fail", "message": "Lessons can only be booked for the current bookable day"}
 
     if not is_booking_window_open_for(lesson_date, org_tz, open_hour=cfg["booking_open_hour"], close_hour=cfg["booking_close_hour"]):
-        return {"status": "fail", "message": f"Booking is closed. Booking is open until {cfg['booking_close_hour']}:00 on the day of your lesson."}
+        return {"status": "fail", "message": f"Booking is closed. Booking opens at {cfg['booking_open_hour']}:00 the evening before and closes at {cfg['booking_close_hour']}:00 on the day of your lesson."}
 
     slot_dt = org_tz.localize(datetime.combine(lesson_date, lesson_time))
     if slot_dt <= datetime.now(org_tz):
@@ -9263,23 +9254,26 @@ def get_dm(request: Request):
 
         cur.execute("""
             SELECT m.id, m.body, m.scope, m.created_at,
-                   ARRAY_AGG(u.fullname ORDER BY u.fullname) AS recipient_names
+                   ARRAY_AGG(u.fullname ORDER BY u.fullname) FILTER (WHERE u.fullname IS NOT NULL) AS recipient_names,
+                   m.external_recipient_names
             FROM messages m
-            JOIN message_recipients mr ON mr.message_id = m.id
-            JOIN users u ON u.id = mr.user_id
+            LEFT JOIN message_recipients mr ON mr.message_id = m.id
+            LEFT JOIN users u ON u.id = mr.user_id
             WHERE m.sender_id = %s
             GROUP BY m.id
             ORDER BY m.created_at DESC
             LIMIT 50
         """, (uid,))
-        sent = [
-            {
+        sent = []
+        for r in cur.fetchall():
+            names = list(r[4] or [])
+            if r[5]:
+                names += [n.strip() for n in r[5].split(",")]
+            sent.append({
                 "id": r[0], "body": r[1], "scope": r[2],
                 "created_at": r[3].isoformat() if r[3] else None,
-                "recipients": r[4] or [],
-            }
-            for r in cur.fetchall()
-        ]
+                "recipients": names,
+            })
 
     return {"inbox": inbox, "sent": sent}
 
@@ -9343,7 +9337,21 @@ def get_dm_contacts(request: Request):
                 """, (org_id, uid))
             contacts = [{"id": r[0], "fullname": r[1], "role": r[2], "group": "Members"} for r in cur.fetchall()]
 
-        elif role == "teacher":
+            if org_type == "orchestra":
+                # Standalone orchestra orgs keep their roster in orchestra_members,
+                # which has no linked users row — surface them as roster contacts
+                # (messages to them are sent as direct email, not an inbox DM).
+                cur.execute("""
+                    SELECT id, fullname FROM orchestra_members
+                    WHERE org_id = %s AND active = true AND email IS NOT NULL
+                    ORDER BY fullname
+                """, (org_id,))
+                contacts += [
+                    {"id": f"om:{r[0]}", "fullname": r[1], "role": "orchestra_member", "group": "Roster"}
+                    for r in cur.fetchall()
+                ]
+
+        elif role in ("teacher", "studio_teacher"):
             cur.execute("""
                 SELECT DISTINCT u.id, u.fullname, u.role FROM users u
                 JOIN lessons l ON l.student_id = u.id
@@ -9392,31 +9400,50 @@ def send_dm(payload: dict, request: Request):
 
     scope = (payload.get("scope") or "direct").strip()
     recipient_ids_raw = payload.get("recipient_ids") or []
-    recipient_ids = [int(x) for x in recipient_ids_raw]
+    user_recipient_ids, roster_recipient_ids = [], []
+    for x in recipient_ids_raw:
+        if isinstance(x, str) and x.startswith("om:"):
+            roster_recipient_ids.append(int(x[3:]))
+        else:
+            user_recipient_ids.append(int(x))
     org_id = user["org_id"]
     uid = user["id"]
     role = user["role"]
     org_type = user.get("org_type", "opera")
 
     resolved = []
+    roster_resolved = []
     with db_cursor() as cur:
         if scope == "direct":
-            if not recipient_ids:
+            if not user_recipient_ids and not roster_recipient_ids:
                 return {"status": "fail", "message": "No recipients selected"}
-            cur.execute(
-                "SELECT id FROM users WHERE id = ANY(%s) AND org_id = %s AND id != %s",
-                (recipient_ids, org_id, uid)
-            )
-            resolved = [r[0] for r in cur.fetchall()]
+            if user_recipient_ids:
+                cur.execute(
+                    "SELECT id FROM users WHERE id = ANY(%s) AND org_id = %s AND id != %s",
+                    (user_recipient_ids, org_id, uid)
+                )
+                resolved = [r[0] for r in cur.fetchall()]
+            if roster_recipient_ids:
+                cur.execute(
+                    "SELECT id FROM orchestra_members WHERE id = ANY(%s) AND org_id = %s AND active = true",
+                    (roster_recipient_ids, org_id)
+                )
+                roster_resolved = [r[0] for r in cur.fetchall()]
 
         elif scope == "org":
-            if role not in ("head_admin", "system_admin") and not (org_type == "choir" and role == "admin"):
+            if role not in ("head_admin", "system_admin", "orchestra_admin") and not (org_type == "choir" and role == "admin"):
                 return {"status": "fail", "message": "Not authorized for org-wide messages"}
             cur.execute(
                 "SELECT id FROM users WHERE org_id = %s AND id != %s AND role NOT IN ('system_admin')",
                 (org_id, uid)
             )
             resolved = [r[0] for r in cur.fetchall()]
+            if org_type == "orchestra":
+                cur.execute(
+                    "SELECT id FROM orchestra_members WHERE org_id = %s AND active = true AND email IS NOT NULL",
+                    (org_id,)
+                )
+                roster_resolved = [r[0] for r in cur.fetchall()]
 
         elif scope == "choir":
             if not (org_type == "choir" and role == "admin"):
@@ -9431,7 +9458,7 @@ def send_dm(payload: dict, request: Request):
             resolved = [r[0] for r in cur.fetchall()]
 
         elif scope == "studio_today":
-            if role != "teacher":
+            if role not in ("teacher", "studio_teacher"):
                 return {"status": "fail", "message": "Not authorized"}
             from datetime import date as _date
             today = _date.today()
@@ -9442,7 +9469,7 @@ def send_dm(payload: dict, request: Request):
             resolved = [r[0] for r in cur.fetchall()]
 
         elif scope == "studio_week":
-            if role != "teacher":
+            if role not in ("teacher", "studio_teacher"):
                 return {"status": "fail", "message": "Not authorized"}
             from datetime import date as _date, timedelta
             today = _date.today()
@@ -9455,7 +9482,7 @@ def send_dm(payload: dict, request: Request):
             resolved = [r[0] for r in cur.fetchall()]
 
         elif scope == "studio_all":
-            if role != "teacher":
+            if role not in ("teacher", "studio_teacher"):
                 return {"status": "fail", "message": "Not authorized"}
             cur.execute(
                 "SELECT DISTINCT student_id FROM lessons WHERE teacher_id=%s AND status='booked'",
@@ -9466,14 +9493,20 @@ def send_dm(payload: dict, request: Request):
         else:
             return {"status": "fail", "message": "Invalid scope"}
 
-    if not resolved:
+    if not resolved and not roster_resolved:
         return {"status": "fail", "message": "No recipients found for this scope"}
+
+    with db_cursor() as cur:
+        roster_data = []
+        if roster_resolved:
+            cur.execute("SELECT id, fullname, email FROM orchestra_members WHERE id = ANY(%s)", (roster_resolved,))
+            roster_data = cur.fetchall()
 
     with db_cursor(commit=True) as cur:
         cur.execute("""
-            INSERT INTO messages (org_id, sender_id, body, scope)
-            VALUES (%s, %s, %s, %s) RETURNING id
-        """, (org_id, uid, body, scope))
+            INSERT INTO messages (org_id, sender_id, body, scope, external_recipient_names)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (org_id, uid, body, scope, ", ".join(r[1] for r in roster_data) or None))
         message_id = cur.fetchone()[0]
         for rid in resolved:
             cur.execute("""
@@ -9489,7 +9522,7 @@ def send_dm(payload: dict, request: Request):
     sender_addr = _sender_from_username(user["username"])
     reply_email = user.get("email")
 
-    for _, rname, remail in recipients_data:
+    for _, rname, remail in recipients_data + roster_data:
         if not remail:
             continue
         html, text = _render_dm_email(sender_name, body, rname, APP_URL)
@@ -9502,7 +9535,7 @@ def send_dm(payload: dict, request: Request):
             reply_to=reply_email,
         )
 
-    return {"status": "success", "sent_to": len(resolved)}
+    return {"status": "success", "sent_to": len(resolved) + len(roster_resolved)}
 
 
 # ========================================================
@@ -11547,13 +11580,16 @@ def orchestra_create_rehearsal(payload: dict, request: Request):
 
         if attendance_type == "sectional" and section_ids:
             for sid in section_ids:
+                cur.execute("SAVEPOINT reh_section")
                 try:
                     cur.execute("""
                         INSERT INTO orchestra_rehearsal_sections (rehearsal_id, section_id)
                         VALUES (%s,%s) ON CONFLICT DO NOTHING
                     """, (reh_id, sid))
-                except Exception:
-                    pass
+                    cur.execute("RELEASE SAVEPOINT reh_section")
+                except Exception as e:
+                    cur.execute("ROLLBACK TO SAVEPOINT reh_section")
+                    print(f"[orchestra_reh] skipped section {sid}: {e}")
 
     # Email notification
     with db_cursor() as cur:
@@ -11574,17 +11610,103 @@ def orchestra_create_rehearsal(payload: dict, request: Request):
     date_str = str(start_time)[:16]
     for name, email in members:
         if email:
-            html = f"<p>Hi {name},</p><p>A rehearsal has been scheduled for {date_str}.</p>"
+            html = f"<p>Hi {html_mod.escape(name)},</p><p>A rehearsal has been scheduled for {date_str}.</p>"
             text = f"Hi {name},\n\nA rehearsal has been scheduled for {date_str}."
             if location:
-                html += f"<p>Location: {location}</p>"
+                html += f"<p>Location: {html_mod.escape(location)}</p>"
                 text += f"\nLocation: {location}"
             if notes:
-                html += f"<p>Notes: {notes}</p>"
+                html += f"<p>Notes: {html_mod.escape(notes)}</p>"
                 text += f"\nNotes: {notes}"
             send_email(email, "Orchestra Rehearsal Scheduled", html, text)
 
     return {"status": "success", "id": reh_id}
+
+
+@app.post("/orchestra/rehearsals/bulk")
+def orchestra_create_rehearsals_bulk(payload: dict, request: Request):
+    from datetime import date as date_type, timedelta
+    user = require_orchestra_admin(request)
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    days = payload.get("days", [])
+    start_time_str = payload.get("start_time")
+    end_time_str = payload.get("end_time") or None
+    location = (payload.get("location") or "").strip() or None
+    notes = (payload.get("notes") or "").strip() or None
+    concert_id = payload.get("concert_id")  # optional
+    attendance_type = payload.get("attendance_type", "full")
+    section_ids = payload.get("section_ids") or []  # for sectionals
+
+    if attendance_type not in ("full", "sectional"):
+        attendance_type = "full"
+
+    if not start_date or not end_date or not days or not start_time_str:
+        return {"status": "fail", "message": "Start date, end date, days, and start time are required"}
+
+    DAY_MAP = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+               "friday": 4, "saturday": 5, "sunday": 6}
+    day_nums = [DAY_MAP[d.lower()] for d in days if d.lower() in DAY_MAP]
+    if not day_nums:
+        return {"status": "fail", "message": "No valid days selected"}
+
+    try:
+        sd = date_type.fromisoformat(start_date)
+        ed = date_type.fromisoformat(end_date)
+    except Exception:
+        return {"status": "fail", "message": "Invalid date format"}
+
+    if ed < sd:
+        return {"status": "fail", "message": "End date must be after start date"}
+    if (ed - sd).days > 365:
+        return {"status": "fail", "message": "Date range cannot exceed one year"}
+
+    with db_cursor() as cur:
+        if concert_id:
+            cur.execute("SELECT 1 FROM operas WHERE id=%s AND org_id=%s", (concert_id, user["org_id"]))
+            if not cur.fetchone():
+                return {"status": "fail", "message": "Concert not found"}
+
+    rehearsal_dates = []
+    current = sd
+    while current <= ed:
+        if current.weekday() in day_nums:
+            rehearsal_dates.append(current)
+        current += timedelta(days=1)
+
+    if not rehearsal_dates:
+        return {"status": "fail", "message": "No rehearsals fall in that date range"}
+    if len(rehearsal_dates) > 100:
+        return {"status": "fail", "message": f"Too many rehearsals ({len(rehearsal_dates)}). Narrow your date range."}
+
+    created = 0
+    with db_cursor(commit=True) as cur:
+        for rdate in rehearsal_dates:
+            cur.execute("SAVEPOINT bulk_reh")
+            try:
+                start_dt = datetime.fromisoformat(f"{rdate}T{start_time_str}")
+                end_dt = datetime.fromisoformat(f"{rdate}T{end_time_str}") if end_time_str else None
+                cur.execute("""
+                    INSERT INTO rehearsals (org_id, opera_id, start_time, end_time, location, notes,
+                        attendance_type, rehearsal_type)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,'orchestra') RETURNING id
+                """, (user["org_id"], concert_id, start_dt, end_dt, location, notes, attendance_type))
+                rid = cur.fetchone()[0]
+
+                if attendance_type == "sectional" and section_ids:
+                    for sid in section_ids:
+                        cur.execute(
+                            "INSERT INTO orchestra_rehearsal_sections (rehearsal_id, section_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                            (rid, sid)
+                        )
+
+                cur.execute("RELEASE SAVEPOINT bulk_reh")
+                created += 1
+            except Exception as e:
+                cur.execute("ROLLBACK TO SAVEPOINT bulk_reh")
+                print(f"[orchestra_bulk] skipped {rdate}: {e}")
+
+    return {"status": "success", "created": created}
 
 
 @app.patch("/orchestra/rehearsals/{rehearsal_id}")

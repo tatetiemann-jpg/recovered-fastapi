@@ -5,7 +5,7 @@
   <title>Orchestra Manager</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/themes.css">
-  <link rel="stylesheet" href="/static/app.css?v=1">
+  <link rel="stylesheet" href="/static/app.css?v=5">
   <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -137,28 +137,33 @@
       <div class="dm-view-toggle">
         <button class="dm-view-btn active" data-dm-view="inbox">Inbox</button>
         <button class="dm-view-btn" data-dm-view="read">Read</button>
-        <button class="dm-view-btn" data-dm-view="compose">Compose</button>
+        <button class="dm-view-btn" data-dm-view="sent">Sent</button>
       </div>
 
-      <div id="dm-inbox" class="dm-view active">
-        <div id="dm-inbox-list"><em class="empty-note">Loading…</em></div>
-      </div>
+      <div id="dm-list" class="dm-list"><em class="empty-note">Loading&#8230;</em></div>
 
-      <div id="dm-read" class="dm-view hidden">
-        <div id="dm-read-list"><em class="empty-note">No read messages.</em></div>
-      </div>
-
-      <div id="dm-compose" class="dm-view hidden">
-        <label for="dm-to">To</label>
-        <select id="dm-to">
-          <option value="">— select member —</option>
-        </select>
-        <label for="dm-subject">Subject</label>
-        <input id="dm-subject" type="text" placeholder="Subject">
+      <div class="dm-compose">
+        <h3>New Message</h3>
+        <div class="dm-scope-row">
+          <label for="dm-scope">Send to</label>
+          <select id="dm-scope">
+            <option value="org">Everyone (org-wide)</option>
+            <option value="direct">Individual</option>
+          </select>
+        </div>
+        <div id="dm-recipient-row" class="dm-recipient-row hidden">
+          <label>Recipients</label>
+          <div class="dm-recipient-picker">
+            <input id="dm-recipient-search" type="text" placeholder="Filter contacts&#8230;" class="dm-recipient-search hidden">
+            <div id="dm-recipient-pills" class="dm-recipient-pills"></div>
+          </div>
+        </div>
         <label for="dm-body">Message</label>
-        <textarea id="dm-body" rows="5" placeholder="Write your message…"></textarea>
-        <button id="dm-send-btn">Send</button>
-        <p id="dm-send-msg" class="msg"></p>
+        <textarea id="dm-body" rows="4" placeholder="Write your message&#8230;"></textarea>
+        <div style="margin-top:var(--space-3);">
+          <button id="dm-send-btn">Send Message</button>
+        </div>
+        <p id="dm-send-status" class="hint" style="margin-top:var(--space-2);"></p>
       </div>
     </div>
   </section>
@@ -198,10 +203,53 @@
 <div id="schedule-rehearsal-modal" class="modal-overlay hidden">
   <div class="modal-card modal-large">
     <h3>Schedule Rehearsal</h3>
-    <label for="reh-start">Date &amp; Start Time <span class="required">*</span></label>
-    <input type="datetime-local" id="reh-start">
-    <label for="reh-end">End Time</label>
-    <input type="datetime-local" id="reh-end">
+
+    <div class="inline-radio-row" style="margin-bottom:var(--space-3);">
+      <label class="inline-check"><input type="radio" name="reh-mode" value="single" checked> Single date</label>
+      <label class="inline-check"><input type="radio" name="reh-mode" value="range"> Date range</label>
+    </div>
+
+    <div id="reh-single-fields">
+      <label for="reh-date">Date <span class="required">*</span></label>
+      <input id="reh-date" type="date">
+    </div>
+
+    <div id="reh-bulk-fields" class="hidden">
+      <p class="hint">Schedule the same rehearsal time on repeating days across a date range.</p>
+      <div class="time-pair">
+        <div>
+          <label for="bulk-start-date">From <span class="required">*</span></label>
+          <input id="bulk-start-date" type="date">
+        </div>
+        <div>
+          <label for="bulk-end-date">To <span class="required">*</span></label>
+          <input id="bulk-end-date" type="date">
+        </div>
+      </div>
+      <label>Days of week <span class="required">*</span></label>
+      <div class="checkbox-row" id="bulk-days">
+        <label class="checkbox-pill"><input type="checkbox" value="monday"> Mon</label>
+        <label class="checkbox-pill"><input type="checkbox" value="tuesday"> Tue</label>
+        <label class="checkbox-pill"><input type="checkbox" value="wednesday"> Wed</label>
+        <label class="checkbox-pill"><input type="checkbox" value="thursday"> Thu</label>
+        <label class="checkbox-pill"><input type="checkbox" value="friday"> Fri</label>
+        <label class="checkbox-pill"><input type="checkbox" value="saturday"> Sat</label>
+        <label class="checkbox-pill"><input type="checkbox" value="sunday"> Sun</label>
+      </div>
+      <p id="bulk-preview" class="hint"></p>
+    </div>
+
+    <div class="time-pair">
+      <div>
+        <label for="reh-start">Start time <span class="required">*</span></label>
+        <select id="reh-start"><option value="">-- time --</option></select>
+      </div>
+      <div>
+        <label for="reh-end">End time</label>
+        <select id="reh-end"><option value="">-- time --</option></select>
+      </div>
+    </div>
+
     <label for="reh-concert">Concert (optional)</label>
     <select id="reh-concert">
       <option value="">— None —</option>
@@ -220,7 +268,7 @@
     <label for="reh-notes">Notes</label>
     <textarea id="reh-notes" rows="2" placeholder="Optional notes to members…"></textarea>
     <div class="modal-actions">
-      <button id="save-rehearsal-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Schedule Rehearsal</button>
+      <button id="save-rehearsal-btn" class="btn-primary">Schedule Rehearsal</button>
       <button class="modal-close-btn" data-modal="schedule-rehearsal-modal">Cancel</button>
     </div>
     <p id="reh-save-msg" class="msg"></p>
@@ -261,7 +309,7 @@
       <option value="">— select section —</option>
     </select>
     <div class="modal-actions">
-      <button id="create-sub-request-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Create Sub Request</button>
+      <button id="create-sub-request-btn" class="btn-primary">Create Sub Request</button>
       <button class="modal-close-btn" data-modal="sub-request-modal">Cancel</button>
     </div>
     <p id="sub-req-msg" class="msg"></p>
@@ -285,7 +333,7 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button id="save-concert-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Concert</button>
+      <button id="save-concert-btn" class="btn-primary">Save Concert</button>
       <button class="modal-close-btn" data-modal="add-concert-modal">Cancel</button>
     </div>
     <p id="concert-save-msg" class="msg"></p>
@@ -311,7 +359,7 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button id="save-piece-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Work</button>
+      <button id="save-piece-btn" class="btn-primary">Save Work</button>
       <button class="modal-close-btn" data-modal="add-piece-modal">Cancel</button>
     </div>
     <p id="piece-save-msg" class="msg"></p>
@@ -322,7 +370,7 @@
 <div id="assign-seat-modal" class="modal-overlay hidden">
   <div class="modal-card">
     <h3 id="assign-seat-title">Assign Seat</h3>
-    <label for="seat-member-select">Member</label>
+    <label for="seat-member-select">Instrumentalist</label>
     <select id="seat-member-select">
       <option value="">— Unassigned —</option>
     </select>
@@ -353,7 +401,7 @@
       <input type="email" id="seat-ext-email" placeholder="email@example.com">
     </div>
     <div class="modal-actions">
-      <button id="save-seat-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Assign</button>
+      <button id="save-seat-btn" class="btn-primary">Assign</button>
       <button class="modal-close-btn" data-modal="assign-seat-modal">Cancel</button>
     </div>
     <p id="seat-save-msg" class="msg"></p>
@@ -369,7 +417,7 @@
     <div id="player-info-email" style="margin-bottom:4px;"></div>
     <div id="player-info-doublings" class="hint"></div>
     <div class="modal-actions" style="margin-top:var(--space-4);">
-      <button id="player-info-edit-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Edit Seat</button>
+      <button id="player-info-edit-btn" class="btn-primary">Edit Seat</button>
       <button id="player-info-clear-btn">Clear Seat</button>
       <button class="modal-close-btn" data-modal="player-info-modal">Close</button>
     </div>
@@ -420,7 +468,7 @@
     <label for="member-notes-input">Notes</label>
     <input type="text" id="member-notes-input" placeholder="Optional">
     <div class="modal-actions">
-      <button id="save-member-btn" style="background:var(--accent);color:#1f1b15;border-color:var(--accent);font-weight:600;">Save Member</button>
+      <button id="save-member-btn" class="btn-primary">Save Member</button>
       <button class="modal-close-btn" data-modal="add-member-modal">Cancel</button>
     </div>
     <p id="member-save-msg" class="msg"></p>
@@ -430,8 +478,8 @@
 <!-- Edit Account Modal (shared) -->
 {% include "_edit_account_modal.html" %}
 
-<script src="/static/public.js"></script>
-<script src="/static/app.js"></script>
-<script src="/static/orchestra/manager.js?v=2"></script>
+<script src="/static/public.js?v=3"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/orchestra/manager.js?v=3"></script>
 </body>
 </html>

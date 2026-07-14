@@ -5,7 +5,7 @@
   <title>My Ensemble</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/static/themes.css">
-  <link rel="stylesheet" href="/static/app.css?v=3">
+  <link rel="stylesheet" href="/static/app.css?v=5">
   <script src="/static/theme.js"></script>
 </head>
 <body class="dashboard-page">
@@ -30,6 +30,23 @@
     <div class="box">
       <h2>Upcoming Rehearsals</h2>
       <div id="rehearsal-timeline"><em class="empty-note">Loading…</em></div>
+    </div>
+    <div class="box calendar-subscribe-box">
+      <button id="calendar-subscribe-toggle" type="button" class="timeline-toggle">
+        Subscribe to Your Rehearsal Calendar <span id="calendar-subscribe-chevron" class="timeline-chevron">&#9654;</span>
+      </button>
+      <div id="calendar-subscribe-body" class="timeline-body hidden calendar-subscribe-body">
+        <p class="hint">Your calendar stays up to date automatically &mdash; rehearsals you opt out of will disappear on the next sync.</p>
+        <div class="calendar-url-row">
+          <input id="calendar-url" type="text" readonly title="Calendar subscription URL" aria-label="Calendar subscription URL" class="calendar-url-input">
+          <button id="copy-calendar-url-btn" type="button">Copy</button>
+        </div>
+        <div class="hint calendar-instructions">
+          <strong>Google Calendar:</strong> Other calendars + &rarr; From URL &rarr; paste above<br>
+          <strong>Apple Calendar:</strong> File &rarr; New Calendar Subscription &rarr; paste above<br>
+          <strong>Outlook:</strong> Add calendar &rarr; Subscribe from web &rarr; paste above
+        </div>
+      </div>
     </div>
   </section>
 
@@ -86,17 +103,30 @@
     <label for="absence-note">Additional notes (optional)</label>
     <textarea id="absence-note" rows="3" placeholder="Any additional details..."></textarea>
     <div class="modal-actions">
-      <button id="absence-submit-btn" type="button">Submit</button>
+      <button id="absence-submit-sub-btn" type="button" class="btn-primary">Submit &amp; Find a Sub</button>
       <button id="absence-cancel-btn" type="button">Cancel</button>
     </div>
     <p id="absence-modal-msg" class="hint"></p>
   </div>
 </div>
 
+<!-- FIND A SUB MODAL -->
+<div id="find-sub-modal" class="modal-overlay hidden">
+  <div class="modal-card modal-large">
+    <h3 id="find-sub-title">Find a Sub</h3>
+    <p id="find-sub-rehearsal" class="hint"></p>
+    <div id="find-sub-list"><em class="empty-note">Loading...</em></div>
+    <div class="modal-actions">
+      <button id="find-sub-close">Close</button>
+    </div>
+    <p id="find-sub-msg" class="msg"></p>
+  </div>
+</div>
+
 {% include "_edit_account_modal.html" %}
 <script src="/static/public.js?v=3"></script>
 <script src="/static/themes.js?v=2"></script>
-<script src="/static/app.js?v=3"></script>
-<script src="/static/choir/ensemble_member.js?v=9"></script>
+<script src="/static/app.js?v=4"></script>
+<script src="/static/choir/ensemble_member.js?v=10"></script>
 </body>
 </html>

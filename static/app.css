@@ -27,9 +27,28 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius: var(--radius-sm);
 
   --transition-fast: 150ms ease;
   --transition-slow: 300ms ease;
+
+  /* Aliases onto themes.css palette tokens, so components that reference a
+     generic name don't silently fall back to an unset/invalid value. */
+  --muted: var(--text-muted);
+  --hover: var(--bg-sunken);
+  --surface: var(--bg-elevated);
+  --surface-2: var(--bg-sunken);
+  --surface-alt: var(--bg-elevated);
+  --surface-raised: var(--bg-elevated);
+  --card-bg: var(--bg-elevated);
+  --bg-card: var(--bg-elevated);
+  --input-bg: var(--bg-elevated);
+  --error: var(--danger);
+  --accent-muted: var(--accent-soft);
+  --accent-fg: var(--accent-text);
+  --color-warning-bg: color-mix(in srgb, var(--warning) 15%, var(--bg-elevated));
+  --color-warning-border: color-mix(in srgb, var(--warning) 45%, transparent);
+  --color-warning-text: var(--warning);
 }
 
 
@@ -286,6 +305,19 @@ button:focus-visible {
   padding: 6px 12px;
 }
 
+/* Primary action button — used for the main confirming action in a modal
+   (Schedule, Save, Assign, Send Invitation, etc.) so it stands out from Cancel. */
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* ======================================================
    PASSWORD VISIBILITY TOGGLE
 ====================================================== */
@@ -388,7 +420,7 @@ button:focus-visible {
 .signup-page .card > button {
   width: 100%;
   background: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   border-color: var(--accent);
   font-weight: 600;
   padding: 14px;
@@ -399,7 +431,7 @@ button:focus-visible {
 .signup-page .card > button:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #1f1b15;
+  color: var(--accent-text);
 }
 
 .login-page .link,
@@ -744,7 +776,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 #save-account-btn,
 #submit-request-btn {
   background: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -1083,7 +1115,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   cursor: pointer;
 }
 .btn-xs:hover {
@@ -1163,7 +1195,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 .caller-pill.selected {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -1213,8 +1245,8 @@ tbody tr:hover td { background: var(--accent-soft); }
   margin-left: var(--space-2);
   vertical-align: middle;
 }
-.badge-choir { background: var(--accent-muted, #e8f0fe); color: var(--accent, #4a6fa5); }
-.badge-ensemble { background: #f3e8ff; color: #7c3aed; }
+.badge-choir,
+.badge-ensemble { background: var(--accent-soft); color: var(--accent); }
 
 .individual-members-section {
   margin-top: var(--space-3);
@@ -1360,7 +1392,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   border-bottom: 1px solid var(--border);
 }
 .casting-role-row:hover {
-  background: rgba(201, 162, 39, 0.03);
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
 }
 
 .casting-role-cell {
@@ -1584,7 +1616,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 .slot-btn:hover {
   background: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   border-color: var(--accent);
   transform: translateY(-1px);
 }
@@ -1599,11 +1631,11 @@ tbody tr:hover td { background: var(--accent-soft); }
   font-size: 0.85rem;
   padding: 4px 10px;
   color: var(--danger);
-  border-color: rgba(178, 58, 58, 0.3);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
   background: transparent;
 }
 .cancel-lesson-btn:hover {
-  background: rgba(178, 58, 58, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   border-color: var(--danger);
 }
 
@@ -1620,13 +1652,13 @@ tbody tr:hover td { background: var(--accent-soft); }
   margin-top: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: rgba(178, 58, 58, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger);
-  border: 1px solid rgba(178, 58, 58, 0.2);
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 #edit-msg:not(:empty) {
-  background: rgba(178, 58, 58, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
@@ -2002,7 +2034,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 
 .remove-cast-role-btn:hover {
-  background: rgba(178, 58, 58, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* Chorus section at bottom of each cast column */
@@ -2409,7 +2441,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 
 .remove-staff-btn:hover {
-  background: rgba(178, 58, 58, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }.chorus-role-hint {
   color: var(--text-faint);
   font-size: 0.78rem;
@@ -2452,7 +2484,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 .inline-radio-row .inline-check:has(input[type="radio"]:checked) {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -2512,21 +2544,21 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 /* Signup message states */
 .msg.error-msg {
-  background: rgba(178, 58, 58, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   color: var(--danger);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   margin-top: var(--space-3);
-  border: 1px solid rgba(178, 58, 58, 0.2);
+  border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
   font-size: 0.9rem;
 }
 .msg.success-msg {
-  background: rgba(47, 143, 106, 0.1);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
   color: var(--success);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   margin-top: var(--space-3);
-  border: 1px solid rgba(47, 143, 106, 0.25);
+  border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
   font-size: 0.9rem;
 }
 /* ======================================================
@@ -2603,12 +2635,12 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 .slot-pill-btn:hover:not(:disabled) {
   background: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   transform: translateY(-1px);
 }
 
 .slot-pill-btn:hover:not(:disabled) strong {
-  color: #1f1b15;
+  color: var(--accent-text);
 }
 
 .slot-pill-btn:active:not(:disabled) {
@@ -2713,7 +2745,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   margin-left: auto;
   font-size: 0.75rem;
   padding: 2px 8px;
-  background: rgba(198, 139, 30, 0.12);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--warning);
   border-radius: 999px;
   letter-spacing: 0.02em;
@@ -2747,9 +2779,9 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 .notes-locked-banner {
   padding: var(--space-2) var(--space-3);
-  background: rgba(198, 139, 30, 0.12);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--warning);
-  border: 1px solid rgba(198, 139, 30, 0.3);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
   margin-bottom: var(--space-3);
@@ -2876,7 +2908,7 @@ tbody tr:hover td { background: var(--accent-soft); }
   display: inline-block;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(178, 58, 58, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
   color: var(--danger);
   font-size: 0.8rem;
   font-weight: 500;
@@ -2884,7 +2916,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 
 .cancelled-inline-badge {
-  background: rgba(178, 58, 58, 0.12);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
 
@@ -2894,13 +2926,13 @@ tbody tr:hover td { background: var(--accent-soft); }
 ====================================================== */
 
 .cancel-pill-btn {
-  border-color: rgba(178, 58, 58, 0.3);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
   color: var(--danger);
   background: transparent;
 }
 
 .cancel-pill-btn:hover:not(:disabled) {
-  background: rgba(178, 58, 58, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
   border-color: var(--danger);
   color: var(--danger);
   transform: translateY(-1px);
@@ -2917,9 +2949,9 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 .notes-shared-banner {
   padding: var(--space-2) var(--space-3);
-  background: rgba(47, 143, 106, 0.1);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
   color: var(--success);
-  border: 1px solid rgba(47, 143, 106, 0.25);
+  border: 1px solid color-mix(in srgb, var(--success) 25%, transparent);
   border-radius: var(--radius-sm);
   font-size: 0.88rem;
   margin-bottom: var(--space-3);
@@ -2927,7 +2959,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 .send-notes-btn {
   background: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -2935,7 +2967,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 .send-notes-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  color: #1f1b15;
+  color: var(--accent-text);
 }
 
 .send-notes-btn:disabled {
@@ -2946,7 +2978,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 .shared-badge {
   font-size: 0.75rem;
   padding: 2px 8px;
-  background: rgba(47, 143, 106, 0.12);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
   color: var(--success);
   border-radius: 999px;
   letter-spacing: 0.02em;
@@ -2988,7 +3020,7 @@ tbody tr:hover td { background: var(--accent-soft); }
 }
 .sub-tab-btn.active {
     background: var(--accent);
-    color: #1f1b15;
+    color: var(--accent-text);
     border-color: var(--accent);
 }
 
@@ -3097,9 +3129,9 @@ tbody tr:hover td { background: var(--accent-soft); }
 
 /* Email verification banner (sits above the dashboard) */
 .email-verify-banner {
-    background: #fff4d6;
-    color: #5e4520;
-    border-bottom: 1px solid #e2cf9b;
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+    border-bottom: 1px solid var(--color-warning-border);
     padding: 12px 20px;
     display: flex;
     justify-content: space-between;
@@ -3137,17 +3169,17 @@ tbody tr:hover td { background: var(--accent-soft); }
     display: inline-block;
     margin-top: 6px;
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: 999px;
     font-size: 0.78rem;
     font-weight: 500;
 }
 .invite-status.pending {
-    background: #fff4d6;
-    color: #5e4520;
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
 }
 .invite-status.accepted {
-    background: #d6f5dd;
-    color: #1f5230;
+    background: color-mix(in srgb, var(--success) 15%, var(--bg-elevated));
+    color: var(--success);
 }
 .invite-status.expired {
     background: var(--bg-elevated);
@@ -3512,7 +3544,7 @@ details[open] .invite-group-summary::before { transform: rotate(90deg); }
   padding: 0 5px;
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   font-size: 0.72rem;
   font-weight: 700;
   vertical-align: middle;
@@ -3561,9 +3593,9 @@ details[open] .invite-group-summary::before { transform: rotate(90deg); }
   font-size: 0.72rem;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   letter-spacing: 0.02em;
 }
 
@@ -3628,7 +3660,7 @@ details[open] .invite-group-summary::before { transform: rotate(90deg); }
 .dm-view-btn.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1f1b15;
+  color: var(--accent-text);
   font-weight: 600;
 }
 
