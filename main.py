@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
         print(f"✅ Neon connection pool initialized (max {_connection_pool.maxconn} connections).")
         with db_cursor(commit=True) as cur:
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_token TEXT UNIQUE;")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_token_hash TEXT UNIQUE;")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_role VARCHAR(50);")
             cur.execute("ALTER TABLE invitations ADD COLUMN IF NOT EXISTS instrument VARCHAR(100);")
@@ -453,6 +454,45 @@ async def lifespan(app: FastAPI):
             """)
             cur.execute("ALTER TABLE orchestra_sub_requests ADD COLUMN IF NOT EXISTS section_contacted_at TIMESTAMPTZ;")
             cur.execute("ALTER TABLE orchestra_sub_requests ADD COLUMN IF NOT EXISTS absence_request_id INTEGER REFERENCES orchestra_absence_requests(id);")
+            cur.execute("ALTER TABLE studio_teacher_settings ADD COLUMN IF NOT EXISTS payment_encrypted BOOLEAN NOT NULL DEFAULT FALSE;")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS legacy_pw_notice_sent_at TIMESTAMPTZ;")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    id          SERIAL PRIMARY KEY,
+                    identifier  TEXT NOT NULL,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_identifier ON login_attempts(identifier, created_at);")
+
+            # One-time migrations: encrypt/hash any values still sitting in
+            # plaintext from before FIELD_ENCRYPTION_KEY existed. Both are
+            # idempotent (guarded by the same column they backfill), so it's
+            # safe for this to run on every startup.
+            if _fernet:
+                cur.execute("SELECT id, calendar_token FROM users WHERE calendar_token IS NOT NULL AND calendar_token_hash IS NULL")
+                for uid, tok in cur.fetchall():
+                    cur.execute(
+                        "UPDATE users SET calendar_token=%s, calendar_token_hash=%s WHERE id=%s",
+                        (encrypt_field(tok), _hash_token(tok), uid)
+                    )
+
+                cur.execute("""
+                    SELECT teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal
+                    FROM studio_teacher_settings WHERE payment_encrypted = FALSE
+                """)
+                for tid, zelle, venmo, cashapp, paypal in cur.fetchall():
+                    cur.execute("""
+                        UPDATE studio_teacher_settings
+                        SET payment_zelle=%s, payment_venmo=%s, payment_cashapp=%s, payment_paypal=%s,
+                            payment_encrypted=TRUE
+                        WHERE teacher_id=%s
+                    """, (encrypt_field(zelle), encrypt_field(venmo), encrypt_field(cashapp), encrypt_field(paypal), tid))
+
+        try:
+            _notify_legacy_password_accounts()
+        except Exception as e:
+            print("⚠️ Legacy password notice pass failed (non-fatal):", e)
     except Exception as e:
         print("❌ Neon connection failed:", e)
         raise
@@ -614,19 +654,89 @@ def verify_password(pw: str, stored_hash: str, pw_version: str) -> bool:
     return hashlib.sha256(pw.encode()).hexdigest() == stored_hash
 
 
+# -- Bearer-token hashing (sessions, calendar links, password resets) --------
+#
+# These tokens are already high-entropy random values (secrets.token_urlsafe),
+# not user-chosen, so a fast one-way hash is appropriate here — there's no
+# offline-guessing risk to defend against the way there is with passwords.
+# Hashing them at rest means a database leak doesn't hand out ready-to-use
+# active sessions / calendar subscriptions / reset links.
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+# -- Reversible field encryption (payment handles, calendar tokens) ---------
+#
+# Unlike the hash above, these values need to be read back out in their
+# original form (to redisplay a calendar URL, or show a teacher their own
+# payment handle) — so they're encrypted, not hashed. The key lives only in
+# the environment (FIELD_ENCRYPTION_KEY), never in the database itself, so a
+# database-only leak (e.g. a Neon credential leak) doesn't expose these
+# fields even though the ciphertext is sitting right next to them.
+
+from cryptography.fernet import Fernet, InvalidToken
+
+_FIELD_ENCRYPTION_KEY = os.environ.get("FIELD_ENCRYPTION_KEY", "")
+_fernet = Fernet(_FIELD_ENCRYPTION_KEY.encode()) if _FIELD_ENCRYPTION_KEY else None
+
+
+def encrypt_field(value: Optional[str]) -> Optional[str]:
+    """Encrypt a value for storage. Returns None as-is. Requires FIELD_ENCRYPTION_KEY."""
+    if value is None or value == "":
+        return value
+    if not _fernet:
+        raise RuntimeError("FIELD_ENCRYPTION_KEY is not set — refusing to store this field in plaintext")
+    return _fernet.encrypt(value.encode()).decode()
+
+
+def decrypt_field(value: Optional[str]) -> Optional[str]:
+    """Decrypt a value read from storage. Returns None/empty as-is."""
+    if value is None or value == "":
+        return value
+    if not _fernet:
+        return None
+    try:
+        return _fernet.decrypt(value.encode()).decode()
+    except InvalidToken:
+        # Not encrypted yet (pre-migration legacy plaintext) — return as-is.
+        return value
+
+
+# Login rate-limiting — keyed on the submitted username (lowercased), so it
+# throttles credential-stuffing against one account regardless of source IP.
+LOGIN_ATTEMPT_LIMIT = 8
+LOGIN_ATTEMPT_WINDOW_MINUTES = 15
+
+
+def _recent_failed_login_count(identifier: str) -> int:
+    cutoff = datetime.now(pytz.utc) - timedelta(minutes=LOGIN_ATTEMPT_WINDOW_MINUTES)
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM login_attempts WHERE identifier=%s AND created_at > %s",
+            (identifier, cutoff)
+        )
+        return cur.fetchone()[0]
+
+
+def _record_failed_login(identifier: str):
+    with db_cursor(commit=True) as cur:
+        cur.execute("INSERT INTO login_attempts (identifier) VALUES (%s)", (identifier,))
+
+
 # Sessions
 SESSION_DURATION_DAYS = 7
 
 
 def create_session(user_id: int, user_agent: Optional[str] = None) -> str:
-    """Generate a random session token, store it, return the token."""
+    """Generate a random session token, store its hash, return the raw token for the cookie."""
     token = secrets.token_urlsafe(32)  # 256 bits of entropy
     expires = datetime.now(EST) + timedelta(days=SESSION_DURATION_DAYS)
     with db_cursor(commit=True) as cur:
         cur.execute("""
             INSERT INTO sessions (token, user_id, expires_at, user_agent)
             VALUES (%s, %s, %s, %s)
-        """, (token, user_id, expires, user_agent))
+        """, (_hash_token(token), user_id, expires, user_agent))
     return token
 
 
@@ -637,6 +747,7 @@ def get_user_from_session(token: Optional[str]):
     """
     if not token:
         return None
+    token = _hash_token(token)
 
     # Try the full query first (requires choir migration columns).
     # Fall back to a base query if any column is missing (migration not yet run).
@@ -799,7 +910,7 @@ def delete_session(token: str):
     if not token:
         return
     with db_cursor(commit=True) as cur:
-        cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+        cur.execute("DELETE FROM sessions WHERE token = %s", (_hash_token(token),))
 
 
 def delete_all_sessions_for_user(user_id: int, except_token: Optional[str] = None):
@@ -808,7 +919,7 @@ def delete_all_sessions_for_user(user_id: int, except_token: Optional[str] = Non
         if except_token:
             cur.execute(
                 "DELETE FROM sessions WHERE user_id = %s AND token != %s",
-                (user_id, except_token)
+                (user_id, _hash_token(except_token))
             )
         else:
             cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
@@ -1485,6 +1596,9 @@ def orchestra_member_page(request: Request):
 def login(data: LoginData, request: Request, response: Response):
     username = data.username.strip().lower()
 
+    if _recent_failed_login_count(username) >= LOGIN_ATTEMPT_LIMIT:
+        return {"success": False, "message": "Too many failed attempts. Try again in a few minutes."}
+
     # Look up by username globally — usernames are unique across the system.
     # Try with org_type first (requires choir migration); fall back if column absent.
     user_id = role = fullname = stored_hash = pw_version = None
@@ -1501,6 +1615,7 @@ def login(data: LoginData, request: Request, response: Response):
             """, (username,))
             row = cur.fetchone()
         if not row:
+            _record_failed_login(username)
             return {"success": False, "message": "Invalid username or password"}
         user_id, role, fullname, stored_hash, pw_version, org_type = row
     except Exception:
@@ -1514,11 +1629,13 @@ def login(data: LoginData, request: Request, response: Response):
             """, (username,))
             row = cur.fetchone()
         if not row:
+            _record_failed_login(username)
             return {"success": False, "message": "Invalid username or password"}
         user_id, role, fullname, stored_hash, pw_version = row
 
     # Verify the password (works for both bcrypt and legacy sha256)
     if not verify_password(data.password, stored_hash, pw_version):
+        _record_failed_login(username)
         return {"success": False, "message": "Invalid username or password"}
 
     # Transparent upgrade: if this was a SHA-256 hash, re-hash with bcrypt now
@@ -1543,6 +1660,13 @@ def login(data: LoginData, request: Request, response: Response):
         path="/",
         domain=".countrpnt.com",
     )
+    # Before the cross-domain fix, this cookie was set host-only (no Domain
+    # attribute). Anyone who logged in before that fix may still be carrying
+    # that old host-only cookie alongside this new one — same name, both in
+    # scope, and the browser sends both, so the server can end up reading
+    # the stale one and bouncing them back to login. Explicitly expire it
+    # here so one more login fully clears it out.
+    response.delete_cookie("session", path="/")
 
     return {
         "success": True,
@@ -1559,6 +1683,7 @@ def logout(request: Request, response: Response):
     token = request.cookies.get("session")
     delete_session(token) if token else None
     response.delete_cookie("session", path="/", domain=".countrpnt.com")
+    response.delete_cookie("session", path="/")  # also clear any legacy host-only cookie
     return {"success": True}
 
 
@@ -1693,6 +1818,64 @@ If you didn't request a password reset, you can safely ignore this email.
     return html, text
 
 
+def render_legacy_password_notice_email(fullname: str) -> tuple[str, str]:
+    """One-time nudge for accounts still on the old unsalted SHA-256 hash to reset their password."""
+    login_url = f"{APP_URL}/login"
+    html = f"""\
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 40px auto; padding: 24px; color: #222;">
+    <h2 style="color: #444;">A quick security update</h2>
+    <p>Hi {fullname},</p>
+    <p>We've upgraded how passwords are stored on CountrPnt. Your account hasn't logged in
+    since the upgrade, so as a precaution we'd like you to set a new password.</p>
+    <p style="margin: 32px 0;">
+        <a href="{login_url}" style="background: #6b5b3e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: 500;">Go to login</a>
+    </p>
+    <p style="color: #666; font-size: 14px;">
+        Use the "Forgot password?" link on the login page to set a new one. Your current
+        password still works in the meantime — this is just a precaution, not an account lockout.
+    </p>
+</body>
+</html>
+"""
+    text = f"""\
+Hi {fullname},
+
+We've upgraded how passwords are stored on CountrPnt. Your account hasn't logged in
+since the upgrade, so as a precaution we'd like you to set a new password.
+
+Go to {login_url} and use "Forgot password?" to set a new one. Your current password
+still works in the meantime — this is just a precaution, not an account lockout.
+"""
+    return html, text
+
+
+def _notify_legacy_password_accounts():
+    """
+    One-time-per-account nudge: anyone still on the legacy unsalted SHA-256
+    password hash gets an email encouraging a reset. We don't invalidate the
+    old password — logging in normally already transparently upgrades it to
+    bcrypt; this just closes the gap for accounts that rarely log in.
+    """
+    with db_cursor() as cur:
+        cur.execute("""
+            SELECT id, email, fullname FROM users
+            WHERE pw_version != 'bcrypt' AND legacy_pw_notice_sent_at IS NULL AND email IS NOT NULL
+        """)
+        rows = cur.fetchall()
+    if not rows:
+        return
+    for user_id, email, fullname in rows:
+        html, text = render_legacy_password_notice_email(fullname or "there")
+        try:
+            send_email(email, "A quick security update for your CountrPnt account", html, text)
+        except Exception:
+            continue
+        with db_cursor(commit=True) as cur:
+            cur.execute("UPDATE users SET legacy_pw_notice_sent_at = NOW() WHERE id = %s", (user_id,))
+
+
 @app.post("/auth/forgot-password")
 def forgot_password(payload: dict):
     """
@@ -1744,7 +1927,7 @@ def forgot_password(payload: dict):
         cur.execute("""
             INSERT INTO password_reset_tokens (token, user_id, expires_at)
             VALUES (%s, %s, %s)
-        """, (token, user_id, expires))
+        """, (_hash_token(token), user_id, expires))
 
     reset_url = f"{APP_URL}/reset-password?token={token}"
     html, text = render_password_reset_email(reset_url, fullname or "there")
@@ -1773,12 +1956,13 @@ def reset_password(payload: dict):
     if len(new_password) < 8:
         return {"success": False, "message": "Password must be at least 8 characters."}
 
+    token_hash = _hash_token(token)
     with db_cursor(commit=True) as cur:
         cur.execute("""
             SELECT user_id, expires_at, used_at
             FROM password_reset_tokens
             WHERE token = %s
-        """, (token,))
+        """, (token_hash,))
         row = cur.fetchone()
 
         if not row:
@@ -1804,7 +1988,7 @@ def reset_password(payload: dict):
             UPDATE password_reset_tokens
             SET used_at = NOW()
             WHERE token = %s
-        """, (token,))
+        """, (token_hash,))
 
     # Invalidate all sessions for this user — they should re-login with the new password
     delete_all_sessions_for_user(user_id)
@@ -2565,19 +2749,20 @@ def accept_invite(payload: dict):
             cur.execute("""
                 INSERT INTO studio_teacher_settings
                     (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                     lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     payment_encrypted, lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student)
+                VALUES (%s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
                 ON CONFLICT (teacher_id) DO UPDATE SET
                     payment_zelle             = EXCLUDED.payment_zelle,
                     payment_venmo             = EXCLUDED.payment_venmo,
                     payment_cashapp           = EXCLUDED.payment_cashapp,
                     payment_paypal            = EXCLUDED.payment_paypal,
+                    payment_encrypted         = TRUE,
                     lesson_rates              = EXCLUDED.lesson_rates,
                     cancel_hours              = EXCLUDED.cancel_hours,
                     cancel_charge             = EXCLUDED.cancel_charge,
                     free_cancels_per_student  = EXCLUDED.free_cancels_per_student
-            """, (user_id, zelle, venmo, cashapp, paypal, _json.dumps(rates),
-                  cancel_hours, cancel_charge, free_cancels))
+            """, (user_id, encrypt_field(zelle), encrypt_field(venmo), encrypt_field(cashapp), encrypt_field(paypal),
+                  _json.dumps(rates), cancel_hours, cancel_charge, free_cancels))
 
     return {"status": "success", "role": role}
 
@@ -8129,10 +8314,13 @@ def _get_or_create_calendar_token(user_id: int) -> str:
     with db_cursor(commit=True) as cur:
         cur.execute("SELECT calendar_token FROM users WHERE id=%s", (user_id,))
         row = cur.fetchone()
-        token = row[0] if row and row[0] else None
+        token = decrypt_field(row[0]) if row and row[0] else None
         if not token:
             token = _sec.token_urlsafe(32)
-            cur.execute("UPDATE users SET calendar_token=%s WHERE id=%s", (token, user_id))
+            cur.execute(
+                "UPDATE users SET calendar_token=%s, calendar_token_hash=%s WHERE id=%s",
+                (encrypt_field(token), _hash_token(token), user_id)
+            )
     return token
 
 
@@ -8145,7 +8333,7 @@ def teacher_my_calendar_token(request: Request):
 @app.get("/teacher/calendar/{token}.ics")
 def teacher_calendar_ics(token: str):
     with db_cursor() as cur:
-        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='teacher'", (token,))
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token_hash=%s AND role='teacher'", (_hash_token(token),))
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -8174,7 +8362,7 @@ def student_my_calendar_token(request: Request):
 @app.get("/student/calendar/{token}.ics")
 def student_calendar_ics(token: str):
     with db_cursor() as cur:
-        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='student'", (token,))
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token_hash=%s AND role='student'", (_hash_token(token),))
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -8227,7 +8415,7 @@ def orchestra_member_my_calendar_token(request: Request):
 @app.get("/orchestra-member/calendar/{token}.ics")
 def orchestra_member_calendar_ics(token: str):
     with db_cursor() as cur:
-        cur.execute("SELECT id, org_id FROM users WHERE calendar_token=%s AND role='orchestra_member'", (token,))
+        cur.execute("SELECT id, org_id FROM users WHERE calendar_token_hash=%s AND role='orchestra_member'", (_hash_token(token),))
         row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Calendar not found")
@@ -8272,16 +8460,8 @@ def orchestra_member_calendar_ics(token: str):
 
 @app.get("/choir/my-calendar-token")
 def choir_my_calendar_token(request: Request):
-    import secrets as _secrets
     user = require_choir_member(request)
-    with db_cursor(commit=True) as cur:
-        cur.execute("SELECT calendar_token FROM users WHERE id=%s", (user["id"],))
-        row = cur.fetchone()
-        token = row[0] if row and row[0] else None
-        if not token:
-            token = _secrets.token_urlsafe(32)
-            cur.execute("UPDATE users SET calendar_token=%s WHERE id=%s", (token, user["id"]))
-    return {"token": token}
+    return {"token": _get_or_create_calendar_token(user["id"])}
 
 
 @app.get("/choir/calendar/{token}.ics")
@@ -8289,8 +8469,8 @@ def choir_calendar_ics(token: str):
     with db_cursor() as cur:
         cur.execute("""
             SELECT u.id, u.org_id, u.section_id, u.voice_type, u.instrument
-            FROM users u WHERE u.calendar_token=%s
-        """, (token,))
+            FROM users u WHERE u.calendar_token_hash=%s
+        """, (_hash_token(token),))
         row = cur.fetchone()
 
     if not row:
@@ -9564,10 +9744,10 @@ def studio_teacher_settings_get(request: Request):
                 "lesson_rates": [], "cancel_hours": None, "cancel_charge": False,
                 "free_cancels_per_student": 0, "packages_enabled": False, "package_size": 4}
     return {
-        "payment_zelle":              row[0],
-        "payment_venmo":              row[1],
-        "payment_cashapp":            row[2],
-        "payment_paypal":             row[3],
+        "payment_zelle":              decrypt_field(row[0]),
+        "payment_venmo":              decrypt_field(row[1]),
+        "payment_cashapp":            decrypt_field(row[2]),
+        "payment_paypal":             decrypt_field(row[3]),
         "lesson_rates":               row[4] or [],
         "cancel_hours":               row[5],
         "cancel_charge":              row[6],
@@ -9615,22 +9795,23 @@ def studio_teacher_settings_update(payload: dict, request: Request):
         cur.execute("""
             INSERT INTO studio_teacher_settings
                 (teacher_id, payment_zelle, payment_venmo, payment_cashapp, payment_paypal,
-                 lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student,
+                 payment_encrypted, lesson_rates, cancel_hours, cancel_charge, free_cancels_per_student,
                  packages_enabled, package_size)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (teacher_id) DO UPDATE SET
                 payment_zelle             = EXCLUDED.payment_zelle,
                 payment_venmo             = EXCLUDED.payment_venmo,
                 payment_cashapp           = EXCLUDED.payment_cashapp,
                 payment_paypal            = EXCLUDED.payment_paypal,
+                payment_encrypted         = TRUE,
                 lesson_rates              = EXCLUDED.lesson_rates,
                 cancel_hours              = EXCLUDED.cancel_hours,
                 cancel_charge             = EXCLUDED.cancel_charge,
                 free_cancels_per_student  = EXCLUDED.free_cancels_per_student,
                 packages_enabled          = EXCLUDED.packages_enabled,
                 package_size              = EXCLUDED.package_size
-        """, (teacher["id"], zelle, venmo, cashapp, paypal, _json.dumps(rates),
-              cancel_hours, cancel_charge, free_cancels, packages_enabled, package_size))
+        """, (teacher["id"], encrypt_field(zelle), encrypt_field(venmo), encrypt_field(cashapp), encrypt_field(paypal),
+              _json.dumps(rates), cancel_hours, cancel_charge, free_cancels, packages_enabled, package_size))
     return {"status": "success"}
 
 
@@ -9996,6 +10177,7 @@ def studio_teacher_add_lesson(payload: dict, request: Request):
                 payment_handles = {}
                 if s_row:
                     for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], s_row[1:]):
+                        val = decrypt_field(val)
                         if val:
                             payment_handles[method] = val
                 rate_cents = rate_map.get(duration_min, 0)
@@ -10760,6 +10942,7 @@ def studio_teacher_payment_reminder(student_id: int, request: Request):
         payment_handles = {}
         if settings_row:
             for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], settings_row[1:]):
+                val = decrypt_field(val)
                 if val:
                     payment_handles[method] = val
 
@@ -10811,6 +10994,7 @@ def studio_teacher_payment_reminder_all(payload: dict, request: Request):
         payment_handles = {}
         if s_row:
             for method, val in zip(["venmo", "zelle", "cashapp", "paypal"], s_row[1:]):
+                val = decrypt_field(val)
                 if val:
                     payment_handles[method] = val
 
